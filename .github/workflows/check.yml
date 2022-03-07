@@ -9,11 +9,15 @@ jobs:
   check:
     runs-on: windows-latest
     steps:
-      - uses: oprypin/find-latest-tag@v1
-        id: ffmpeg
+      - uses: actions/checkout@v2
         with:
           repository: FFmpeg/FFmpeg
-      - uses: actions/checkout@v2
+          fetch-depth: 2000
+      - name: Check tag
+        shell: bash
+        id: ffmpeg
+        run: |
+          echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
       - name: update
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
