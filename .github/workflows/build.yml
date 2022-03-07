@@ -35,10 +35,9 @@ jobs:
       - name: test
         run: |
           echo installationPath=${{env.installationPath}}
-      - name: build
-        shell: "cmd.exe /k ${{env.installationPath}}\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+      - name: cmd
         run: |
-          $installationPath=$(vswhere -all -legacy -property installationPath)
+          echo installationPath=%installationPath
           %installationPath%\VC\Auxiliary\Build\vcvarsall.bat
           sh configure ${{env.config}}
           make
