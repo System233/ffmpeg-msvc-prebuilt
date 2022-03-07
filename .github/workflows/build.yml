@@ -29,6 +29,7 @@ jobs:
       # - name: find msvc installation
       #   run: 
       - name: build
+        shell: cmd
         run: |
           vswhere -all -legacy -property installationPath>>installationPath
           set /p installationPath=<installationPath
