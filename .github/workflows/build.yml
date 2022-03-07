@@ -17,9 +17,9 @@ jobs:
       matrix:
         arch: [amd64]
     steps:
-      - uses: actions/checkout@v2
-        with:
-          repository: FFmpeg/FFmpeg
+      # - uses: actions/checkout@v2
+      #   with:
+      #     repository: FFmpeg/FFmpeg
       - uses: msys2/setup-msys2@v2
         with:
           install: diffutils
@@ -36,14 +36,13 @@ jobs:
           set /p installationPath=<installationPath
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
-          set
-          msys2 -c "mv $(which link) $(which link)2"
+          msys2 -c "rename link link2 $(which link)"
           msys2 -c "./configure ${{env.config}}"
           msys2 -c make
-      # - name: Start SSH session
-      #   uses: luchihoratiu/debug-via-ssh@main
-      #   if: ${{ failure() }}
-      #   with:
-      #     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-      #     SSH_PASS: ${{ secrets.SSH_PASS }}
-      #     NGROK_REGION: ${{ secrets.NGROK_REGION }}
+      - name: Start SSH session
+        uses: luchihoratiu/debug-via-ssh@main
+        if: ${{ failure() }}
+        with:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+          SSH_PASS: ${{ secrets.SSH_PASS }}
+          NGROK_REGION: ${{ secrets.NGROK_REGION }}
