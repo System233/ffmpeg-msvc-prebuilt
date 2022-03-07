@@ -16,6 +16,7 @@ jobs:
           git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg --depth 10000 
           cd ffmpeg
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
+          echo "VER=$(git describe --tags --abbrev=0)"
       - uses: actions/checkout@v2
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
         with:
