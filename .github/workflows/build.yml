@@ -2,7 +2,8 @@ name: "Build ffmpeg"
 
 on:
   push:
-  workflow_dispatch:
+    tags:
+      - '*'
   
 env:
   config: --enable-shared --toolchain=msvc
@@ -10,12 +11,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
-    # defaults:
-    #   run:
-    #     shell: msys2 {0}
     strategy:
       matrix:
-        arch: [amd64]
+        arch: [x86,amd64]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -27,19 +25,19 @@ jobs:
             diffutils
             make
             zip
-      # - uses: ilammy/setup-nasm@v1
+      - uses: ilammy/setup-nasm@v1
       - name: remove link
         run: msys2 -c "rename link link2 $(which link)"
       - name: build
         shell: cmd
         run: |
-          # vswhere -all -legacy -property installationPath>>installationPath
-          # set /p installationPath=<installationPath
-          # echo installationPath=%installationPath%
-          # call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
-          # msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
-          mkdir dist
-          echo test>dist/test.txt
+          vswhere -all -legacy -property installationPath>>installationPath
+          set /p installationPath=<installationPath
+          echo installationPath=%installationPath%
+          call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+          # mkdir dist
+          # echo test>dist/test.txt
       - name: pack
         shell: msys2 {0}
         run: |
