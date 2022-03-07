@@ -39,7 +39,7 @@ jobs:
           mkdir dist
           echo test>dist/test.txt
       - name: pack
-        shell: msys2
+        shell: msys2 {0}
         run: |
           ZIP_PATH=ffmpeg-$(git describe --tags).zip
           echo ZIP_PATH=$ZIP_PATH>>$GITHUB_ENV
