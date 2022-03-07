@@ -17,12 +17,12 @@ jobs:
       matrix:
         arch: [amd64]
     steps:
-      - uses: actions/checkout@v2
-        with:
-          repository: FFmpeg/FFmpeg
-      - uses: msys2/setup-msys2@v2
-        with:
-          install: diffutils
+      # - uses: actions/checkout@v2
+      #   with:
+      #     repository: FFmpeg/FFmpeg
+      # - uses: msys2/setup-msys2@v2
+      #   with:
+      #     install: diffutils
       # - uses: microsoft/setup-msbuild@v1.1
       #   with:
       #     msbuild-architecture: ${{matrix.arch}}
@@ -37,6 +37,8 @@ jobs:
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
           set
+          cl
+          msys2 -c "cl"
           msys2 -c "rm -f $(which link);./configure ${{env.config}};make"
       # - name: Start SSH session
       #   uses: luchihoratiu/debug-via-ssh@main
