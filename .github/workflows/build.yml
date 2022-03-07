@@ -28,17 +28,14 @@ jobs:
       #     msbuild-architecture: ${{matrix.arch}}
       # - name: find msvc installation
       #   run: 
-      - name: find msvc installation
-        run: |
-          sh -c "echo installationPath='$(vswhere -all -legacy -property installationPath)'"
-          sh -c "echo installationPath='$(vswhere -all -legacy -property installationPath)'>>$GITHUB_ENV"
-      - name: test
-        run: 
-          echo "installationPath=${{env.installationPath}}"
+
       - name: build
         # shell: "cmd.exe /k"
         run: |
-          ${{env.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat
+          vswhere -all -legacy -property installationPath>>installationPath
+          set /p installationPath=<installationPath
+          echo installationPath=%installationPath%
+          %installationPath%\VC\Auxiliary\Build\vcvarsall.bat
           sh configure ${{env.config}}
           make
       # - name: Start SSH session
