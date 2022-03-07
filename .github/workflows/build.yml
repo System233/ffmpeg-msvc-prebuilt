@@ -27,7 +27,7 @@ jobs:
           msbuild-architecture: ${{matrix.arch}}
       - name: build
         run: |
-          mv link.exe link2.exe
+          mv link link2 "$(which link.exe)"
           ./configure ${{env.config}}
           make
         
