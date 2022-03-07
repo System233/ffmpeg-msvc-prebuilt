@@ -11,6 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          path: ffmpeg
           repository: FFmpeg/FFmpeg
           fetch-depth: 2000
       - name: Check tag
@@ -18,10 +19,14 @@ jobs:
         id: ffmpeg
         run: |
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
+      - uses: actions/checkout@v2
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+        with:
+          path: repository
       - name: update
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
         run: |
+          cd repository
           git tag ${{steps.ffmpeg.outputs.tag}}
           git push origin ${{steps.ffmpeg.outputs.tag}}
 
