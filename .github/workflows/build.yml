@@ -25,7 +25,7 @@ jobs:
           install: >-
             diffutils
             make
-      - uses: ilammy/setup-nasm@v1
+      # - uses: ilammy/setup-nasm@v1
       - name: remove link
         run: msys2 -c "rename link link2 $(which link)"
       - name: build
@@ -41,11 +41,12 @@ jobs:
       - name: pack
         shell: msys2
         run: |
-          export ZIP_PATH=ffmpeg-$(git describe --tags).zip
+          ZIP_PATH=ffmpeg-$(git describe --tags).zip
+          echo ZIP_PATH=$ZIP_PATH>>$GITHUB_ENV
+          echo ${{env.ZIP_PATH}}
           cd dist
           zip -9 ../$ZIP_PATH -r .
           cd ..
-          echo ZIP_PATH=$ZIP_PATH>>$GITHUB_ENV
       - name: release
         uses: softprops/action-gh-release@v1
         with:
