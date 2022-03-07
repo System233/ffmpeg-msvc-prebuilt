@@ -25,7 +25,6 @@ jobs:
       - uses: microsoft/setup-msbuild@v1.1
         with:
           msbuild-architecture: ${{matrix.arch}}
-      - name: build
         run: |
           cl /?
           make -h
