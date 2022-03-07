@@ -37,7 +37,9 @@ jobs:
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
           msys2 -c "rename link link2 $(which link)"
+          echo "configure"
           msys2 -c "./configure ${{env.config}}"
+          echo "make"
           msys2 -c make
       # - name: Start SSH session
       #   uses: luchihoratiu/debug-via-ssh@main
