@@ -9,7 +9,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
-    
+    defaults:
+      run:
+        shell: msys2 {0}
     strategy:
       matrix:
         arch: [x64]
