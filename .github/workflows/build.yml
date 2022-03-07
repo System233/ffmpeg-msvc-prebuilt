@@ -31,7 +31,7 @@ jobs:
             zip
       - uses: ilammy/setup-nasm@v1
       - name: Remove link
-        shell: msys2
+        shell: msys2 {0}
         run: rm $(which link)
       - name: Setup MSVC
         shell: bash
