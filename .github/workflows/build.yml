@@ -28,7 +28,7 @@ jobs:
       #     msbuild-architecture: ${{matrix.arch}}
       # - name: find msvc installation
       #   run: 
-      - uses: ilammy/setup-nasm@v1
+      # - uses: ilammy/setup-nasm@v1
       - name: build
         shell: cmd
         run: |
