@@ -25,10 +25,11 @@ jobs:
         with:
           path: repository
       - name: update
+        shell: bash
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
         run: |
           cd repository
-          echo ${{steps.ffmpeg.outputs.tag}}>ffmpeg-latest
+          echo ${{steps.ffmpeg.outputs.tag}} > ffmpeg-latest
           git add .
           git commit -m ${{steps.ffmpeg.outputs.tag}}
           git tag ${{steps.ffmpeg.outputs.tag}}
