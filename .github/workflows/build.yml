@@ -36,7 +36,7 @@ jobs:
           set /p installationPath=<installationPath
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
-          # msys2 -c "rename link link2 $(which link)"
+          msys2 -c "rename link link2 /usr/bin/link*"
           echo "configure"
           msys2 -c "./configure ${{env.config}}"
           echo "make"
