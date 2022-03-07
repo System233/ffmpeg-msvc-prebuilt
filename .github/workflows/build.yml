@@ -31,8 +31,8 @@ jobs:
       - name: build
         # shell: "cmd.exe /k"
         run: |
-          sh -c 'echo "installationPath=$(vswhere -all -legacy -property installationPath)"'
-          sh -c 'echo "installationPath=$(vswhere -all -legacy -property installationPath)"'>>$GITHUB_ENV
+          sh -c "echo installationPath=$(vswhere -all -legacy -property installationPath)"
+          sh -c "echo installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_ENV
           "${{env.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat"
           sh configure ${{env.config}}
           make
