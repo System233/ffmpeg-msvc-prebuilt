@@ -25,6 +25,6 @@ jobs:
           msbuild-architecture: ${{matrix.arch}}
       - name: build
         run: 
-          configure ${{config}}
+          configure ${{env.config}}
           make
         
