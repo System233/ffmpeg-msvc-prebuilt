@@ -26,6 +26,7 @@ jobs:
           install: >-
             diffutils
             make
+            zip
       # - uses: ilammy/setup-nasm@v1
       - name: remove link
         run: msys2 -c "rename link link2 $(which link)"
