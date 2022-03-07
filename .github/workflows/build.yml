@@ -1,6 +1,7 @@
 name: "Build ffmpeg"
 
 on:
+  push:
   workflow_dispatch:
   
 env:
@@ -25,13 +26,13 @@ jobs:
       # - uses: microsoft/setup-msbuild@v1.1
       #   with:
       #     msbuild-architecture: ${{matrix.arch}}
-      - name: find msvc installation
-        run: 
-          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_ENV
+      # - name: find msvc installation
+      #   run: 
       - name: build
         # shell: "cmd.exe /k"
         run: |
-          "${{env.installationPath}}\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_ENV
+          call "${{env.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat"
           sh configure ${{env.config}}
           make
       # - name: Start SSH session
