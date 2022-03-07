@@ -27,6 +27,8 @@ jobs:
         run: |
           cd repository
           echo ${{steps.ffmpeg.outputs.tag}} > ffmpeg-latest
+          git config --global user.name "$(git log --format='%an' HEAD^!)"
+          git config --global user.email "$(git log --format='%ae' HEAD^!)"
           git add .
           git commit -m ${{steps.ffmpeg.outputs.tag}}
           git tag ${{steps.ffmpeg.outputs.tag}}
