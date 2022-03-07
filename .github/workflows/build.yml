@@ -28,6 +28,7 @@ jobs:
       - name: build
         run: |
           rename link link2 "$(which link)"
+          link -h
           ./configure ${{env.config}}
           make
         
