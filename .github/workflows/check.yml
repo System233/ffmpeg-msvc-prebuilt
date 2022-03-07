@@ -27,6 +27,9 @@ jobs:
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
         run: |
           cd repository
+          echo ${{steps.ffmpeg.outputs.tag}}>ffmpeg-latest
+          git add .
+          git commit -m ${{steps.ffmpeg.outputs.tag}}
           git tag ${{steps.ffmpeg.outputs.tag}}
           git push origin ${{steps.ffmpeg.outputs.tag}}
 
