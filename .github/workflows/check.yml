@@ -18,6 +18,7 @@ jobs:
         shell: bash
         id: ffmpeg
         run: |
+          cd ffmpeg
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
       - uses: actions/checkout@v2
         if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
