@@ -31,15 +31,30 @@ jobs:
       - name: build
         shell: cmd
         run: |
-          vswhere -all -legacy -property installationPath>>installationPath
-          set /p installationPath=<installationPath
-          echo installationPath=%installationPath%
-          call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make"
-      - name: Start SSH session
-        uses: luchihoratiu/debug-via-ssh@main
-        # if: ${{ failure() }}
+          # vswhere -all -legacy -property installationPath>>installationPath
+          # set /p installationPath=<installationPath
+          # echo installationPath=%installationPath%
+          # call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
+          # msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+          mkdir dist
+          echo test>dist/test.txt
+      - name: pack
+        shell: msys2
+        run: |
+          export ZIP_PATH=ffmpeg-$(git describe --tags).zip
+          cd dist
+          zip -9 ../$ZIP_PATH -r .
+          cd ..
+          echo ZIP_PATH=$ZIP_PATH>>$GITHUB_ENV
+      - name: release
+        uses: softprops/action-gh-release@v1
         with:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-          SSH_PASS: ${{ secrets.SSH_PASS }}
-          NGROK_REGION: ${{ secrets.NGROK_REGION }}
+          files: |
+            ${{env.ZIP_PATH}}
+      # - name: Start SSH session
+      #   uses: luchihoratiu/debug-via-ssh@main
+      #   if: ${{ failure() }}
+      #   with:
+      #     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      #     SSH_PASS: ${{ secrets.SSH_PASS }}
+      #     NGROK_REGION: ${{ secrets.NGROK_REGION }}
