@@ -36,6 +36,7 @@ jobs:
           set /p installationPath=<installationPath
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
+          set
           msys2 -c "rm -f $(which link);./configure ${{env.config}};make"
       # - name: Start SSH session
       #   uses: luchihoratiu/debug-via-ssh@main
