@@ -13,7 +13,7 @@ jobs:
         with:
           path: ffmpeg
           repository: FFmpeg/FFmpeg
-          fetch-depth: 2000
+          fetch-depth: 10000
       - name: Check tag
         shell: bash
         id: ffmpeg
