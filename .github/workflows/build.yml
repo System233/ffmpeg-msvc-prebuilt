@@ -6,7 +6,7 @@ on:
   
 env:
   config: --enable-shared --toolchain=msvc
-
+  MSYS2_PATH_TYPE: inherit
 jobs:
   build:
     runs-on: windows-latest
@@ -17,12 +17,12 @@ jobs:
       matrix:
         arch: [amd64]
     steps:
-      # - uses: actions/checkout@v2
-      #   with:
-      #     repository: FFmpeg/FFmpeg
-      # - uses: msys2/setup-msys2@v2
-      #   with:
-      #     install: diffutils
+      - uses: actions/checkout@v2
+        with:
+          repository: FFmpeg/FFmpeg
+      - uses: msys2/setup-msys2@v2
+        with:
+          install: diffutils
       # - uses: microsoft/setup-msbuild@v1.1
       #   with:
       #     msbuild-architecture: ${{matrix.arch}}
