@@ -1,0 +1,28 @@
+name: "Build ffmpeg"
+
+on:
+  workflow_dispatch:
+  
+env:
+  config: --enable-shared --toolchain=msvc
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        arch: [x86,x64]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: msys2/setup-msys2@v2
+        with:
+          install: diffutils
+      - uses: microsoft/setup-msbuild@v1.1
+        with:
+          msbuild-architecture: ${{matrix.arch}}
+      - name: build
+        run: 
+          configure ${{config}}
+          make
+        
