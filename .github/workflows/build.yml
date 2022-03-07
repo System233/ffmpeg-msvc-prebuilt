@@ -25,11 +25,6 @@ jobs:
           install: >-
             diffutils
             make
-      # - uses: microsoft/setup-msbuild@v1.1
-      #   with:
-      #     msbuild-architecture: ${{matrix.arch}}
-      # - name: find msvc installation
-      #   run: 
       - uses: ilammy/setup-nasm@v1
       - name: remove link
         run: msys2 -c "rename link link2 $(which link)"
@@ -40,11 +35,11 @@ jobs:
           set /p installationPath=<installationPath
           echo installationPath=%installationPath%
           call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
-          msys2 -c "./configure ${{env.config}};make"
-      # - name: Start SSH session
-      #   uses: luchihoratiu/debug-via-ssh@main
-      #   if: ${{ failure() }}
-      #   with:
-      #     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-      #     SSH_PASS: ${{ secrets.SSH_PASS }}
-      #     NGROK_REGION: ${{ secrets.NGROK_REGION }}
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make"
+      - name: Start SSH session
+        uses: luchihoratiu/debug-via-ssh@main
+        # if: ${{ failure() }}
+        with:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+          SSH_PASS: ${{ secrets.SSH_PASS }}
+          NGROK_REGION: ${{ secrets.NGROK_REGION }}
