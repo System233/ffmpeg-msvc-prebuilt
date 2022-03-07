@@ -1,0 +1,84 @@
+name: "Build ffmpeg"
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+  
+env:
+  config: --enable-shared --toolchain=msvc
+  MSYS2_PATH_TYPE: inherit
+jobs:
+  check:
+    runs-on: windows-latest
+    outputs:
+      build: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      name: ${{steps.ffmpeg.outputs.tag}}
+      zip: ffmpeg-${{steps.ffmpeg.outputs.tag}}.zip
+    steps:
+      - name: Check tag
+        shell: bash
+        id: ffmpeg
+        run: |
+          git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg --depth 5000 
+          cd ffmpeg
+          echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
+          echo "VER=$(git describe --tags)"
+      # - uses: actions/checkout@v2
+      #   if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      #   with:
+      #     path: repository
+      # - name: update
+      #   shell: bash
+      #   if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      #   run: |
+      #     cd repository
+      #     echo ${{steps.ffmpeg.outputs.tag}} > ffmpeg-latest
+      #     git config --global user.name "$(git log --format='%an' HEAD^!)"
+      #     git config --global user.email "$(git log --format='%ae' HEAD^!)"
+      #     git add .
+      #     git commit -m ${{steps.ffmpeg.outputs.tag}}
+      #     git tag ${{steps.ffmpeg.outputs.tag}}
+      #     git push
+      #     git push origin ${{steps.ffmpeg.outputs.tag}}
+  build:
+    needs: check
+    if: ${{needs.check.outputs.build}}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: FFmpeg/FFmpeg
+      - uses: msys2/setup-msys2@v2
+        with:
+          install: >-
+            diffutils
+            make
+            zip
+      - uses: ilammy/setup-nasm@v1
+      - name: Remove link
+        shell: msys2
+        run: rm $(which link)
+      - name: Setup MSVC
+        shell: bash
+        id: msvc
+        run: |
+          echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
+      - name: Build ffmpeg
+        shell: cmd
+        run: |
+          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+      - name: Pack ZIP
+        shell: msys2 {0}
+        run: |
+          cd dist
+          zip -9 ../${{needs.check.outputs.zip}} -r .
+          cd ..
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{needs.check.outputs.name}}
+          files: |
+            ${{needs.check.outputs.zip}}
