@@ -9,15 +9,11 @@ jobs:
   check:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
-        with:
-          path: ffmpeg
-          repository: FFmpeg/FFmpeg
-          fetch-depth: 10000
       - name: Check tag
         shell: bash
         id: ffmpeg
         run: |
+          git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg --depth 10000 
           cd ffmpeg
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
       - uses: actions/checkout@v2
