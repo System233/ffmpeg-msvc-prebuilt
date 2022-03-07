@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     outputs:
       build: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      name: ${{steps.ffmpeg.outputs.tag}}
+      zip: ffmpeg-${{steps.ffmpeg.outputs.tag}}.zip
     steps:
       - name: Check tag
         shell: bash
@@ -46,12 +48,11 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x86,amd64]
+        arch: [amd64]
     steps:
       - uses: actions/checkout@v2
         with:
           repository: FFmpeg/FFmpeg
-          fetch-depth: 2000
       - uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -61,34 +62,25 @@ jobs:
       - uses: ilammy/setup-nasm@v1
       - name: remove link
         run: msys2 -c "rename link link2 $(which link)"
+      - name: Setup MSVC
+        shell: bash
+        id: msvc
+        run: |
+          echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
       - name: build
         shell: cmd
         run: |
-          vswhere -all -legacy -property installationPath>>installationPath
-          set /p installationPath=<installationPath
-          echo installationPath=%installationPath%
-          call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
+          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
-          # mkdir dist
-          # echo test>dist/test.txt
       - name: pack
         shell: msys2 {0}
         run: |
-          ZIP_PATH=ffmpeg-$(git describe --tags --always).zip
-          echo ZIP_PATH=$ZIP_PATH>>$GITHUB_ENV
-          echo ${{env.ZIP_PATH}}
           cd dist
-          zip -9 ../$ZIP_PATH -r .
+          zip -9 ../${{needs.check.outputs.zip}} -r .
           cd ..
       - name: release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{needs.check.outputs.name}}
           files: |
-            ${{env.ZIP_PATH}}
-      # - name: Start SSH session
-      #   uses: luchihoratiu/debug-via-ssh@main
-      #   if: ${{ failure() }}
-      #   with:
-      #     NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-      #     SSH_PASS: ${{ secrets.SSH_PASS }}
-      #     NGROK_REGION: ${{ secrets.NGROK_REGION }}
+            ${{needs.check.outputs.zip}}
