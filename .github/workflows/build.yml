@@ -38,6 +38,7 @@ jobs:
           git add .
           git commit -m ${{steps.ffmpeg.outputs.tag}}
           git tag ${{steps.ffmpeg.outputs.tag}}
+          git push
           git push origin ${{steps.ffmpeg.outputs.tag}}
   build:
     needs: check
