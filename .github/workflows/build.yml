@@ -34,7 +34,7 @@ jobs:
           vswhere -all -legacy -property installationPath>>installationPath
           set /p installationPath=<installationPath
           echo installationPath=%installationPath%
-          %installationPath%\VC\Auxiliary\Build\vcvarsall.bat
+          call "%installationPath%\VC\Auxiliary\Build\vcvarsall.bat"
           sh configure ${{env.config}}
           make
       # - name: Start SSH session
