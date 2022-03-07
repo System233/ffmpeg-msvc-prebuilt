@@ -31,8 +31,9 @@ jobs:
       - name: build
         # shell: "cmd.exe /k"
         run: |
-          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_ENV
-          call "${{env.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat"
+          sh -c 'echo "installationPath=$(vswhere -all -legacy -property installationPath)"'
+          sh -c 'echo "installationPath=$(vswhere -all -legacy -property installationPath)"'>>$GITHUB_ENV
+          "${{env.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat"
           sh configure ${{env.config}}
           make
       # - name: Start SSH session
