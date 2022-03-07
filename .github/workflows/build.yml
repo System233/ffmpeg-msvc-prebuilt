@@ -25,23 +25,23 @@ jobs:
           cd ffmpeg
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
           echo "VER=$(git describe --tags --abbrev=0)"
-      - uses: actions/checkout@v2
-        if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
-        with:
-          path: repository
-      - name: update
-        shell: bash
-        if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
-        run: |
-          cd repository
-          echo ${{steps.ffmpeg.outputs.tag}} > ffmpeg-latest
-          git config --global user.name "$(git log --format='%an' HEAD^!)"
-          git config --global user.email "$(git log --format='%ae' HEAD^!)"
-          git add .
-          git commit -m ${{steps.ffmpeg.outputs.tag}}
-          git tag ${{steps.ffmpeg.outputs.tag}}
-          git push
-          git push origin ${{steps.ffmpeg.outputs.tag}}
+      # - uses: actions/checkout@v2
+      #   if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      #   with:
+      #     path: repository
+      # - name: update
+      #   shell: bash
+      #   if: ${{github.ref_name}} != ${{steps.ffmpeg.outputs.tag}}
+      #   run: |
+      #     cd repository
+      #     echo ${{steps.ffmpeg.outputs.tag}} > ffmpeg-latest
+      #     git config --global user.name "$(git log --format='%an' HEAD^!)"
+      #     git config --global user.email "$(git log --format='%ae' HEAD^!)"
+      #     git add .
+      #     git commit -m ${{steps.ffmpeg.outputs.tag}}
+      #     git tag ${{steps.ffmpeg.outputs.tag}}
+      #     git push
+      #     git push origin ${{steps.ffmpeg.outputs.tag}}
   build:
     needs: check
     if: ${{needs.check.outputs.build}}
