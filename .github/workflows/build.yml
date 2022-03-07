@@ -12,11 +12,11 @@ jobs:
     
     strategy:
       matrix:
-        arch: [x86,x64]
+        arch: [x64]
     steps:
       - uses: actions/checkout@v2
         with:
-          repository: https://git.ffmpeg.org/ffmpeg.git
+          repository: FFmpeg/FFmpeg
       - uses: msys2/setup-msys2@v2
         with:
           install: diffutils
