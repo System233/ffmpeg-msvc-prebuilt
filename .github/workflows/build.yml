@@ -13,37 +13,60 @@ jobs:
   build:
     strategy:
       matrix:
-        arch: [amd64]
+        arch: [x86,amd64]
     runs-on: windows-latest
     steps:
       - name: Checkout ffmpeg
         id: ffmpeg
+        shell: bash
         run: |
           git clone https://github.com/FFmpeg/FFmpeg.git . --depth 5000 
           echo "::set-output name=tag::$(git describe --tags --abbrev=0)"
           echo "::set-output name=name::$(git describe --tags)"
-          echo "::set-output name=zip::ffmpeg-$(git describe --tags)-${{matrix.arch}}.zip"
+          echo "::set-output name=zip::ffmpeg-$(git describe --tags --abbrev=0)-${{matrix.arch}}.zip"
+          flag=0
+          while IFS= read -r line 
+          do 
+              if [[ "$line" == *"version"* ]]
+              then
+                  flag=$((flag+1))
+              fi
+              if [[ $flag == 1 ]]
+              then
+                  echo $line>>Release.log
+              elif [[ $flag == 2 ]]
+              then
+                  break
+              fi
+          done < Changelog
+          cat Release.log
       - uses: msys2/setup-msys2@v2
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         with:
           install: >-
             diffutils
             make
             zip
       - uses: ilammy/setup-nasm@v1
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
       - name: Remove link
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         shell: msys2 {0}
         run: rm $(which link)
       - name: Setup MSVC
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         shell: bash
         id: msvc
         run: |
           echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
       - name: Build ffmpeg
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         shell: cmd
         run: |
           call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.arch}}
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
       - name: Pack ZIP
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         shell: msys2 {0}
         run: |
           cd dist
@@ -51,8 +74,11 @@ jobs:
           cd ..
       - name: Release
         uses: softprops/action-gh-release@v1
+        if: ${{steps.ffmpeg.outputs.tag}} != ${{github.ref_name}}
         with:
-          name: ffmpeg-${{steps.ffmpeg.outputs.name}}-${{matrix.arch}}
-          tag_name: ${{steps.ffmpeg.outputs.name}}
+          name: ffmpeg-${{steps.ffmpeg.outputs.tag}}-${{matrix.arch}}
+          tag_name: ${{steps.ffmpeg.outputs.tag}}
+          prerelease: ${{contains(steps.ffmpeg.outputs.tag,'dev')}}
+          body_path: Release.log
           files: |
             ${{steps.ffmpeg.outputs.zip}}
