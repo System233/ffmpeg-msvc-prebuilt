@@ -65,13 +65,14 @@ jobs:
         arch: [x86,amd64,arm,arm64]
     runs-on: windows-latest
     needs: check
-    if: ${{needs.check.outputs.build}}
+    # if: ${{needs.check.outputs.build}}
     env:
       name: ${{needs.check.outputs.name}}
       version: ${{needs.check.outputs.version}}
       branch: ${{needs.check.outputs.branch}}
       zip: ${{needs.check.outputs.name}}-${{matrix.arch}}.zip
-      cross_compile: ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
+      target: ${{contains(matrix.arch,'arm')&&matrix.host+'_'+matrix.arch||matrix.arch}}
+      config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
     steps:
       - name: Checkout FFmpeg
         shell: bash
@@ -94,8 +95,8 @@ jobs:
       - name: Build FFmpeg
         shell: cmd
         run: |
-          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.host}}_${{matrix.arch}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}} ${{env.cross_compile}};make -j$(nproc);make install prefix=dist"
+          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
       - name: Prepare Release
         shell: msys2 {0}
         run: |
