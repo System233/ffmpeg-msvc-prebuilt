@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+  push:
+    
 
   
 env:
@@ -72,7 +74,6 @@ jobs:
       branch: ${{needs.check.outputs.branch}}
       zip: ${{needs.check.outputs.name}}-${{matrix.arch}}.zip
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
-      config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
     steps:
       - name: Checkout FFmpeg
         shell: bash
@@ -97,6 +98,8 @@ jobs:
         run: |
           call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+        env:
+          config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
       - name: Prepare Release
         shell: msys2 {0}
         run: |
