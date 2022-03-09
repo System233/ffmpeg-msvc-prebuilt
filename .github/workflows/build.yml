@@ -32,7 +32,7 @@ jobs:
         if: ${{steps.ffmpeg.outputs.version}} != ${{github.ref_name}}
         run: |
           git clone --single-branch --branch "${{steps.ffmpeg.outputs.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
-          git archive head -9 -o ${{steps.ffmpeg.outputs.zip}}
+          git archive HEAD -9 -o ${{steps.ffmpeg.outputs.zip}}
           flag=0
           while IFS= read -r line 
           do 
