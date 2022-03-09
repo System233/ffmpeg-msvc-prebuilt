@@ -58,7 +58,6 @@ jobs:
           body_path: Release.log
           files: |
             ${{steps.ffmpeg.outputs.zip}}
-
   build:
     strategy:
       matrix:
@@ -72,6 +71,7 @@ jobs:
       version: ${{needs.check.outputs.version}}
       branch: ${{needs.check.outputs.branch}}
       zip: ${{needs.check.outputs.name}}-${{matrix.arch}}.zip
+      cross_compile: ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
     steps:
       - name: Checkout FFmpeg
         shell: bash
@@ -95,7 +95,7 @@ jobs:
         shell: cmd
         run: |
           call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{matrix.host}}_${{matrix.arch}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}} ${{env.cross_compile}};make -j$(nproc);make install prefix=dist"
       - name: Prepare Release
         shell: msys2 {0}
         run: |
