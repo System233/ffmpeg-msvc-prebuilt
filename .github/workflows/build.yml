@@ -1,4 +1,4 @@
-name: "Build ffmpeg"
+name: "Build FFmpeg"
 
 on:
   schedule:
@@ -9,7 +9,7 @@ on:
 
   
 env:
-  config: --enable-shared --toolchain=msvc
+  config: --toolchain=msvc
   MSYS2_PATH_TYPE: inherit
 jobs:
   check:
@@ -25,7 +25,7 @@ jobs:
         run: |
           branch=$(git ls-remote  --head --refs --sort=-v:refname "https://github.com/FFmpeg/FFmpeg.git"|head -n 1|grep --perl-regex -e "refs/heads/\\K(.*)" --only-matching)
           version=$(echo $branch|cut -d / -f 2)
-          name=ffmpeg-$version-release
+          name=ffmpeg-$version
           echo "::set-output name=version::$version"
           echo "::set-output name=name::$name"
           echo "::set-output name=branch::$branch"
@@ -65,14 +65,16 @@ jobs:
       matrix:
         host: [amd64]
         arch: [x86,amd64,arm,arm64]
+        type: [static,shared]
+        license: [gpl,lgpl]
     runs-on: windows-latest
     needs: check
-    # if: ${{needs.check.outputs.build}}
+    if: ${{needs.check.outputs.build}}
     env:
       name: ${{needs.check.outputs.name}}
       version: ${{needs.check.outputs.version}}
       branch: ${{needs.check.outputs.branch}}
-      zip: ${{needs.check.outputs.name}}-${{matrix.arch}}.zip
+      zip: ${{needs.check.outputs.name}}-${{matrix.arch}}-${{matrix.type}}.zip
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
     steps:
       - name: Checkout FFmpeg
@@ -100,8 +102,8 @@ jobs:
           call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
         env:
-          config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
-      - name: Prepare Release
+          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      - name: Prepare release
         shell: msys2 {0}
         run: |
           cd dist
