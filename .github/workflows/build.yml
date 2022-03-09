@@ -85,6 +85,7 @@ jobs:
             make
             zip
       - uses: ilammy/setup-nasm@v1
+        if: ${{!contains(matrix.arch,'arm')}}
       - name: Remove MSYS2 link
         shell: msys2 {0}
         run: rm $(which link)
@@ -99,7 +100,7 @@ jobs:
           call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
         env:
-          config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
+          config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
       - name: Prepare Release
         shell: msys2 {0}
         run: |
