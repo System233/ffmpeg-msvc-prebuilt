@@ -71,7 +71,7 @@ jobs:
       version: ${{needs.check.outputs.version}}
       branch: ${{needs.check.outputs.branch}}
       zip: ${{needs.check.outputs.name}}-${{matrix.arch}}.zip
-      target: ${{contains(matrix.arch,'arm')&&matrix.host+'_'+matrix.arch||matrix.arch}}
+      target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
       config: ${{env.config}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile'||''}}
     steps:
       - name: Checkout FFmpeg
