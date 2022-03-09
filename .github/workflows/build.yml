@@ -74,7 +74,7 @@ jobs:
       name: ${{needs.check.outputs.name}}
       version: ${{needs.check.outputs.version}}
       branch: ${{needs.check.outputs.branch}}
-      zip: ${{needs.check.outputs.name}}-${{license}}-${{matrix.arch}}-${{matrix.type}}.zip
+      zip: ${{needs.check.outputs.name}}-${{matrix.license}}-${{matrix.arch}}-${{matrix.type}}.zip
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
     steps:
       - name: Checkout FFmpeg
