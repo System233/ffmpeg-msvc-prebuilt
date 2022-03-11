@@ -81,6 +81,10 @@ jobs:
       zip: ${{needs.check.outputs.name}}-${{matrix.license}}-${{matrix.arch}}-${{matrix.type}}.zip
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
     steps: 
+      - name: Checkout FFmpeg
+        shell: bash
+        run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
+
       - name: Setup MSVC
         shell: bash
         id: msvc
@@ -121,10 +125,6 @@ jobs:
           cmake --build . --config Release
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
-      - name: Checkout FFmpeg
-        shell: bash
-        run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
-
       - uses: ilammy/setup-nasm@v1
         if: ${{!contains(matrix.arch,'arm')}}
       - name: Remove MSYS2 link
