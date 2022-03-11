@@ -11,6 +11,7 @@ on:
 env:
   config: --toolchain=msvc
   MSYS2_PATH_TYPE: inherit
+  PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -63,10 +64,14 @@ jobs:
   build:
     strategy:
       matrix:
+        # host: [amd64]
+        # arch: [x86,amd64,arm,arm64]
+        # type: [static,shared]
+        # license: [gpl,lgpl]
         host: [amd64]
-        arch: [x86,amd64,arm,arm64]
-        type: [static,shared]
-        license: [gpl,lgpl]
+        arch: [x86]
+        type: [shared]
+        license: [gpl]
     runs-on: windows-latest
     needs: check
     if: ${{needs.check.outputs.build}}
@@ -76,43 +81,69 @@ jobs:
       branch: ${{needs.check.outputs.branch}}
       zip: ${{needs.check.outputs.name}}-${{matrix.license}}-${{matrix.arch}}-${{matrix.type}}.zip
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
-    steps:
-      - name: Checkout FFmpeg
+    steps: 
+      - name: Setup MSVC
         shell: bash
-        run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
+        id: msvc
+        run: |
+          echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
+      - name: Setup MSVC env
+        shell: cmd
+        run: |
+          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+          set >> $GITHUB_ENV
+      - uses: actions/checkout@v3
+        with:
+          path: repo
+      - uses: lukka/get-cmake@latest
       - uses: msys2/setup-msys2@v2
         with:
           install: >-
             diffutils
             make
             zip
-      - uses: ilammy/setup-nasm@v1
-        if: ${{!contains(matrix.arch,'arm')}}
-      - name: Remove MSYS2 link
-        shell: msys2 {0}
-        run: rm $(which link)
-      - name: Setup MSVC
-        shell: bash
-        id: msvc
-        run: |
-          echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
-      - name: Build FFmpeg
-        shell: cmd
-        run: |
-          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
-        env:
-          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
-      - name: Prepare release
+      - name: Setup SDL2
         shell: msys2 {0}
         run: |
-          cd dist
-          zip -9 ../${{env.zip}} -r .
-          cd ..
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{env.name}}
-          tag_name: ${{env.version}}
-          files: |
-            ${{env.zip}}
+          mkdir -p /usr/local/lib/pkgconfig
+          cp repo/sdl2.pc /usr/local/lib/pkgconfig
+          git clone --single-branch --depth 1  "https://github.com/libsdl-org/SDL.git" SDL
+          cd SDL
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build . --config Release
+          cmake --install . --prefix=/usr/local
+          echo PKG_CONFIG_PATH=$PKG_CONFIG_PATH
+          pkg-config sdl2 --libs --cflags
+
+      # - name: Checkout FFmpeg
+      #   shell: bash
+      #   run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
+
+      # - uses: ilammy/setup-nasm@v1
+      #   if: ${{!contains(matrix.arch,'arm')}}
+      # - name: Remove MSYS2 link
+      #   shell: msys2 {0}
+      #   run: rm $(which link)
+     
+      # - name: Build FFmpeg
+      #   shell: cmd
+      #   run: |
+      #     call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+      #     msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+      #   env:
+      #     config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      # - name: Prepare release
+      #   shell: msys2 {0}
+      #   run: |
+      #     cd dist
+      #     zip -9 ../${{env.zip}} -r .
+      #     cd ..
+      # - name: Create Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     name: ${{env.name}}
+      #     tag_name: ${{env.version}}
+      #     files: |
+      #       ${{env.zip}}
