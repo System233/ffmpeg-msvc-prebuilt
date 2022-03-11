@@ -106,8 +106,8 @@ jobs:
         run: |
           git clone --single-branch --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
           cd nv-codec-headers
-          make PREFIX=/usr
-          make install
+          make
+          make install PREFIX=/usr
           pkg-config ffnvcodec --libs --cflags
       - name: Setup SDL2
         shell: msys2 {0}
