@@ -109,6 +109,8 @@ jobs:
           echo PKG_CONFIG_PATH=$PKG_CONFIG_PATH
           ls /usr/lib/pkgconfig/
           pkg-config ffnvcodec --libs --cflags
+          pkg-config ffnvcodec --cflags
+          which pkg-config
           cat /usr/lib/pkgconfig/ffnvcodec.pc
       - name: Setup SDL2
         shell: msys2 {0}
