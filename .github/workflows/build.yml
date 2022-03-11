@@ -11,7 +11,6 @@ on:
 env:
   config: --toolchain=msvc
   MSYS2_PATH_TYPE: inherit
-  PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -105,18 +104,24 @@ jobs:
       - name: Setup SDL2
         shell: msys2 {0}
         run: |
-          mkdir -p /usr/local/lib/pkgconfig
+          mkdir -p /usr/lib/pkgconfig
           cp repo/sdl2.pc /usr/local/lib/pkgconfig
-          git clone --single-branch --depth 1  "https://github.com/libsdl-org/SDL.git" SDL
+          git clone --single-branch --depth 1 "https://github.com/libsdl-org/SDL.git"
           cd SDL
           mkdir build
           cd build
           cmake ..
           cmake --build . --config Release
-          cmake --install . --prefix=/usr/local
-          echo PKG_CONFIG_PATH=$PKG_CONFIG_PATH
+          cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
-
+      - name: Setup NVCodec
+        shell: msys2 {0}
+        run: |
+          git clone --single-branch --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+          cd nv-codec-headers
+          make
+          make install prefix=/usr
+          pkg-config ffnvcodec --libs --cflags
       # - name: Checkout FFmpeg
       #   shell: bash
       #   run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
