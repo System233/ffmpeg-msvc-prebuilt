@@ -121,33 +121,33 @@ jobs:
           cmake --build . --config Release
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
-      # - name: Checkout FFmpeg
-      #   shell: bash
-      #   run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
+      - name: Checkout FFmpeg
+        shell: bash
+        run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
 
-      # - uses: ilammy/setup-nasm@v1
-      #   if: ${{!contains(matrix.arch,'arm')}}
-      # - name: Remove MSYS2 link
-      #   shell: msys2 {0}
-      #   run: rm $(which link)
+      - uses: ilammy/setup-nasm@v1
+        if: ${{!contains(matrix.arch,'arm')}}
+      - name: Remove MSYS2 link
+        shell: msys2 {0}
+        run: rm $(which link)
      
-      # - name: Build FFmpeg
-      #   shell: cmd
-      #   run: |
-      #     call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-      #     msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
-      #   env:
-      #     config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
-      # - name: Prepare release
-      #   shell: msys2 {0}
-      #   run: |
-      #     cd dist
-      #     zip -9 ../${{env.zip}} -r .
-      #     cd ..
-      # - name: Create Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     name: ${{env.name}}
-      #     tag_name: ${{env.version}}
-      #     files: |
-      #       ${{env.zip}}
+      - name: Build FFmpeg
+        shell: cmd
+        run: |
+          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+        env:
+          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      - name: Prepare release
+        shell: msys2 {0}
+        run: |
+          cd dist
+          zip -9 ../${{env.zip}} -r .
+          cd ..
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{env.name}}
+          tag_name: ${{env.version}}
+          files: |
+            ${{env.zip}}
