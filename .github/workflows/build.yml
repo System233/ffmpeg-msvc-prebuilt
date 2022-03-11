@@ -116,7 +116,7 @@ jobs:
           cd SDL
           mkdir build
           cd build
-          cmake .. -A ${{arch}}
+          cmake .. -A ${{env.arch}}
           cmake --build . --config Release
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
