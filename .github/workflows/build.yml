@@ -121,7 +121,7 @@ jobs:
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
         env:
-          arch: ${{matrix.arch=='x86'&&'win32'||matrix.arch=='amd64'&&'win64'||uppercase(matrix.arch)}}
+          arch: ${{matrix.arch=='x86'&&'win32'||matrix.arch=='amd64'&&'win64'||matrix.arch}}
       - uses: ilammy/setup-nasm@v1
         if: ${{!contains(matrix.arch,'arm')}}
       - name: Remove MSYS2 link
