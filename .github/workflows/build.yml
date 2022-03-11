@@ -9,7 +9,7 @@ on:
 
   
 env:
-  config: --toolchain=msvc
+  config: --toolchain=msvc --enable-sdl2 --enable-cuvid
   MSYS2_PATH_TYPE: inherit
 jobs:
   check:
@@ -130,20 +130,29 @@ jobs:
       - name: Remove MSYS2 link
         shell: msys2 {0}
         run: rm $(which link)
-     
       - name: Build FFmpeg
-        shell: cmd
-        run: |
-          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
-        env:
-          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
-      - name: Prepare release
         shell: msys2 {0}
         run: |
+          ./configure ${{env.config}} --arch=${{matrix.arch}}
+          make -j$(nproc)
+          make install prefix=dist
           cd dist
           zip -9 ../${{env.zip}} -r .
-          cd ..
+        env:
+          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      # - name: Build FFmpeg
+      #   shell: cmd
+      #   run: |
+      #     call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+      #     msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+      #   env:
+      #     config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      # - name: Prepare release
+      #   shell: msys2 {0}
+      #   run: |
+      #     cd dist
+      #     zip -9 ../${{env.zip}} -r .
+      #     cd ..
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
