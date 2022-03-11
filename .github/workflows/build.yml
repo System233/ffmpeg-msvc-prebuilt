@@ -104,8 +104,7 @@ jobs:
       - name: Setup SDL2
         shell: msys2 {0}
         run: |
-          mkdir -p /usr/lib/pkgconfig
-          cp repo/sdl2.pc /usr/local/lib/pkgconfig
+          cp repo/sdl2.pc /usr/lib/pkgconfig
           git clone --single-branch --depth 1 "https://github.com/libsdl-org/SDL.git"
           cd SDL
           mkdir build
