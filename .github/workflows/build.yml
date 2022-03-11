@@ -99,6 +99,7 @@ jobs:
             diffutils
             make
             zip
+            pkgconf
       - name: Setup NVCodec
         shell: msys2 {0}
         run: |
