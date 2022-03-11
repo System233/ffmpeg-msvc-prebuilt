@@ -101,6 +101,14 @@ jobs:
             diffutils
             make
             zip
+      - name: Setup NVCodec
+        shell: msys2 {0}
+        run: |
+          git clone --single-branch --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+          cd nv-codec-headers
+          make PREFIX=/usr
+          make install
+          pkg-config ffnvcodec --libs --cflags
       - name: Setup SDL2
         shell: msys2 {0}
         run: |
@@ -113,14 +121,6 @@ jobs:
           cmake --build . --config Release
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
-      - name: Setup NVCodec
-        shell: msys2 {0}
-        run: |
-          git clone --single-branch --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
-          cd nv-codec-headers
-          make
-          make install prefix=/usr
-          pkg-config ffnvcodec --libs --cflags
       # - name: Checkout FFmpeg
       #   shell: bash
       #   run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
