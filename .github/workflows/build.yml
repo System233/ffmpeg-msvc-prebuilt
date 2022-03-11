@@ -116,10 +116,12 @@ jobs:
           cd SDL
           mkdir build
           cd build
-          cmake .. -A ${{matrix.arch}}
+          cmake .. -A ${{arch}}
           cmake --build . --config Release
           cmake --install . --prefix=/usr
           pkg-config sdl2 --libs --cflags
+        env:
+          arch: ${{matrix.arch=='x86'&&'win32'||contains(matrix.arch,'arm')&&uppercase(matrix.arch)||matrix.arch}}
       - uses: ilammy/setup-nasm@v1
         if: ${{!contains(matrix.arch,'arm')}}
       - name: Remove MSYS2 link
