@@ -139,6 +139,11 @@ jobs:
           msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
         env:
           config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+      - name: Debug log
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          cat ffbuild/config.log
       - name: Prepare release
         shell: msys2 {0}
         run: |
