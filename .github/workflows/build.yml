@@ -148,7 +148,7 @@ jobs:
         shell: msys2 {0}
         run: |
           cd dist
-          cp /usr/bin/SDL2.dll bin
+          # cp /usr/bin/SDL2.dll bin
           zip -9 ../${{env.zip}} -r .
           cd ..
       - name: Create Release
