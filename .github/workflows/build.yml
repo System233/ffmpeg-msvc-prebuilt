@@ -18,6 +18,7 @@ jobs:
       build: ${{steps.ffmpeg.outputs.version!=steps.ffmpeg.outputs.current}}
       name: ${{steps.ffmpeg.outputs.name}}
       branch: ${{steps.ffmpeg.outputs.branch}}
+      current: ${{steps.ffmpeg.outputs.current}}
       version: ${{steps.ffmpeg.outputs.version}}
     steps:
       - name: Checkout FFmpeg
@@ -78,7 +79,7 @@ jobs:
         # license: [gpl]
     runs-on: windows-latest
     needs: check
-    if: ${{needs.check.outputs.build}}
+    if: ${{needs.check.outputs.version!=needs.check.outputs.current}}
     env:
       name: ${{needs.check.outputs.name}}
       version: ${{needs.check.outputs.version}}
