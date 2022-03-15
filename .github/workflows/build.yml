@@ -30,6 +30,10 @@ jobs:
           echo "::set-output name=name::$name"
           echo "::set-output name=branch::$branch"
           echo "::set-output name=zip::$name-src.zip"
+          echo version=${version}
+          echo ref_name=${{github.ref_name}}
+          echo tag_name= ${{ github.event.release.tag_name }}
+
       - name: Prepare release
         if: ${{steps.ffmpeg.outputs.version}} != ${{github.ref_name}}
         run: |
