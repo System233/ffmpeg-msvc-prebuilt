@@ -24,7 +24,7 @@ jobs:
       - name: Checkout FFmpeg
         id: ffmpeg
         run: |
-          current=$(git ls-remote  --head --tags --sort=-v:refname "${{github.repositoryUrl}}"|head -n 1|grep --perl-regex -e "refs/tags/\\K(.*)" --only-matching)
+          current=$(git ls-remote  --head --tags --sort=-v:refname "https://github.com/System233/ffmpeg-builds.git"|head -n 1|grep --perl-regex -e "refs/tags/\\K(.*)" --only-matching)
           branch=$(git ls-remote  --head --refs --sort=-v:refname "https://github.com/FFmpeg/FFmpeg.git"|head -n 1|grep --perl-regex -e "refs/heads/\\K(.*)" --only-matching)
           version=$(echo $branch|cut -d / -f 2)
           name=ffmpeg-$version
