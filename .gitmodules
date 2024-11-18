@@ -1,24 +1,27 @@
 [submodule "SDL"]
-	path = SDL
-	url = https://github.com/libsdl-org/SDL.git
+path = SDL
+url = https://github.com/libsdl-org/SDL.git
 [submodule "FFmpeg"]
-	path = FFmpeg
-	url = https://github.com/FFmpeg/FFmpeg.git
+path = FFmpeg
+url = https://github.com/FFmpeg/FFmpeg.git
 [submodule "bzip2"]
-	path = bzip2
-	url = https://gitlab.com/bzip2/bzip2.git
+path = bzip2
+url = https://gitlab.com/bzip2/bzip2.git
 [submodule "libjxl"]
-	path = libjxl
-	url = https://github.com/libjxl/libjxl.git
+path = libjxl
+url = https://github.com/libjxl/libjxl.git
 [submodule "freetype"]
-	path = freetype
-	url = https://gitlab.freedesktop.org/freetype/freetype.git
-[submodule "libass"]
-	path = libass
-	url = https://github.com/libass/libass.git
-[submodule "fribidi"]
-	path = fribidi
-	url = https://github.com/fribidi/fribidi.git
+path = freetype
+url = https://gitlab.freedesktop.org/freetype/freetype.git
 [submodule "harfbuzz"]
-	path = harfbuzz
-	url = https://github.com/harfbuzz/harfbuzz.git
+path = harfbuzz
+url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "nv-codec-headers"]
+path = nv-codec-headers
+url = https://github.com/FFmpeg/nv-codec-headers.git
+[submodule "zlib"]
+path = zlib
+url = https://github.com/madler/zlib.git
+[submodule "openexr"]
+path = openexr
+url = https://github.com/AcademySoftwareFoundation/openexr.git

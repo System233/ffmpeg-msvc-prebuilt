@@ -1,7 +1,10 @@
 @echo off
-
-SET PATH="%ORIGINAL_PATH%;%MSYSTEM_PREFIX%\bin"
+echo SRC_DIR=%SRC_DIR%
+echo BUILD_DIR=%BUILD_DIR%
+echo INSTALL_PREFIX=%INSTALL_PREFIX%
+@rem SET PATH="%ORIGINAL_PATH%;%MSYSTEM_PREFIX%\bin"
+SET MESON_CMD=meson
+SET MSYS_NO_PATHCONV=1
 CD /D "%BUILD_DIR%"
-meson setup "%SRC_DIR%" --vsenv  --prefix "%INSTALL_PREFIX%" %*
-meson compile -C .
-meson install -C .
+%MESON_CMD% setup "%SRC_DIR%" --vsenv  --prefix "%INSTALL_PREFIX%" %*&&%MESON_CMD% compile -C .&&%MESON_CMD% install -C .
+EXIT %ERRORLEVEL%

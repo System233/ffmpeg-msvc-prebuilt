@@ -5,8 +5,13 @@
 # https://opensource.org/licenses/MIT
 
 set -e
+echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 BUILD_DIR=build/$1
+CROSS_FILE="$(pwd)/meson/win_$BUILD_ARCH.ini"
 shift 1
 mkdir -p "$BUILD_DIR"
-MSYS_NO_PATHCONV=1 cmd /c build-meson-dep.cmd $@
+if [ -e "$CROSS_FILE" ]; then
+    EXT_ARGS="--cross-file $CROSS_FILE"
+fi
+SRC_DIR="$SRC_DIR" BUILD_DIR="$BUILD_DIR" ./build-meson-dep.cmd $EXT_ARGS $@
