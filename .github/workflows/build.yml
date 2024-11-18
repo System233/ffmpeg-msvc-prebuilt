@@ -52,9 +52,7 @@ jobs:
         shell: cmd
         run: |
           CALL "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-          msys2 -c "./build.sh ${{matrix.arch}} ${{env.config}}"
-        env:
-          config: --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}}
+          msys2 -c "./build.sh ${{matrix.arch}} ${{matrix.type}} ${{matrix.license}}"
       - name: Debug log
         if: ${{ failure() }}
         shell: bash

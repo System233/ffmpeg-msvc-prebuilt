@@ -4,13 +4,21 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
-# build [x86,amd64,arm,arm64] ...FF_ARGS
+# build.sh [x86,amd64,arm,arm64] [static|shared] [gpl|lgpl] ...FF_ARGS
 set -e
 source ./env.sh
 
-export ARCH=$1
-shift 1
+export BUILD_ARCH=${1:-$VSCMD_ARG_TGT_ARCH}
+export BUILD_TYPE=${2:-shared}
+export BUILD_LICENSE=${3:-gpl}
+shift 3
 FF_ARGS=$@
+
+echo BUILD_ARCH=$BUILD_ARCH
+echo BUILD_TYPE=$BUILD_TYPE
+echo BUILD_LICENSE=$BUILD_LICENSE
+echo FF_ARGS=$FF_ARGS
+
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass

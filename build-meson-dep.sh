@@ -8,7 +8,7 @@ set -e
 echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 BUILD_DIR=build/$1
-CROSS_FILE="$(pwd)/meson/win_$ARCH.ini"
+CROSS_FILE="$(pwd)/meson/win_$BUILD_ARCH.ini"
 shift 1
 mkdir -p "$BUILD_DIR"
 if [ -e "$CROSS_FILE" ]; then

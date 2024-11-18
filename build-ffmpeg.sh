@@ -9,10 +9,23 @@ echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 shift 1
 cd $SRC_DIR
-if [[ $ARCH =~ arm ]]; then
-    EX_ARGS="--enable-cross-compile --disable-asm"
+
+if [ $BUILD_TYPE == "static" ]; then
+    TYPE_ARGS="--enable-static"
+else
+    TYPE_ARGS="--enable-shared"
 fi
-./configure --prefix=. --toolchain=msvc --arch=$ARCH $EX_ARGS $@
+if [[ $BUILD_ARCH =~ arm ]]; then
+    CROSS_ARGS="--enable-cross-compile --disable-asm"
+fi
+
+if [ $BUILD_LICENSE == "gpl" ]; then
+    LICENSE_ARGS="--enable-gpl --enable-version3"
+fi
+
+EX_ARGS="$TYPE_ARGS $CROSS_ARGS $LICENSE_ARGS"
+
+./configure --prefix=. --toolchain=msvc --arch=$BUILD_ARCH $EX_ARGS $@
 iconv -f gbk config.h >config.h.tmp && mv config.h.tmp config.h
 make -j$(nproc)
 make install prefix=$INSTALL_PREFIX
