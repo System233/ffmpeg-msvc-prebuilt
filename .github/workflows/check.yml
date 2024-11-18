@@ -2,7 +2,8 @@ name: "Check"
 
 on:
   workflow_dispatch:
-  # push:
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   check:

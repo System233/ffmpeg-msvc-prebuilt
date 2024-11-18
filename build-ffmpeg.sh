@@ -25,7 +25,7 @@ fi
 CFLAGS="$CFLAGS -I${SRC_DIR}/compat/stdbit -D_WIN32=1 -DHAVE_UNISTD_H=0"
 EX_BUILD_ARGS="$TYPE_ARGS $CROSS_ARGS $LICENSE_ARGS"
 
-./configure --prefix=. --toolchain=msvc --arch=$BUILD_ARCH $EX_BUILD_ARGS $@
+./configure --toolchain=msvc --arch=$BUILD_ARCH $EX_BUILD_ARGS $@
 iconv -f gbk config.h >config.h.tmp && mv config.h.tmp config.h
 make -j$(nproc)
 make install prefix=$INSTALL_PREFIX
