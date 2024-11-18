@@ -26,9 +26,11 @@ if [ $BUILD_ARCH == "x86" ]; then
 fi
 if [ $BUILD_TYPE == "static" ]; then
     BUILD_SHARED_LIBS=OFF
+    CMAKE_MSVC_RUNTIME_LIBRARY=MT
 else
     BUILD_SHARED_LIBS=ON
+    CMAKE_MSVC_RUNTIME_LIBRARY=MD
 fi
-cmake "$SRC_DIR" --install-prefix "$INSTALL_PREFIX" -A=$BUILD_ARCH -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS $@
+cmake "$SRC_DIR" --install-prefix "$INSTALL_PREFIX" -A=$BUILD_ARCH -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS -DCMAKE_MSVC_RUNTIME_LIBRARY=$CMAKE_MSVC_RUNTIME_LIBRARY $@
 cmake --build . --config Release -j$(nproc)
 cmake --install . --config Release
