@@ -19,8 +19,8 @@ echo BUILD_TYPE=$BUILD_TYPE
 echo BUILD_LICENSE=$BUILD_LICENSE
 echo FF_ARGS=$FF_ARGS
 
-git -C zlib apply zlib.patch
-git -C FFmpeg apply ffmpeg.patch
+git -C zlib apply ../zlib.patch
+git -C FFmpeg apply ../ffmpeg.patch
 
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
