@@ -14,16 +14,13 @@ cd "$BUILD_DIR"
 
 case $BUILD_ARCH in
 x86)
-    ARCH=Win32
+    BUILD_ARCH=Win32
     ;;
 amd64)
-    ARCH=x64
+    BUILD_ARCH=x64
     ;;
 esac
 
-if [ $BUILD_ARCH == "x86" ]; then
-    ARCH=Win32
-fi
 if [ $BUILD_TYPE == "static" ]; then
     BUILD_SHARED_LIBS=OFF
     CMAKE_MSVC_RUNTIME_LIBRARY=MT
