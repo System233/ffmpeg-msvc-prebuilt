@@ -9,7 +9,7 @@ echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 shift 1
 cd $SRC_DIR
-./configure --prefix=. --toolchain=msvc
+./configure --prefix=. --toolchain=msvc --arch=$ARCH $@
 iconv -f gbk config.h >config.h.tmp && mv config.h.tmp config.h
 make -j$(nproc)
-make install prefix=$INSTALL_PREFIX $@
+make install prefix=$INSTALL_PREFIX

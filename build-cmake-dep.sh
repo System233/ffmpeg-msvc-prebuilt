@@ -11,6 +11,6 @@ BUILD_DIR=build/$1
 shift 1
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
-cmake "$SRC_DIR" --install-prefix "$INSTALL_PREFIX" $@
+cmake "$SRC_DIR" --install-prefix "$INSTALL_PREFIX" -A=$ARCH $@
 cmake --build . --config Release -j$(nproc)
 cmake --install . --config Release
