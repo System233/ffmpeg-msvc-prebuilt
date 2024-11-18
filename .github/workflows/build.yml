@@ -47,6 +47,7 @@ jobs:
         shell: cmd
         run: |
           python3 -m pip install meson
+          python3 -m meson -h
       - name: Build
         shell: cmd
         run: |
