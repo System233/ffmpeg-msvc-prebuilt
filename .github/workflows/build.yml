@@ -52,12 +52,11 @@ jobs:
         shell: cmd
         run: |
           CALL "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-          SET ARCH=${{matrix.arch}}
-          msys2 -c "./build.sh"
+          msys2 -c "./build.sh ${{matrix.arch}} ${{env.config}}"
         env:
-          config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
+          config: --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}}
       - name: Debug log
         if: ${{ failure() }}
         shell: bash
         run: |
-          cat ffbuild/config.log
+          cat FFmpeg/ffbuild/config.log

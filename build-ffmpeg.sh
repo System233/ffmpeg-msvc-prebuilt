@@ -10,7 +10,7 @@ SRC_DIR=$(pwd)/$1
 shift 1
 cd $SRC_DIR
 if [[ $ARCH =~ arm ]]; then
-    EX_ARGS=--enable-cross-compile
+    EX_ARGS="--enable-cross-compile --disable-asm"
 fi
 ./configure --prefix=. --toolchain=msvc --arch=$ARCH $EX_ARGS $@
 iconv -f gbk config.h >config.h.tmp && mv config.h.tmp config.h
