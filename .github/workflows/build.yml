@@ -57,6 +57,7 @@ jobs:
         if: ${{ failure() }}
         shell: bash
         run: |
+          echo [Debug]
           cat FFmpeg/ffbuild/config.log
           cat FFmpeg/ffbuild/config.mak
-          cat config.h
+          cat FFmpeg/config.h
