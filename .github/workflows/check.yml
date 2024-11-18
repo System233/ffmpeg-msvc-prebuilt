@@ -1,0 +1,28 @@
+name: "Build FFmpeg"
+
+on:
+  workflow_dispatch:
+  # push:
+
+env:
+  MSYS2_PATH_TYPE: inherit
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Check
+        shell: bash
+        run: |
+          git -C FFmpeg fetch --tags
+          for tag_name in `git -C FFmpeg for-each-ref --sort=-taggerdate --format '%(refname:strip=2)' refs/tags |head -n 10`;do
+            if git rev-parse "refs/tags/${tag_name}" >/dev/null 2>&1; then
+              echo "skip '${tag_name}'"
+            else
+              echo "select '${tag_name}'"
+              # git tag ${tag_name} 
+              # git push origin ${tag_name}
+            fi
+          done
