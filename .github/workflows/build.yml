@@ -30,7 +30,7 @@ jobs:
         shell: cmd
         run: |
           python3 -m pip install meson
-          python3 -m meson -h
+          python3 -m meson -h||meson -h||which meson||meson
       - uses: actions/checkout@v4
         with:
           submodules: recursive
