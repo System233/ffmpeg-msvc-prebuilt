@@ -58,3 +58,4 @@ jobs:
         shell: bash
         run: |
           cat FFmpeg/ffbuild/config.log
+          cat FFmpeg/ffbuild/config.mak

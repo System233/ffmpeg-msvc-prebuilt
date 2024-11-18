@@ -23,9 +23,9 @@ if [ $BUILD_LICENSE == "gpl" ]; then
     LICENSE_ARGS="--enable-gpl --enable-version3"
 fi
 
-EX_ARGS="$TYPE_ARGS $CROSS_ARGS $LICENSE_ARGS"
-
-./configure --prefix=. --toolchain=msvc --arch=$BUILD_ARCH $EX_ARGS $@
+EX_BUILD_ARGS="$TYPE_ARGS $CROSS_ARGS $LICENSE_ARGS"
+export CFLAGS=$CFLAGS /std:c11
+./configure --prefix=. --toolchain=msvc --arch=$BUILD_ARCH $EX_BUILD_ARGS $@
 iconv -f gbk config.h >config.h.tmp && mv config.h.tmp config.h
 make -j$(nproc)
 make install prefix=$INSTALL_PREFIX
