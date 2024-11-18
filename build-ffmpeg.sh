@@ -22,7 +22,7 @@ fi
 if [ $BUILD_LICENSE == "gpl" ]; then
     LICENSE_ARGS="--enable-gpl --enable-version3"
 fi
-CFLAGS="$CFLAGS -I${SRC_DIR}/compat/stdbit -D_WIN32=1 -DHAVE_UNISTD_H=0"
+CFLAGS="$CFLAGS -I${SRC_DIR}/compat/stdbit"
 EX_BUILD_ARGS="$TYPE_ARGS $CROSS_ARGS $LICENSE_ARGS"
 
 ./configure --toolchain=msvc --arch=$BUILD_ARCH $EX_BUILD_ARGS $@
