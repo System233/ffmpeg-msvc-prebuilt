@@ -1,0 +1,24 @@
+[submodule "SDL"]
+	path = SDL
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "FFmpeg"]
+	path = FFmpeg
+	url = https://github.com/FFmpeg/FFmpeg.git
+[submodule "bzip2"]
+	path = bzip2
+	url = https://gitlab.com/bzip2/bzip2.git
+[submodule "libjxl"]
+	path = libjxl
+	url = https://github.com/libjxl/libjxl.git
+[submodule "freetype"]
+	path = freetype
+	url = https://gitlab.freedesktop.org/freetype/freetype.git
+[submodule "libass"]
+	path = libass
+	url = https://github.com/libass/libass.git
+[submodule "fribidi"]
+	path = fribidi
+	url = https://github.com/fribidi/fribidi.git
+[submodule "harfbuzz"]
+	path = harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
