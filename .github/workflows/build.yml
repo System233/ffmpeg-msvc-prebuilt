@@ -10,7 +10,6 @@ jobs:
   build:
     strategy:
       matrix:
-        host: [amd64]
         arch: [x86, amd64, arm, arm64]
         type: [static, shared]
         license: [gpl, lgpl]
@@ -18,7 +17,7 @@ jobs:
     runs-on: windows-latest
     env:
       # amd64_arm,amd64_arm64,x86,amd64
-      target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
+      target: ${{contains(matrix.arch,'arm')&&format('amd64_{0}',matrix.arch)||matrix.arch}}
     steps:
       - name: Find MSVC
         shell: bash
