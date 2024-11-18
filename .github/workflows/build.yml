@@ -14,6 +14,7 @@ jobs:
         arch: [x86, amd64, arm, arm64]
         type: [static, shared]
         license: [gpl, lgpl]
+      fail-fast: false
     runs-on: windows-latest
     env:
       # amd64_arm,amd64_arm64,x86,amd64
@@ -41,6 +42,11 @@ jobs:
         shell: msys2 {0}
         run: rm $(which link)
 
+      #winget install mesonbuild.meson
+      - name: Setup
+        shell: cmd
+        run: |
+          python3 -m pip install meson
       - name: Build
         shell: cmd
         run: |
