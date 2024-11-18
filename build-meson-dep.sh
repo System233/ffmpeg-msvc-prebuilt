@@ -10,4 +10,4 @@ SRC_DIR=$(pwd)/$1
 BUILD_DIR=build/$1
 shift 1
 mkdir -p "$BUILD_DIR"
-SRC_DIR="%SRC_DIR%" BUILD_DIR="%BUILD_DIR%" MSYS_NO_PATHCONV=1 cmd /c build-meson-dep.cmd $@
+SRC_DIR="$SRC_DIR" BUILD_DIR="$BUILD_DIR" MSYS_NO_PATHCONV=1 cmd /c build-meson-dep.cmd $@
