@@ -1,104 +1,32 @@
 name: "Build FFmpeg"
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
   workflow_dispatch:
   push:
-    
 
-  
 env:
-  config: --toolchain=msvc
   MSYS2_PATH_TYPE: inherit
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    outputs:
-      build: ${{steps.ffmpeg.outputs.version!=steps.ffmpeg.outputs.current}}
-      name: ${{steps.ffmpeg.outputs.name}}
-      branch: ${{steps.ffmpeg.outputs.branch}}
-      current: ${{steps.ffmpeg.outputs.current}}
-      version: ${{steps.ffmpeg.outputs.version}}
-    steps:
-      - name: Checkout FFmpeg
-        id: ffmpeg
-        run: |
-          current=$(git ls-remote  --head --tags --sort=-v:refname "https://github.com/System233/ffmpeg-builds.git"|head -n 1|grep --perl-regex -e "refs/tags/\\K(.*)" --only-matching)
-          branch=$(git ls-remote  --head --refs --sort=-v:refname "https://github.com/FFmpeg/FFmpeg.git"|head -n 1|grep --perl-regex -e "refs/heads/\\K(.*)" --only-matching)
-          version=$(echo $branch|cut -d / -f 2)
-          name=ffmpeg-$version
-          echo "::set-output name=current::$current"
-          echo "::set-output name=version::$version"
-          echo "::set-output name=name::$name"
-          echo "::set-output name=branch::$branch"
-          echo "::set-output name=zip::$name-src.zip"
-          echo version=${version}
-          echo current=${current}
-
-      - name: Prepare release
-        if: ${{steps.ffmpeg.outputs.version!=steps.ffmpeg.outputs.current}}
-        run: |
-          git clone --single-branch --branch "${{steps.ffmpeg.outputs.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
-          git archive HEAD -9 -o ${{steps.ffmpeg.outputs.zip}}
-          flag=0
-          while IFS= read -r line 
-          do 
-              if [[ "$line" == *"version"* ]]
-              then
-                  flag=$((flag+1))
-              fi
-              if [[ $flag == 1 ]]
-              then
-                  echo $line>>Release.log
-              elif [[ $flag == 2 ]]
-              then
-                  break
-              fi
-          done < Changelog
-          cat Release.log
-      - name: Create release
-        uses: softprops/action-gh-release@v1
-        if: ${{steps.ffmpeg.outputs.version!=steps.ffmpeg.outputs.current}}
-        with:
-          name: ${{steps.ffmpeg.outputs.name}}
-          tag_name: ${{steps.ffmpeg.outputs.version}}
-          body_path: Release.log
-          files: |
-            ${{steps.ffmpeg.outputs.zip}}
   build:
     strategy:
       matrix:
         host: [amd64]
-        arch: [x86,amd64,arm,arm64]
-        type: [static,shared]
-        license: [gpl,lgpl]
-        # host: [amd64]
-        # arch: [x86]
-        # type: [shared]
-        # license: [gpl]
+        arch: [x86, amd64, arm, arm64]
+        type: [static, shared]
+        license: [gpl, lgpl]
     runs-on: windows-latest
-    needs: check
-    if: ${{needs.check.outputs.version!=needs.check.outputs.current}}
     env:
-      name: ${{needs.check.outputs.name}}
-      version: ${{needs.check.outputs.version}}
-      branch: ${{needs.check.outputs.branch}}
-      zip: ${{needs.check.outputs.name}}-${{matrix.license}}-${{matrix.arch}}-${{matrix.type}}.zip
+      # amd64_arm,amd64_arm64,x86,amd64
       target: ${{contains(matrix.arch,'arm')&&format('{0}_{1}',matrix.host,matrix.arch)||matrix.arch}}
-    steps: 
-      - name: Checkout FFmpeg
-        shell: bash
-        run: git clone --single-branch --branch "${{env.branch}}" --depth 1  "https://github.com/FFmpeg/FFmpeg.git" .
-      - name: Setup MSVC
+    steps:
+      - name: Find MSVC
         shell: bash
         id: msvc
         run: |
-          echo "::set-output name=installationPath::$(vswhere -all -legacy -property installationPath)"
-      - uses: actions/checkout@v3
+          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
+      - uses: actions/checkout@v4
         with:
-          path: repo
-      # - uses: lukka/get-cmake@latest
+          submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -106,43 +34,19 @@ jobs:
             make
             zip
             pkgconf
-      - name: Setup NVCodec
-        shell: msys2 {0}
-        run: |
-          git clone --single-branch --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
-          cd nv-codec-headers
-          make
-          make install PREFIX=/usr
-          echo PKG_CONFIG_PATH=$PKG_CONFIG_PATH
-          ls /usr/lib/pkgconfig/
-          pkg-config ffnvcodec --libs --cflags
-          pkg-config ffnvcodec --cflags
-          which pkg-config
-          cat /usr/lib/pkgconfig/ffnvcodec.pc
-      # - name: Setup SDL2
-      #   shell: msys2 {0}
-      #   run: |
-      #     cp repo/sdl2.pc /usr/lib/pkgconfig
-      #     git clone --single-branch --depth 1 "https://github.com/libsdl-org/SDL.git"
-      #     cd SDL
-      #     mkdir build
-      #     cd build
-      #     cmake .. -A ${{env.arch}}
-      #     cmake --build . --config Release
-      #     cmake --install . --prefix=/usr
-      #     pkg-config sdl2 --libs --cflags
-      #   env:
-      #     arch: ${{matrix.arch=='x86'&&'win32'||matrix.arch=='amd64'&&'win64'||matrix.arch}}
-      - uses: ilammy/setup-nasm@v1
-        if: ${{!contains(matrix.arch,'arm')}}
+            yasm
+            nasm
+
       - name: Remove MSYS2 link
         shell: msys2 {0}
         run: rm $(which link)
-      - name: Build FFmpeg
+
+      - name: Build
         shell: cmd
         run: |
-          call "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
-          msys2 -c "./configure ${{env.config}} --arch=${{matrix.arch}};make -j$(nproc);make install prefix=dist"
+          CALL "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}}
+          SET ARCH=${{matrix.arch}}
+          msys2 -c "./build.sh"
         env:
           config: ${{env.config}} --enable-${{matrix.type}} ${{matrix.license=='gpl'&&'--enable-gpl --enable-version3'||''}} ${{contains(matrix.arch,'arm')&&'--enable-cross-compile --disable-asm'||''}}
       - name: Debug log
@@ -150,17 +54,3 @@ jobs:
         shell: bash
         run: |
           cat ffbuild/config.log
-      - name: Prepare release
-        shell: msys2 {0}
-        run: |
-          cd dist
-          # cp /usr/bin/SDL2.dll bin
-          zip -9 ../${{env.zip}} -r .
-          cd ..
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: ${{env.name}}
-          tag_name: ${{env.version}}
-          files: |
-            ${{env.zip}}

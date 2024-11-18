@@ -22,3 +22,9 @@
 [submodule "harfbuzz"]
 	path = harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "nv-codec-headers"]
+	path = nv-codec-headers
+	url = https://github.com/FFmpeg/nv-codec-headers.git
+[submodule "zlib"]
+	path = zlib
+	url = https://github.com/madler/zlib.git

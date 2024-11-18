@@ -5,6 +5,7 @@
 # https://opensource.org/licenses/MIT
 
 set -e
+echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 BUILD_DIR=build/$1
 shift 1

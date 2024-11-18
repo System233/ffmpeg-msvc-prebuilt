@@ -7,7 +7,7 @@
 set -e
 echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
-BUILD_DIR=build/$1
 shift 1
-mkdir -p "$BUILD_DIR"
-MSYS_NO_PATHCONV=1 cmd /c build-meson-dep.cmd $@
+cd $SRC_DIR
+make -j$(nproc)
+make install PREFIX=$INSTALL_PREFIX $@
