@@ -19,13 +19,16 @@ echo BUILD_TYPE=$BUILD_TYPE
 echo BUILD_LICENSE=$BUILD_LICENSE
 echo FF_ARGS=$FF_ARGS
 
+git -C zlib apply zlib.patch
+git -C FFmpeg apply ffmpeg.patch
+
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass
 
 ./build-make-dep.sh nv-codec-headers
 
-./build-cmake-dep.sh zlib
+CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ./build-cmake-dep.sh zlib
 ./build-cmake-dep.sh freetype
 ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
 
