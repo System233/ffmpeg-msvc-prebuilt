@@ -25,6 +25,12 @@ jobs:
         id: msvc
         run: |
           echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
+      #winget install mesonbuild.meson
+      - name: Setup Mesonbuild
+        shell: cmd
+        run: |
+          python3 -m pip install meson
+          python3 -m meson -h
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -42,12 +48,6 @@ jobs:
         shell: msys2 {0}
         run: rm $(which link)
 
-      #winget install mesonbuild.meson
-      - name: Setup
-        shell: cmd
-        run: |
-          python3 -m pip install meson
-          python3 -m meson -h
       - name: Build
         shell: cmd
         run: |
