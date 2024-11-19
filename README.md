@@ -1,4 +1,4 @@
-# FFmpeg Builder (with MSVC)
+# FFmpeg Builder
 
 [![Build FFmpeg](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml/badge.svg)](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml)
 
@@ -7,7 +7,7 @@ Build results: [Download](https://github.com/System233/ffmpeg-msvc-prebuilt/rele
 ## Build Info
 
 - Binaries: Now includes ffmpeg, ffplay and ffprobe executable files, as well as related header files and lib.
-- Arch support: x64, x86, ⚠arm and arm64 (since most runners in Github Action do not have Windows arm SDK, arm builds are not 100% successful).
+- Arch support: x64, x86, arm and arm64.
 - Linker: static, shared
 - License: GPLv3, LGPLv2.1
 
