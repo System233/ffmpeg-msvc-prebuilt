@@ -76,6 +76,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body_path: changelog
+          prerelease: ${{contains(github.ref_name,'dev')}}
           files: |
             ${{env.name}}.zip
             ${{env.name}}.tar.gz
