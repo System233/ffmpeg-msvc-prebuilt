@@ -31,3 +31,9 @@ url = https://github.com/AcademySoftwareFoundation/openexr.git
 [submodule "x264"]
 	path = x264
 	url = https://code.videolan.org/videolan/x264.git
+[submodule "libwebp"]
+	path = libwebp
+	url = https://github.com/webmproject/libwebp.git
+[submodule "libvpx"]
+	path = libvpx
+	url = https://github.com/webmproject/libvpx.git

@@ -47,7 +47,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     FF_ARGS="$FF_ARGS --enable-libx264"
 
     git -C x265_git fetch --tags
-    ./build-cmake-dep.sh x265_git/source
+    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off
     FF_ARGS="$FF_ARGS --enable-libx265"
 fi
 
