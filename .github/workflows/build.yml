@@ -14,6 +14,7 @@ on:
       tag_name:
         description: "Tag"
         required: true
+
 jobs:
   build:
     strategy:
@@ -37,6 +38,7 @@ jobs:
         with:
           ref: ${{env.TAG_NAME}}
           submodules: recursive
+
       - uses: msys2/setup-msys2@v2
         with:
           install: >-
@@ -47,24 +49,27 @@ jobs:
             yasm
             nasm
 
-      - name: Rebase
-        if: ${{inputs.tag_name}}
-        shell: msys2 {0}
-        run: |
-          cd FFmpeg
-          git fetch --tags
-          git checkout ${{inputs.tag_name}}
-          git submodule update --init --recursive --depth 1
+      # - name: Rebase
+      #   if: ${{inputs.tag_name}}
+      #   shell: msys2 {0}
+      #   run: |
+      #     cd FFmpeg
+      #     git fetch --tags
+      #     git checkout ${{inputs.tag_name}}
+      #     git submodule update --init --recursive --depth 1
 
       - name: Remove MSYS2 link
         shell: msys2 {0}
-        run: rm $(which link)
+        run: |
+          rm $(which link)
+          rm -rf /usr/local
 
       - name: Build
         shell: cmd
         run: |
           CALL "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}} ${{env.SDK_VER}}
           msys2 -c "./build.sh ${{matrix.arch}} ${{matrix.type}} ${{matrix.license}}"
+
       - name: Debug log
         if: ${{ failure() }}
         shell: bash
@@ -73,10 +78,11 @@ jobs:
           cat FFmpeg/ffbuild/config.log
           cat FFmpeg/ffbuild/config.mak
           cat FFmpeg/config.h
+
       - name: Pack
         shell: msys2 {0}
         run: |
-          cd dist
+          cd /usr/local
           zip -9 ../${{env.name}}.zip -r .
           cd ..
           sha1sum ${{env.name}}.zip >${{env.name}}.sha1

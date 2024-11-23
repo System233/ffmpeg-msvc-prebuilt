@@ -39,6 +39,9 @@ git -C FFmpeg apply ../ffmpeg.patch || true
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass
 
+INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE}
+./build-cmake-dep.sh x265_git
+
 ./build-make-dep.sh nv-codec-headers
 
 CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ./build-cmake-dep.sh zlib
