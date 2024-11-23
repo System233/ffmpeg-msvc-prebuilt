@@ -39,8 +39,13 @@ git -C FFmpeg apply ../ffmpeg.patch || true
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass
 
-INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE}
-./build-cmake-dep.sh x265_git
+if [ "$BUILD_LICENSE" == "gpl" ]; then
+    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE}
+    FF_ARGS="$FF_ARGS --enable-libx264"
+
+    ./build-cmake-dep.sh x265_git/source
+    FF_ARGS="$FF_ARGS --enable-libx265"
+fi
 
 ./build-make-dep.sh nv-codec-headers
 
