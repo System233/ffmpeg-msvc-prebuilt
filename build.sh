@@ -40,7 +40,10 @@ git -C FFmpeg apply ../ffmpeg.patch || true
 # ./build-meson-dep.sh libass
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
-    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE}
+    if [[ "$BUILD_ARCH" =~ arm ]]; then
+        X264_ARGS="--disable-asm"
+    fi
+    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
     FF_ARGS="$FF_ARGS --enable-libx264"
 
     git -C x265_git fetch --tags
