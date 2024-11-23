@@ -8,7 +8,7 @@ run-name: Build ${{inputs.tag_name||github.ref_name}}
 
 on:
   push:
-    tags: "*"
+    # tags: "*"
   workflow_dispatch:
     inputs:
       tag_name:
@@ -88,7 +88,7 @@ jobs:
           sha1sum ${{env.name}}.zip >${{env.name}}.sha1
           ./build-changelog.sh > changelog
       - name: Release
-        if: ${{startsWith(github.ref, 'refs/tags/')||inputs.tag_name}}
+        if: ${{startsWith(github.ref, 'refs/tags/')}}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{env.TAG_NAME}}
