@@ -43,6 +43,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE}
     FF_ARGS="$FF_ARGS --enable-libx264"
 
+    git -C x265_git fetch --tags
     ./build-cmake-dep.sh x265_git/source
     FF_ARGS="$FF_ARGS --enable-libx265"
 fi
