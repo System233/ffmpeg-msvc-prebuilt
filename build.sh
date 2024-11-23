@@ -43,11 +43,16 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     if [[ "$BUILD_ARCH" =~ arm ]]; then
         X264_ARGS="--disable-asm"
     fi
+
     INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
     FF_ARGS="$FF_ARGS --enable-libx264"
 
+    if [ "$BUILD_TYPE" == "static" ]; then
+        X265_ARGS="-DSTATIC_LINK_CRT=on"
+    fi
+
     git -C x265_git fetch --tags
-    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off
+    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off $X265_ARGS
     FF_ARGS="$FF_ARGS --enable-libx265"
 fi
 
