@@ -8,10 +8,6 @@ HELP_MSG="Usage: build.sh <x86,amd64,arm,arm64> [static,shared] [gpl,lgpl] ...FF
 set -e
 source ./env.sh
 
-export BUILD_ARCH=${1:-$VSCMD_ARG_TGT_ARCH}
-export BUILD_TYPE=${2:-shared}
-export BUILD_LICENSE=${3:-gpl}
-
 if [ -z $BUILD_ARCH ]; then
     echo "$HELP_MSG" >&2
     exit 1
@@ -34,13 +30,23 @@ echo FF_ARGS=$FF_ARGS
 
 git -C zlib apply ../zlib.patch
 git -C FFmpeg apply ../ffmpeg.patch || true
-git -C x265_git apply ../x265_git.patch
 
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
+
+    git -C x265_git apply ../x265_git-${BUILD_TYPE}.patch
+    if [ "$BUILD_TYPE" == "static" ]; then
+        X265_ARGS="-DSTATIC_LINK_CRT=ON"
+        ENABLE_SHARED=OFF
+    else
+        X265_ARGS="-DSTATIC_LINK_CRT=OFF"
+        ENABLE_SHARED=ON
+
+        git -C x264 apply ../x264-${BUILD_TYPE}.patch
+    fi
 
     if [ "$BUILD_ARCH" == arm ]; then
         X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM=ON"
@@ -49,7 +55,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     fi
 
     git -C x265_git fetch --tags
-    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off $X265_ARGS
+    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
     FF_ARGS="$FF_ARGS --enable-libx265"
 
     if [[ "$BUILD_ARCH" =~ arm ]]; then
@@ -59,9 +65,6 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
     FF_ARGS="$FF_ARGS --enable-libx264"
 
-    if [ "$BUILD_TYPE" == "static" ]; then
-        X265_ARGS="-DSTATIC_LINK_CRT=on"
-    fi
 fi
 
 ./build-make-dep.sh nv-codec-headers
