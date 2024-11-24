@@ -53,9 +53,9 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
         X265_ARGS="-DSTATIC_LINK_CRT=on"
     fi
 
-    if [[ "$BUILD_ARCH" = arm ]]; then
+    if [ "$BUILD_ARCH" == arm ]; then
         X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DCROSS_COMPILE_ARM=ON"
-    elif [[ "$BUILD_ARCH" = arm64 ]]; then
+    elif [ "$BUILD_ARCH" == arm64 ]; then
         X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64  -DCROSS_COMPILE_ARM64=ON"
     fi
 
