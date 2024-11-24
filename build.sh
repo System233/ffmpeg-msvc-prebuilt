@@ -42,6 +42,16 @@ git -C x265_git apply ../x265_git.patch
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
 
+    if [ "$BUILD_ARCH" == arm ]; then
+        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM=ON"
+    elif [ "$BUILD_ARCH" == arm64 ]; then
+        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64 -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM64=ON"
+    fi
+
+    git -C x265_git fetch --tags
+    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off $X265_ARGS
+    FF_ARGS="$FF_ARGS --enable-libx265"
+
     if [[ "$BUILD_ARCH" =~ arm ]]; then
         X264_ARGS="--disable-asm"
     fi
@@ -52,16 +62,6 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     if [ "$BUILD_TYPE" == "static" ]; then
         X265_ARGS="-DSTATIC_LINK_CRT=on"
     fi
-
-    if [ "$BUILD_ARCH" == arm ]; then
-        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM=ON"
-    elif [ "$BUILD_ARCH" == arm64 ]; then
-        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64 -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM64=ON"
-    fi
-
-    git -C x265_git fetch --tags
-    ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=on -DENABLE_CLI=off $X265_ARGS
-    FF_ARGS="$FF_ARGS --enable-libx265"
 fi
 
 ./build-make-dep.sh nv-codec-headers
