@@ -49,6 +49,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     fi
 
     if [ "$BUILD_ARCH" == arm ]; then
+        git -C x265_git apply ../x265_git-arm.patch
         X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM=ON"
     elif [ "$BUILD_ARCH" == arm64 ]; then
         X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64 -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM64=ON"
@@ -58,6 +59,9 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     ./build-cmake-dep.sh x265_git/source -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
     FF_ARGS="$FF_ARGS --enable-libx265"
 
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        git -C x264 apply ../x264-${BUILD_TYPE}.patch
+    fi
     if [[ "$BUILD_ARCH" =~ arm ]]; then
         X264_ARGS="--disable-asm"
     fi
