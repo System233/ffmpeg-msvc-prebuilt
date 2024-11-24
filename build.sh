@@ -44,8 +44,6 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     else
         X265_ARGS="-DSTATIC_LINK_CRT=OFF"
         ENABLE_SHARED=ON
-
-        git -C x264 apply ../x264-${BUILD_TYPE}.patch
     fi
 
     if [ "$BUILD_ARCH" == arm ]; then
