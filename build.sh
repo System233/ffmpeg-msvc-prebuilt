@@ -34,6 +34,7 @@ echo FF_ARGS=$FF_ARGS
 
 git -C zlib apply ../zlib.patch
 git -C FFmpeg apply ../ffmpeg.patch || true
+git -C x265_git apply ../x265_git.patch
 
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
