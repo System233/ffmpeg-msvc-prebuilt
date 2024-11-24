@@ -40,6 +40,7 @@ git -C FFmpeg apply ../ffmpeg.patch || true
 # ./build-meson-dep.sh libass
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
+
     if [[ "$BUILD_ARCH" =~ arm ]]; then
         X264_ARGS="--disable-asm"
     fi
@@ -49,6 +50,12 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
 
     if [ "$BUILD_TYPE" == "static" ]; then
         X265_ARGS="-DSTATIC_LINK_CRT=on"
+    fi
+
+    if [[ "$BUILD_ARCH" = arm ]]; then
+        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l"
+    elif [[ "$BUILD_ARCH" = arm64 ]]; then
+        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64"
     fi
 
     git -C x265_git fetch --tags
