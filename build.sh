@@ -28,7 +28,7 @@ echo BUILD_TYPE=$BUILD_TYPE
 echo BUILD_LICENSE=$BUILD_LICENSE
 echo FF_ARGS=$FF_ARGS
 
-git -C zlib apply ../zlib.patch
+git -C zlib apply ../zlib.patch || true
 git -C FFmpeg apply ../ffmpeg.patch || true
 
 # --enable-libfribidi --enable-libass
@@ -37,7 +37,7 @@ git -C FFmpeg apply ../ffmpeg.patch || true
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
 
-    git -C x265_git apply ../x265_git-${BUILD_TYPE}.patch
+    git -C x265_git apply ../x265_git-${BUILD_TYPE}.patch || true
     if [ "$BUILD_TYPE" == "static" ]; then
         X265_ARGS="-DSTATIC_LINK_CRT=ON"
         ENABLE_SHARED=OFF
@@ -47,10 +47,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     fi
 
     if [ "$BUILD_ARCH" == arm ]; then
-        git -C x265_git apply ../x265_git-arm.patch
-        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=armv7l -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM=ON"
-    elif [ "$BUILD_ARCH" == arm64 ]; then
-        X265_ARGS="$X265_ARGS -DCMAKE_SYSTEM_PROCESSOR=arm64 -DENABLE_ASSEMBLY=ON -DCROSS_COMPILE_ARM64=ON"
+        git -C x265_git apply ../x265_git-arm.patch || true
     fi
 
     git -C x265_git fetch --tags
@@ -58,7 +55,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     FF_ARGS="$FF_ARGS --enable-libx265"
 
     if [ "$BUILD_TYPE" == "shared" ]; then
-        git -C x264 apply ../x264-${BUILD_TYPE}.patch
+        git -C x264 apply ../x264-${BUILD_TYPE}.patch || true
     fi
     if [[ "$BUILD_ARCH" =~ arm ]]; then
         X264_ARGS="--disable-asm"
