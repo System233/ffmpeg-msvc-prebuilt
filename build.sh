@@ -30,6 +30,7 @@ echo FF_ARGS=$FF_ARGS
 
 git -C zlib apply ../zlib.patch || true
 git -C FFmpeg apply ../ffmpeg.patch || true
+git -C harfbuzz apply ../harfbuzz.patch || true
 
 # --enable-libfribidi --enable-libass
 # ./build-meson-dep.sh fribidi -Ddocs=false
