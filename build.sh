@@ -75,7 +75,7 @@ if [ -n "$ENABLE_LIBFREETYPE" ]; then
 fi
 
 if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
-    ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
+    ./build-cmake-dep.sh harfbuzz
 fi
 
 if [ -n "$ENABLE_SDL" ]; then
