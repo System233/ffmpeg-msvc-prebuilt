@@ -1,0 +1,12 @@
+diff --git a/src/harfbuzz.pc.in b/src/harfbuzz.pc.in
+index 661251c2d..b3e124aa8 100644
+--- a/src/harfbuzz.pc.in
++++ b/src/harfbuzz.pc.in
+@@ -8,6 +8,6 @@ Description: HarfBuzz text shaping library
+ Version: %VERSION%
+ 
+ Libs: -L${libdir} -lharfbuzz
+-Libs.private: -lm %libs_private%
++Libs.private: %libs_private%
+ Requires.private: %requires_private%
+ Cflags: -I${includedir}/harfbuzz

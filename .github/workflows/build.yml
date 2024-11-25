@@ -49,15 +49,6 @@ jobs:
             yasm
             nasm
 
-      # - name: Rebase
-      #   if: ${{inputs.tag_name}}
-      #   shell: msys2 {0}
-      #   run: |
-      #     cd FFmpeg
-      #     git fetch --tags
-      #     git checkout ${{inputs.tag_name}}
-      #     git submodule update --init --recursive --depth 1
-
       - name: Remove MSYS2 link
         shell: msys2 {0}
         run: |
@@ -82,9 +73,10 @@ jobs:
       - name: Pack
         shell: msys2 {0}
         run: |
+          CWD=$(pwd)
           cd /usr/local
-          zip -9 ../${{env.name}}.zip -r .
-          cd ..
+          zip -9 ${CWD}/${{env.name}}.zip -r .
+          cd ${CWD}
           sha1sum ${{env.name}}.zip >${{env.name}}.sha1
           ./build-changelog.sh > changelog
       - name: Release

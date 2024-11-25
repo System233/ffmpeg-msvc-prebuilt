@@ -11,8 +11,10 @@ shift 1
 cd $SRC_DIR
 
 if [ $BUILD_TYPE == "static" ]; then
-    TYPE_ARGS="--enable-static"
+    CFLAGS="$CFLAGS /MT"
+    TYPE_ARGS="--enable-static --pkg-config-flags=--static"
 else
+    CFLAGS="$CFLAGS /MD"
     TYPE_ARGS="--enable-shared"
 fi
 if [[ $BUILD_ARCH =~ arm ]]; then
