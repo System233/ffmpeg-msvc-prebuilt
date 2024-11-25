@@ -12,7 +12,7 @@ cd $SRC_DIR
 
 if [ $BUILD_TYPE == "static" ]; then
     CFLAGS="$CFLAGS /MT"
-    TYPE_ARGS="--enable-static"
+    TYPE_ARGS="--enable-static --pkg-config-flags=--static"
 else
     CFLAGS="$CFLAGS /MD"
     TYPE_ARGS="--enable-shared"
