@@ -75,7 +75,7 @@ if [ -n "$ENABLE_LIBFREETYPE" ]; then
 fi
 
 if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
-    ./build-cmake-dep.sh harfbuzz
+    ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
 fi
 
 if [ -n "$ENABLE_SDL" ]; then
@@ -83,8 +83,14 @@ if [ -n "$ENABLE_SDL" ]; then
 fi
 
 if [ -n "$ENABLE_LIBJXL" ]; then
+
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        JPEGXL_STATIC=OFF
+    else
+        JPEGXL_STATIC=ON
+    fi
     ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF
-    ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF #-DJPEGXL_STATIC=ON
+    ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
 fi
 
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
