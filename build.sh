@@ -106,4 +106,6 @@ if [ -n "$ENABLE_LIBJXL" ]; then
     ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
 fi
 
+# libvpx AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon
+
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
