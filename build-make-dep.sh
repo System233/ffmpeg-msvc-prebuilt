@@ -9,5 +9,8 @@ echo -e "\n[Build $1]"
 SRC_DIR=$(pwd)/$1
 shift 1
 cd $SRC_DIR
+if [ -e ./configure ]; then
+    ./configure $@
+fi
 make -j$(nproc)
-make install PREFIX=$INSTALL_PREFIX $@
+make ${INSTALL_TARGET:-install} PREFIX=$INSTALL_PREFIX

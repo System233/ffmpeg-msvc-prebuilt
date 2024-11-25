@@ -4,6 +4,7 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
+cat RELEASE.md
 flag=0
 while IFS= read -r line; do
     if [[ "$line" =~ ^version ]]; then

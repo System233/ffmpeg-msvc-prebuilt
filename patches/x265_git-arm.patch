@@ -1,0 +1,16 @@
+diff --git a/source/common/cpu.h b/source/common/cpu.h
+index 52a9e9cba..103432442 100644
+--- a/source/common/cpu.h
++++ b/source/common/cpu.h
+@@ -38,8 +38,9 @@ extern "C" void PFX(safe_intel_cpu_indicator_init)(void);
+ #if _MSC_VER && _WIN64
+ #define x265_emms() PFX(cpu_emms)()
+ #elif _MSC_VER
+-#include <mmintrin.h>
+-#define x265_emms() _mm_empty()
++#define x265_emms() PFX(cpu_emms)()
++// #include <mmintrin.h>
++// #define x265_emms() _mm_empty()
+ #elif __GNUC__
+ // Cannot use _mm_empty() directly without compiling all the source with
+ // a fixed CPU arch, which we would like to avoid at the moment

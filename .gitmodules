@@ -25,3 +25,9 @@ url = https://github.com/madler/zlib.git
 [submodule "openexr"]
 path = openexr
 url = https://github.com/AcademySoftwareFoundation/openexr.git
+[submodule "x265_git"]
+	path = x265_git
+	url = https://bitbucket.org/multicoreware/x265_git.git
+[submodule "x264"]
+	path = x264
+	url = https://code.videolan.org/videolan/x264.git

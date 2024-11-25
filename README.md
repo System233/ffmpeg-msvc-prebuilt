@@ -1,20 +1,71 @@
-# FFmpeg Builder
+# FFmpeg GitHub Action Builds (MSVC)
+
+This repository provides **FFmpeg builds** compiled with **MSVC (Microsoft Visual C++)**, leveraging GitHub Actions to automate the process. Each release includes complete precompiled binaries, libraries, and development files, optimized for various platforms and configurations.
 
 [![Build FFmpeg](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml/badge.svg)](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml)
 
-Build results: [Download](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
+## Contents of the Release Packages
 
-## Build Info
+Each release provides the following for all build variants, architectures, and licenses:
 
-- Binaries: Now includes ffmpeg, ffplay and ffprobe executable files, as well as related header files and lib.
-- Arch support: x64, x86, arm and arm64.
-- Linker: static, shared
-- License: GPLv3, LGPLv2.1
+1. **Precompiled binaries** (`ffmpeg`, `ffplay`, `ffprobe`, etc.).
+2. **Dynamic and static libraries** for FFmpeg and included dependencies.
+3. **Header files** for development.
+4. **pkg-config (.pc) files** for library integration.
+5. **CMake configuration files** for easy integration with CMake-based projects.
+6. **SHA1 checksum files** for verifying integrity.
 
-## Enabled dependencies
+The files are packaged into **.zip** archives for each configuration, making it easy to download and integrate into your workflow.
 
-- freetype2 (filter)
-- harfbuzz (filter)
-- libjxl (jxl,exr)
-- SDL2 (ffplay)
-- zlib (libpng,png/apng)
+## Downloading and Using the Builds
+
+1. Visit the **[Releases](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)** section.
+2. Download the `.zip` archive and its corresponding `.sha1` checksum file for your desired configuration.
+3. Verify the archive integrity using the `.sha1` checksum file.
+   ```sh
+   sha1sum -c <filename>.sha1
+   ```
+4. Extract the archive to access binaries, libraries, and development files.
+
+## Features
+
+### Built with MSVC
+
+- Ensures compatibility with Windows development environments.
+- Generates high-performance binaries optimized for modern Windows platforms.
+
+### Build Variants
+
+- **Shared**: Includes dynamic libraries and runtime dependencies.
+- **Static**: Fully self-contained binaries for standalone usage.
+
+### Supported Architectures
+
+- **amd64** (x86_64)
+- **x86** (32-bit)
+- **arm** (armv7l)
+- **arm64** (aarch64)
+
+### Licensing Options
+
+- **GPL Builds**: Includes additional components like **x264** and **x265** encoders.
+- **LGPL Builds**: Excludes GPL-licensed components for more permissive licensing.
+
+### Included Dependencies
+
+All builds include the following libraries:
+
+- [nv-codec-headers](https://github.com/FFmpeg/nv-codec-headers.git)
+- [zlib](https://github.com/madler/zlib.git)
+- [libjxl](https://github.com/libjxl/libjxl.git)
+  - [openexr](https://github.com/AcademySoftwareFoundation/openexr.git)
+- [freetype](https://gitlab.freedesktop.org/freetype/freetype.git)
+- [harfbuzz](https://github.com/harfbuzz/harfbuzz.git)
+- [SDL2](https://github.com/libsdl-org/SDL.git)
+- [x264](https://code.videolan.org/videolan/x264.git) (GPL builds only)
+- [x265](https://bitbucket.org/multicoreware/x265_git.git) (GPL builds only)
+
+## License
+
+- The scripts in this repository are licensed under the **MIT License**.
+- The binaries inherit the licensing terms of FFmpeg and its dependencies, which may include **GPL** or **LGPL**.
