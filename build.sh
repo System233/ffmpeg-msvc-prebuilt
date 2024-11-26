@@ -16,7 +16,7 @@ fi
 shift 3 || true
 FF_ARGS=$@
 
-for dep in libharfbuzz libfreetype sdl libjxl libvpx; do
+for dep in libharfbuzz libfreetype sdl libjxl libvpx libwebp; do
     if grep -q "enable-${dep}" FFmpeg/configure; then
         export ENABLE_${dep^^}=1
         FF_ARGS="$FF_ARGS --enable-$dep"
@@ -123,7 +123,12 @@ if [ -n "$ENABLE_LIBVPX" ]; then
     apply-patch libvpx libvpx.patch
     export
     AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
-    FF_ARGS=--enable-libvpx
+    FF_ARGS="$FF_ARGS --enable-libvpx"
+fi
+
+if [ -n "$ENABLE_LIBWEBP" ]; then
+    ./build-cmake-dep.sh libwebp -DWEBP_BUILD_EXTRAS=OFF -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF
+    FF_ARGS="$FF_ARGS --enable-libwebp"
 fi
 
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
