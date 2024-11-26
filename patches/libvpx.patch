@@ -185,7 +185,7 @@ index d1d89aa69..155c43c54 100644
  ASFLAGS = ${ASFLAGS}
  extralibs = ${extralibs}
 diff --git a/build/make/gen_msvs_sln.sh b/build/make/gen_msvs_sln.sh
-index 0b312850f..2328bd57e 100755
+index 0b312850f..ce59378ee 100755
 --- a/build/make/gen_msvs_sln.sh
 +++ b/build/make/gen_msvs_sln.sh
 @@ -70,7 +70,9 @@ parse_project() {
@@ -199,6 +199,15 @@ index 0b312850f..2328bd57e 100755
      done | sort | uniq)
      if [ "$config_list" != "" ] && [ "$config_list" != "$new_config_list" ]; then
          mixed_platforms=1
+@@ -190,7 +192,7 @@ ${TAB}rm -rf "$platform"/"$config"
+ ifneq (\$(found_devenv),)
+ $nows_sln_config: $outfile
+ ${TAB}\$(MSBUILD_TOOL) $outfile -m -t:Build \\
+-${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform"
++${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform /p:WindowsTargetPlatformVersion=$WindowsSDKVersion"
+ else
+ $nows_sln_config: $outfile .nodevenv.once
+ ${TAB}@echo "  * Skipping build of $sln_config (\$(MSBUILD_TOOL) not in path)."
 @@ -225,6 +227,8 @@ for opt in "$@"; do
      ;;
      --target=*) target="${optval}"
