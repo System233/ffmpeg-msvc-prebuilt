@@ -121,7 +121,8 @@ if [ -n "$ENABLE_LIBVPX" ]; then
         LIBVPX_ARGS="--enable-static-msvcrt"
     fi
     apply-patch libvpx libvpx.patch
-    AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false TARGET= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build $LIBVPX_ARGS
+    export
+    AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build $LIBVPX_ARGS
     FF_ARGS=--enable-libvpx
 fi
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
