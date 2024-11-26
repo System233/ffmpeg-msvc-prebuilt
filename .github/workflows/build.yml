@@ -31,14 +31,15 @@ jobs:
         run: |
           echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
           KEY=$(git ls-tree -r ${{env.TAG_NAME}}|grep ^160000|sort -d|md5sum|cut -d' ' -f1)
-          echo "cache-key=$KEY" >>$GITHUB_OUTPUT
+          echo "cache-hash=$KEY" >>$GITHUB_OUTPUT
+          echo "cache-key=${{ runner.os }}-$KEY-submodules" >>$GITHUB_OUTPUT
 
       - name: Restore cached submodules
         id: cache-submodules-restore
         uses: actions/cache@v4
         with:
           path: .git/modules
-          key: ${{ runner.os }}-${{steps.setup.outputs.cache-key}}-submodules
+          key: ${{steps.setup.outputs.cache-key}}
 
       - name: Pull submodules
         shell: bash
