@@ -8,7 +8,7 @@ run-name: Build ${{inputs.tag_name||github.ref_name}}
 
 on:
   push:
-    tags: "*"
+    # tags: "*"
   workflow_dispatch:
     inputs:
       tag_name:
