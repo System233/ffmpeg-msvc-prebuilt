@@ -184,8 +184,32 @@ index d1d89aa69..155c43c54 100644
  LDFLAGS = ${LDFLAGS}
  ASFLAGS = ${ASFLAGS}
  extralibs = ${extralibs}
+diff --git a/build/make/gen_msvs_sln.sh b/build/make/gen_msvs_sln.sh
+index 0b312850f..2328bd57e 100755
+--- a/build/make/gen_msvs_sln.sh
++++ b/build/make/gen_msvs_sln.sh
+@@ -70,7 +70,9 @@ parse_project() {
+     cur_config_list=`grep -B1 'Label="Configuration"' $file |
+         grep Condition | cut -d\' -f4`
+     new_config_list=$(for i in $config_list $cur_config_list; do
+-        echo $i
++        if [[ $i =~ ^$target_config ]];then
++            echo $i
++        fi
+     done | sort | uniq)
+     if [ "$config_list" != "" ] && [ "$config_list" != "$new_config_list" ]; then
+         mixed_platforms=1
+@@ -225,6 +227,8 @@ for opt in "$@"; do
+     ;;
+     --target=*) target="${optval}"
+     ;;
++    --config=*) target_config="${optval}"
++    ;;
+     -*) die_unknown $opt
+     ;;
+     *) file_list[${#file_list[@]}]="$opt"
 diff --git a/build/make/gen_msvs_vcxproj.sh b/build/make/gen_msvs_vcxproj.sh
-index 1e1db05bb..0ba1d590d 100755
+index 1e1db05bb..5b7e090ed 100755
 --- a/build/make/gen_msvs_vcxproj.sh
 +++ b/build/make/gen_msvs_vcxproj.sh
 @@ -311,7 +311,8 @@ generate_vcxproj() {
@@ -209,3 +233,86 @@ index 1e1db05bb..0ba1d590d 100755
          fi
          if [ "${platforms[0]}" = "ARM64" ]; then
              # Require the first Visual Studio version to have ARM64 support.
+@@ -402,6 +403,7 @@ generate_vcxproj() {
+               fi
+               tag_content TargetName "${name}${lib_sfx}${config_suffix}"
+             fi
++            tag_content ExecutablePath "\$(VC_ExecutablePath_x64_ARM);\$(CommonExecutablePath)"
+             close_tag PropertyGroup
+         done
+     done
+diff --git a/libs.mk b/libs.mk
+index d5076b7e8..f7f615bfd 100644
+--- a/libs.mk
++++ b/libs.mk
+@@ -152,8 +152,8 @@ INSTALL_MAPS += include/vpx/% $(SRC_PATH_BARE)/vpx_ports/%
+ INSTALL_MAPS += $(LIBSUBDIR)/%     %
+ INSTALL_MAPS += src/%     $(SRC_PATH_BARE)/%
+ ifeq ($(CONFIG_MSVS),yes)
+-INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Release/%)
+-INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Debug/%)
++INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/%  $(p)/Release/%)
++#INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Debug/%)
+ endif
+ 
+ CODEC_SRCS-yes += build/make/version.sh
+@@ -181,10 +181,10 @@ INSTALL-LIBS-$(CONFIG_ENCODERS) += include/vpx/vpx_encoder.h
+ INSTALL-LIBS-$(CONFIG_ENCODERS) += include/vpx/vpx_tpl.h
+ ifeq ($(CONFIG_EXTERNAL_BUILD),yes)
+ ifeq ($(CONFIG_MSVS),yes)
+-INSTALL-LIBS-yes                  += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/$(CODEC_LIB).lib)
+-INSTALL-LIBS-$(CONFIG_DEBUG_LIBS) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/$(CODEC_LIB)d.lib)
+-INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/vpx.dll)
+-INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/vpx.exp)
++INSTALL-LIBS-yes                  += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(CODEC_LIB).lib)
++INSTALL-LIBS-$(CONFIG_DEBUG_LIBS) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(CODEC_LIB)d.lib)
++INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/vpx.dll)
++INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/vpx.exp)
+ endif
+ else
+ INSTALL-LIBS-$(CONFIG_STATIC) += $(LIBSUBDIR)/libvpx.a
+@@ -299,6 +299,32 @@ PROJECTS-yes += vpxrc.$(VCPROJ_SFX)
+ vpxrc.$(VCPROJ_SFX): vpx_config.asm
+ vpxrc.$(VCPROJ_SFX): $(RTCD)
+ 
++
++LIBS-yes += vpx.pc
++vpx.pc: config.mk libs.mk
++	@echo "    [CREATE] $@"
++	$(qexec)echo '# pkg-config file from libvpx $(VERSION_STRING)' > $@
++	$(qexec)echo 'prefix=$(PREFIX)' >> $@
++	$(qexec)echo 'exec_prefix=$${prefix}' >> $@
++	$(qexec)echo 'libdir=$${prefix}/$(LIBSUBDIR)' >> $@
++	$(qexec)echo 'includedir=$${prefix}/include' >> $@
++	$(qexec)echo '' >> $@
++	$(qexec)echo 'Name: vpx' >> $@
++	$(qexec)echo 'Description: WebM Project VPx codec implementation' >> $@
++	$(qexec)echo 'Version: $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)' >> $@
++	$(qexec)echo 'Requires:' >> $@
++	$(qexec)echo 'Conflicts:' >> $@
++	$(qexec)echo 'Libs: -L$${libdir} -lvpx$(if $(CONFIG_STATIC_MSVCRT),mt,md)' >> $@
++ifeq ($(HAVE_PTHREAD_H),yes)
++	$(qexec)echo 'Libs.private: -lpthread' >> $@
++else
++	$(qexec)echo 'Libs.private: ' >> $@
++endif
++	$(qexec)echo 'Cflags: -I$${includedir}' >> $@
++INSTALL-LIBS-yes += $(LIBSUBDIR)/pkgconfig/vpx.pc
++INSTALL_MAPS += $(LIBSUBDIR)/pkgconfig/%.pc %.pc
++CLEAN-OBJS += vpx.pc
++
+ endif # ifeq ($(CONFIG_MSVS),yes)
+ else # ifeq ($(CONFIG_EXTERNAL_BUILD),yes)
+ LIBVPX_OBJS=$(call objs, $(filter-out $(ASM_INCLUDES), $(CODEC_SRCS)))
+diff --git a/solution.mk b/solution.mk
+index 145adc0dd..5c1b3ff19 100644
+--- a/solution.mk
++++ b/solution.mk
+@@ -16,6 +16,7 @@ VPX_RDEPS=$(foreach vcp,\
+ vpx.sln: $(wildcard *.$(VCPROJ_SFX))
+ 	@echo "    [CREATE] $@"
+ 	$(SRC_PATH_BARE)/build/make/gen_msvs_sln.sh \
++            "--config=Release" \
+             $(if $(filter vpx.$(VCPROJ_SFX),$^),$(VPX_RDEPS)) \
+             --dep=test_libvpx:gtest \
+             --ver=$(CONFIG_VS_VERSION)\
