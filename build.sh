@@ -142,4 +142,4 @@ if [ -n "$ENABLE_LIBWEBP" ]; then
 fi
 
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
-./relocal_prefix.sh
+./relocate_prefix.sh
