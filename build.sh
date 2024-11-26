@@ -49,66 +49,72 @@ apply-patch harfbuzz harfbuzz.patch
 # ./build-meson-dep.sh fribidi -Ddocs=false
 # ./build-meson-dep.sh libass
 
-# if [ "$BUILD_LICENSE" == "gpl" ]; then
+if [ "$BUILD_LICENSE" == "gpl" ]; then
 
-#     apply-patch x265_git x265_git-${BUILD_TYPE}.patch
+    apply-patch x265_git x265_git-${BUILD_TYPE}.patch
 
-#     if [ "$BUILD_TYPE" == "static" ]; then
-#         X265_ARGS="-DSTATIC_LINK_CRT=ON"
-#         ENABLE_SHARED=OFF
-#     else
-#         X265_ARGS="-DSTATIC_LINK_CRT=OFF"
-#         ENABLE_SHARED=ON
-#     fi
+    if [ "$BUILD_TYPE" == "static" ]; then
+        X265_ARGS="-DSTATIC_LINK_CRT=ON"
+        ENABLE_SHARED=OFF
+    else
+        X265_ARGS="-DSTATIC_LINK_CRT=OFF"
+        ENABLE_SHARED=ON
+    fi
 
-#     if [ "$BUILD_ARCH" == arm ]; then
-#         apply-patch x265_git x265_git-arm.patch
-#     fi
+    if [ "$BUILD_ARCH" == arm ]; then
+        apply-patch x265_git x265_git-arm.patch
+    fi
 
-#     git -C x265_git fetch --tags
-#     ./build-cmake-dep.sh x265_git/source -DCMAKE_SYSTEM_NAME=Windows -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
-#     FF_ARGS="$FF_ARGS --enable-libx265"
+    git -C x265_git fetch --tags
+    ./build-cmake-dep.sh x265_git/source -DCMAKE_SYSTEM_NAME=Windows -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
+    add_ffargs "--enable-libx265"
 
-#     if [ "$BUILD_TYPE" == "shared" ]; then
-#         apply-patch x264 x264-${BUILD_TYPE}.patch
-#     fi
-#     if [[ "$BUILD_ARCH" =~ arm ]]; then
-#         X264_ARGS="--disable-asm"
-#     fi
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        apply-patch x264 x264-${BUILD_TYPE}.patch
+    fi
+    if [[ "$BUILD_ARCH" =~ arm ]]; then
+        X264_ARGS="--disable-asm"
+    fi
 
-#     INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
-#     FF_ARGS="$FF_ARGS --enable-libx264"
+    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
+    add_ffargs "--enable-libx264"
 
-# fi
+fi
 
-# ./build-make-dep.sh nv-codec-headers
+./build-make-dep.sh nv-codec-headers
 
-# CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ./build-cmake-dep.sh zlib
+CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ./build-cmake-dep.sh zlib
+add_ffargs "--enable-zlib"
 
-# if [ -n "$ENABLE_LIBFREETYPE" ]; then
-#     ./build-cmake-dep.sh freetype
-# fi
+if [ -n "$ENABLE_LIBFREETYPE" ]; then
+    ./build-cmake-dep.sh freetype
+    add_ffargs "--enable-freetype"
+fi
 
-# if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
-#     ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
-# fi
+if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
+    ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
+    add_ffargs "--enable-harfbuzz"
+fi
 
-# if [ -n "$ENABLE_SDL" ]; then
-#     ./build-cmake-dep.sh SDL
-# fi
+if [ -n "$ENABLE_SDL" ]; then
+    ./build-cmake-dep.sh SDL
+    add_ffargs "--enable-sdl"
+fi
 
-# if [ -n "$ENABLE_LIBJXL" ]; then
+if [ -n "$ENABLE_LIBJXL" ]; then
 
-#     if [ "$BUILD_TYPE" == "shared" ]; then
-#         JPEGXL_STATIC=OFF
-#     else
-#         JPEGXL_STATIC=ON
-#     fi
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        JPEGXL_STATIC=OFF
+    else
+        JPEGXL_STATIC=ON
+    fi
 
-#     apply-patch libjxl libjxl.patch
-#     ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DOPENEXR_IS_SUBPROJECT=ON
-#     ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
-# fi
+    apply-patch libjxl libjxl.patch
+    ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DOPENEXR_IS_SUBPROJECT=ON
+    ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
+    add_ffargs "--enable-libjxl"
+
+fi
 
 # libvpx AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon
 # AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --target=armv7-win32-vs17 --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon --enable-external-build --enable-static-msvcrt
