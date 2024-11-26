@@ -3,8 +3,8 @@ env:
   SDK_VER: 10.0.22621.0
   TAG_NAME: ${{ inputs.tag_name||github.ref_name }}
 
-name: Build
-run-name: Build ${{inputs.tag_name||github.ref_name}}
+name: Test
+run-name: Test ${{inputs.tag_name||github.ref_name}}
 
 on:
   push:
