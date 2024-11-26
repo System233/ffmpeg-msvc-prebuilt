@@ -185,7 +185,7 @@ index d1d89aa69..155c43c54 100644
  ASFLAGS = ${ASFLAGS}
  extralibs = ${extralibs}
 diff --git a/build/make/gen_msvs_sln.sh b/build/make/gen_msvs_sln.sh
-index 0b312850f..9fbb7a6f9 100755
+index 0b312850f..d566ae4be 100755
 --- a/build/make/gen_msvs_sln.sh
 +++ b/build/make/gen_msvs_sln.sh
 @@ -70,7 +70,9 @@ parse_project() {
@@ -204,7 +204,7 @@ index 0b312850f..9fbb7a6f9 100755
  $nows_sln_config: $outfile
  ${TAB}\$(MSBUILD_TOOL) $outfile -m -t:Build \\
 -${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform"
-+${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform" -p:WindowsTargetPlatformVersion="$SDK_VER"
++${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform" -p:VCToolsVersion="$VSCMD_ARG_VCVARS_VER" -p:WindowsTargetPlatformVersion="$UCRTVersion"
  else
  $nows_sln_config: $outfile .nodevenv.once
  ${TAB}@echo "  * Skipping build of $sln_config (\$(MSBUILD_TOOL) not in path)."
@@ -218,9 +218,22 @@ index 0b312850f..9fbb7a6f9 100755
      ;;
      *) file_list[${#file_list[@]}]="$opt"
 diff --git a/build/make/gen_msvs_vcxproj.sh b/build/make/gen_msvs_vcxproj.sh
-index 1e1db05bb..5b7e090ed 100755
+index 1e1db05bb..6f6ea0eda 100755
 --- a/build/make/gen_msvs_vcxproj.sh
 +++ b/build/make/gen_msvs_vcxproj.sh
+@@ -270,9 +270,9 @@ case "$target" in
+     arm64*)
+         platforms[0]="ARM64"
+         # As of Visual Studio 2022 17.5.5, clang-cl does not support ARM64EC.
+-        if [ "$vs_ver" -ge 17 -a "$platform_toolset" != "ClangCl" ]; then
+-            platforms[1]="ARM64EC"
+-        fi
++        # if [ "$vs_ver" -ge 17 -a "$platform_toolset" != "ClangCl" ]; then
++        #     platforms[1]="ARM64EC"
++        # fi
+         asm_Debug_cmdline="armasm64 -nologo -oldit &quot;%(FullPath)&quot;"
+         asm_Release_cmdline="armasm64 -nologo -oldit &quot;%(FullPath)&quot;"
+     ;;
 @@ -311,7 +311,8 @@ generate_vcxproj() {
          tag_content RootNamespace ${name}
          tag_content Keyword ManagedCProj
@@ -246,12 +259,12 @@ index 1e1db05bb..5b7e090ed 100755
                fi
                tag_content TargetName "${name}${lib_sfx}${config_suffix}"
              fi
-+            tag_content ExecutablePath "\$(VC_ExecutablePath_x64_ARM);\$(CommonExecutablePath)"
++            tag_content ExecutablePath "\$(VC_ExecutablePath_${VSCMD_ARG_HOST_ARCH}_${VSCMD_ARG_TGT_ARCH});\$(CommonExecutablePath)"
              close_tag PropertyGroup
          done
      done
 diff --git a/libs.mk b/libs.mk
-index d5076b7e8..f7f615bfd 100644
+index d5076b7e8..70affdace 100644
 --- a/libs.mk
 +++ b/libs.mk
 @@ -152,8 +152,8 @@ INSTALL_MAPS += include/vpx/% $(SRC_PATH_BARE)/vpx_ports/%
@@ -299,7 +312,7 @@ index d5076b7e8..f7f615bfd 100644
 +	$(qexec)echo 'Version: $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)' >> $@
 +	$(qexec)echo 'Requires:' >> $@
 +	$(qexec)echo 'Conflicts:' >> $@
-+	$(qexec)echo 'Libs: -L$${libdir} -lvpx$(if $(CONFIG_STATIC_MSVCRT),mt,md)' >> $@
++	$(qexec)echo 'Libs: -L$${libdir} -lvpx$(if $(CONFIG_STATIC_MSVCRT),mt,md -lmsvcrt)' >> $@
 +ifeq ($(HAVE_PTHREAD_H),yes)
 +	$(qexec)echo 'Libs.private: -lpthread' >> $@
 +else
