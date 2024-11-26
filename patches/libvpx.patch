@@ -185,7 +185,7 @@ index d1d89aa69..155c43c54 100644
  ASFLAGS = ${ASFLAGS}
  extralibs = ${extralibs}
 diff --git a/build/make/gen_msvs_sln.sh b/build/make/gen_msvs_sln.sh
-index 0b312850f..d32a5b031 100755
+index 0b312850f..9fbb7a6f9 100755
 --- a/build/make/gen_msvs_sln.sh
 +++ b/build/make/gen_msvs_sln.sh
 @@ -70,7 +70,9 @@ parse_project() {
@@ -204,7 +204,7 @@ index 0b312850f..d32a5b031 100755
  $nows_sln_config: $outfile
  ${TAB}\$(MSBUILD_TOOL) $outfile -m -t:Build \\
 -${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform"
-+${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform" /p:WindowsTargetPlatformVersion="$SDK_VER"
++${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform" -p:WindowsTargetPlatformVersion="$SDK_VER"
  else
  $nows_sln_config: $outfile .nodevenv.once
  ${TAB}@echo "  * Skipping build of $sln_config (\$(MSBUILD_TOOL) not in path)."
