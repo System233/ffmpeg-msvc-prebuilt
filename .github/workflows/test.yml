@@ -1,91 +1,21 @@
 env:
   MSYS2_PATH_TYPE: inherit
   SDK_VER: 10.0.22621.0
-  TAG_NAME: ${{ inputs.tag_name||github.ref_name }}
+  REF_NAME: ${{ inputs.ref_name||github.ref_name }}
 
 name: Test
-run-name: Test ${{inputs.tag_name||github.ref_name}}
+run-name: Test ${{inputs.ref_name||github.ref_name}}
 
 on:
   push:
-    tags: "*"
   workflow_dispatch:
     inputs:
-      tag_name:
+      ref_name:
         description: "Tag"
-        required: true
+        required: false
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        arch: [x86, amd64, arm, arm64]
-        type: [static, shared]
-        license: [gpl, lgpl]
-      fail-fast: false
-    runs-on: windows-2022
-    env:
-      # amd64_arm,amd64_arm64,x86,amd64
-      name: ffmpeg-${{ inputs.tag_name||github.ref_name }}-${{matrix.license}}-${{matrix.arch}}-${{matrix.type}}
-      target: ${{contains(matrix.arch,'arm')&&format('amd64_{0}',matrix.arch)||matrix.arch}}
-    steps:
-      - name: Find MSVC
-        shell: bash
-        id: msvc
-        run: |
-          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{env.TAG_NAME}}
-          submodules: recursive
-
-      - uses: msys2/setup-msys2@v2
-        with:
-          install: >-
-            diffutils
-            make
-            zip
-            pkgconf
-            yasm
-            nasm
-
-      - name: Remove MSYS2 link
-        shell: msys2 {0}
-        run: |
-          rm $(which link)
-          rm -rf /usr/local
-
-      - name: Build
-        shell: cmd
-        run: |
-          CALL "${{steps.msvc.outputs.installationPath}}\VC\Auxiliary\Build\vcvarsall.bat" ${{env.target}} ${{env.SDK_VER}}
-          msys2 -c "./build.sh ${{matrix.arch}} ${{matrix.type}} ${{matrix.license}}"
-
-      - name: Debug log
-        if: ${{ failure() }}
-        shell: bash
-        run: |
-          echo [Debug]
-          cat FFmpeg/ffbuild/config.log
-          cat FFmpeg/ffbuild/config.mak
-          cat FFmpeg/config.h
-
-      - name: Pack
-        shell: msys2 {0}
-        run: |
-          CWD=$(pwd)
-          cd /usr/local
-          zip -9 ${CWD}/${{env.name}}.zip -r .
-          cd ${CWD}
-          sha1sum ${{env.name}}.zip >${{env.name}}.sha1
-          ./build-changelog.sh > changelog
-      - name: Release
-        if: ${{startsWith(github.ref, 'refs/tags/')}}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{env.TAG_NAME}}
-          body_path: changelog
-          prerelease: ${{contains(env.TAG_NAME,'dev')}}
-          files: |
-            ${{env.name}}.zip
-            ${{env.name}}.sha1
+  test:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref_name: ${{inputs.ref_name||github.ref_name}}
