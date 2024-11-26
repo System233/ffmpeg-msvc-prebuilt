@@ -16,7 +16,37 @@ on:
         required: true
 
 jobs:
+  cache:
+    outputs:
+      cache-key: ${{steps.setup.outputs.cache-key}}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{env.TAG_NAME}}
+
+      - name: Setup Env
+        shell: bash
+        id: setup
+        run: |
+          echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
+          KEY=$(git ls-tree -r ${{env.TAG_NAME}}|grep ^160000|sort -d|md5sum|cut -d' ' -f1)
+          echo "cache-key=$KEY" >>$GITHUB_OUTPUT
+
+      - name: Restore cached submodules
+        id: cache-submodules-restore
+        uses: actions/cache@v4
+        with:
+          path: .git/modules
+          key: ${{ runner.os }}-${{steps.setup.outputs.cache-key}}-submodules
+
+      - name: Pull submodules
+        shell: bash
+        run: |
+          git submodule update --init --recursive --depth 1
+
   build:
+    needs: cache
     strategy:
       matrix:
         arch: [x86, amd64, arm, arm64]
@@ -39,15 +69,16 @@ jobs:
         id: setup
         run: |
           echo "installationPath=$(vswhere -all -legacy -property installationPath)">>$GITHUB_OUTPUT
-          KEY=$(git ls-tree -r ${{env.TAG_NAME}}|grep ^160000|sort -d|md5sum|cut -d' ' -f1)
-          echo "cache-key=$KEY" >>$GITHUB_OUTPUT
+          # KEY=$(git ls-tree -r ${{env.TAG_NAME}}|grep ^160000|sort -d|md5sum|cut -d' ' -f1)
+          # echo "cache-key=$KEY" >>$GITHUB_OUTPUT
 
       - name: Restore cached submodules
         id: cache-submodules-restore
         uses: actions/cache@v4
         with:
           path: .git/modules
-          key: ${{ runner.os }}-${{steps.setup.outputs.cache-key}}-submodules
+          # key: ${{ runner.os }}-${{steps.setup.outputs.cache-key}}-submodules
+          key: ${{ needs.cache.outputs.cache-key }}
 
       - name: Pull submodules
         shell: bash
