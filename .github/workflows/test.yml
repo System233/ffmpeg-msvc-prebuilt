@@ -8,6 +8,7 @@ run-name: Test ${{inputs.ref_name||github.ref_name}}
 
 on:
   push:
+    branches-ignore: main
   workflow_dispatch:
     inputs:
       ref_name:

@@ -1,13 +1,60 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 15ceebe..303f5d6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -149,12 +149,16 @@ if(MINGW)
+     set(ZLIB_DLL_SRCS ${CMAKE_CURRENT_BINARY_DIR}/zlib1rc.obj)
+ endif(MINGW)
+ 
+-add_library(zlib SHARED ${ZLIB_SRCS} ${ZLIB_DLL_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})
+-target_include_directories(zlib PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+-add_library(zlibstatic STATIC ${ZLIB_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})
+-target_include_directories(zlibstatic PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+-set_target_properties(zlib PROPERTIES DEFINE_SYMBOL ZLIB_DLL)
+-set_target_properties(zlib PROPERTIES SOVERSION 1)
++if(BUILD_SHARED_LIBS)
++    add_library(zlib SHARED ${ZLIB_SRCS} ${ZLIB_DLL_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})
++    target_include_directories(zlib PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
++    set_target_properties(zlib PROPERTIES DEFINE_SYMBOL ZLIB_DLL)
++    set_target_properties(zlib PROPERTIES SOVERSION 1)
++else()
++    add_library(zlib STATIC ${ZLIB_SRCS} ${ZLIB_PUBLIC_HDRS} ${ZLIB_PRIVATE_HDRS})
++    target_include_directories(zlib PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
++endif()
++
+ 
+ if(NOT CYGWIN)
+     # This property causes shared libraries on Linux to have the full version
+@@ -169,7 +173,7 @@ endif()
+ 
+ if(UNIX)
+     # On unix-like platforms the library is almost always called libz
+-   set_target_properties(zlib zlibstatic PROPERTIES OUTPUT_NAME z)
++   set_target_properties(zlib PROPERTIES OUTPUT_NAME z)
+    if(NOT APPLE AND NOT(CMAKE_SYSTEM_NAME STREQUAL AIX))
+      set_target_properties(zlib PROPERTIES LINK_FLAGS "-Wl,--version-script,\"${CMAKE_CURRENT_SOURCE_DIR}/zlib.map\"")
+    endif()
+@@ -179,7 +183,7 @@ elseif(BUILD_SHARED_LIBS AND WIN32)
+ endif()
+ 
+ if(NOT SKIP_INSTALL_LIBRARIES AND NOT SKIP_INSTALL_ALL )
+-    install(TARGETS zlib zlibstatic
++    install(TARGETS zlib
+         RUNTIME DESTINATION "${INSTALL_BIN_DIR}"
+         ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+         LIBRARY DESTINATION "${INSTALL_LIB_DIR}" )
 diff --git a/zconf.h.cmakein b/zconf.h.cmakein
-index 0abe3bc..5b9ccdf 100644
+index 0abe3bc..53e028c 100644
 --- a/zconf.h.cmakein
 +++ b/zconf.h.cmakein
-@@ -483,7 +483,7 @@ typedef uLong FAR uLongf;
+@@ -436,7 +436,9 @@ typedef uLong FAR uLongf;
  #endif
- #ifndef Z_SOLO
- #  if defined(Z_HAVE_UNISTD_H)
--#    include <unistd.h>         /* for SEEK_*, off_t, and _LFS64_LARGEFILE */
-+// #    include <unistd.h>         /* for SEEK_*, off_t, and _LFS64_LARGEFILE */
- #    ifdef VMS
- #      include <unixio.h>       /* for off_t */
- #    endif
+ 
+ #ifdef HAVE_UNISTD_H    /* may be set to #if 1 by ./configure */
+-#  define Z_HAVE_UNISTD_H
++#    if Z_HAVE_UNISTD_H != 0
++#         define Z_HAVE_UNISTD_H
++#    endif
+ #endif
+ 
+ #ifdef HAVE_STDARG_H    /* may be set to #if 1 by ./configure */
