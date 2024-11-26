@@ -88,12 +88,12 @@ add_ffargs "--enable-zlib"
 
 if [ -n "$ENABLE_LIBFREETYPE" ]; then
     ./build-cmake-dep.sh freetype
-    add_ffargs "--enable-freetype"
+    add_ffargs "--enable-libfreetype"
 fi
 
 if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
     ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
-    add_ffargs "--enable-harfbuzz"
+    add_ffargs "--enable-libharfbuzz"
 fi
 
 if [ -n "$ENABLE_SDL" ]; then
