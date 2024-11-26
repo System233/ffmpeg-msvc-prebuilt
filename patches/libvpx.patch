@@ -204,7 +204,7 @@ index 0b312850f..ce59378ee 100755
  $nows_sln_config: $outfile
  ${TAB}\$(MSBUILD_TOOL) $outfile -m -t:Build \\
 -${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform"
-+${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform /p:WindowsTargetPlatformVersion=$WindowsSDKVersion"
++${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform /p:WindowsTargetPlatformVersion=$SDK_VER"
  else
  $nows_sln_config: $outfile .nodevenv.once
  ${TAB}@echo "  * Skipping build of $sln_config (\$(MSBUILD_TOOL) not in path)."
