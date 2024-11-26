@@ -20,17 +20,17 @@ jobs:
           git submodule update --init --depth 1 FFmpeg
           git -C FFmpeg fetch --tags
           git fetch --tags
-          for tag_name in `git -C FFmpeg for-each-ref --sort=-taggerdate --format '%(refname:strip=2)' refs/tags |head -n 10`;do
-            if git rev-parse "${tag_name}" >/dev/null 2>&1; then
-              echo "skip '${tag_name}'"
+          for ref_name in `git -C FFmpeg for-each-ref --sort=-taggerdate --format '%(refname:strip=2)' refs/tags |head -n 10`;do
+            if git rev-parse "${ref_name}" >/dev/null 2>&1; then
+              echo "skip '${ref_name}'"
             else
-              echo "select '${tag_name}'"
-              git -C FFmpeg checkout ${tag_name}
+              echo "select '${ref_name}'"
+              git -C FFmpeg checkout ${ref_name}
               git add FFmpeg
               
-              git commit -m "${tag_name}"
-              git tag ${tag_name} 
+              git commit -m "${ref_name}"
+              git tag ${ref_name} 
 
-              git push origin ${tag_name}
+              git push origin ${ref_name}
             fi
           done

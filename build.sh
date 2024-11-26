@@ -16,10 +16,10 @@ fi
 shift 3 || true
 FF_ARGS=$@
 
-for dep in libharfbuzz libfreetype sdl libjxl; do
+for dep in libharfbuzz libfreetype sdl libjxl libvpx libwebp; do
     if grep -q "enable-${dep}" FFmpeg/configure; then
         export ENABLE_${dep^^}=1
-        FF_ARGS="$FF_ARGS --enable-$dep"
+        # FF_ARGS="$FF_ARGS --enable-$dep"
     fi
 done
 
@@ -27,6 +27,10 @@ echo BUILD_ARCH=$BUILD_ARCH
 echo BUILD_TYPE=$BUILD_TYPE
 echo BUILD_LICENSE=$BUILD_LICENSE
 echo FF_ARGS=$FF_ARGS
+
+add_ffargs() {
+    FF_ARGS="$FF_ARGS $@"
+}
 
 apply-patch() {
     GIT_CMD="git -C $1 apply ../patches/$2 --ignore-whitespace"
@@ -63,7 +67,7 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
 
     git -C x265_git fetch --tags
     ./build-cmake-dep.sh x265_git/source -DCMAKE_SYSTEM_NAME=Windows -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
-    FF_ARGS="$FF_ARGS --enable-libx265"
+    add_ffargs "--enable-libx265"
 
     if [ "$BUILD_TYPE" == "shared" ]; then
         apply-patch x264 x264-${BUILD_TYPE}.patch
@@ -73,24 +77,28 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
     fi
 
     INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
-    FF_ARGS="$FF_ARGS --enable-libx264"
+    add_ffargs "--enable-libx264"
 
 fi
 
 ./build-make-dep.sh nv-codec-headers
 
 CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ./build-cmake-dep.sh zlib
+add_ffargs "--enable-zlib"
 
 if [ -n "$ENABLE_LIBFREETYPE" ]; then
     ./build-cmake-dep.sh freetype
+    add_ffargs "--enable-libfreetype"
 fi
 
 if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
     ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
+    add_ffargs "--enable-libharfbuzz"
 fi
 
 if [ -n "$ENABLE_SDL" ]; then
     ./build-cmake-dep.sh SDL
+    add_ffargs "--enable-sdl"
 fi
 
 if [ -n "$ENABLE_LIBJXL" ]; then
@@ -104,6 +112,34 @@ if [ -n "$ENABLE_LIBJXL" ]; then
     apply-patch libjxl libjxl.patch
     ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DOPENEXR_IS_SUBPROJECT=ON
     ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
+    add_ffargs "--enable-libjxl"
+
+fi
+
+# libvpx AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon
+# AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --target=armv7-win32-vs17 --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon --enable-external-build --enable-static-msvcrt
+
+if [ -n "$ENABLE_LIBVPX" ]; then
+    case $BUILD_ARCH in
+    amd64) libvpx_target=x86_64-win64-vs17 ;;
+    x86) libvpx_target=x86-win32-vs17 ;;
+    arm) libvpx_target=armv7-win32-vs17 ;;
+    arm64) libvpx_target=arm64-win64-vs17 ;;
+    esac
+
+    if [ "$BUILD_TYPE" == "static" ]; then
+        LIBVPX_ARGS="--enable-static-msvcrt"
+    fi
+    apply-patch libvpx libvpx.patch
+    export
+    AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
+    add_ffargs "--enable-libvpx"
+fi
+
+if [ -n "$ENABLE_LIBWEBP" ]; then
+    ./build-cmake-dep.sh libwebp -DWEBP_BUILD_EXTRAS=OFF -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF
+    add_ffargs "--enable-libwebp"
 fi
 
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
+./relocate_prefix.sh

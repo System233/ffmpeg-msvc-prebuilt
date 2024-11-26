@@ -1,0 +1,340 @@
+diff --git a/build/make/Makefile b/build/make/Makefile
+index 658b37617..0178828ad 100644
+--- a/build/make/Makefile
++++ b/build/make/Makefile
+@@ -76,10 +76,16 @@ TGT_CC:=$(word 3, $(subst -, ,$(TOOLCHAIN)))
+ quiet:=$(if $(or $(verbose), $(V)),, yes)
+ qexec=$(if $(quiet),@)
+ 
++ifeq ($(CONFIG_MSVS),yes)
++  LIB_EXT_NAME:=lib
++else
++  LIB_EXT_NAME:=a
++endif
++
+ # Cancel built-in implicit rules
+ %: %.o
+ %.asm:
+-%.a:
++%.$(LIB_EXT_NAME):
+ %: %.cc
+ 
+ #
+@@ -175,7 +181,7 @@ $(BUILD_PFX)%.c.d: %.c
+ $(BUILD_PFX)%.c.o: %.c
+ 	$(if $(quiet),@echo "    [CC] $@")
+ 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
+-	$(qexec)$(CC) $(INTERNAL_CFLAGS) $(CFLAGS) -c -o $@ $<
++	$(qexec)$(CC) $(INTERNAL_CFLAGS) $(CFLAGS) -c -Fo: $@ $<
+ 
+ $(BUILD_PFX)%.cc.d: %.cc
+ 	$(if $(quiet),@echo "    [DEP] $@")
+@@ -185,7 +191,7 @@ $(BUILD_PFX)%.cc.d: %.cc
+ $(BUILD_PFX)%.cc.o: %.cc
+ 	$(if $(quiet),@echo "    [CXX] $@")
+ 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
+-	$(qexec)$(CXX) $(INTERNAL_CFLAGS) $(CXXFLAGS) -c -o $@ $<
++	$(qexec)$(CXX) $(INTERNAL_CFLAGS) $(CXXFLAGS) -c -Fo: $@ $<
+ 
+ $(BUILD_PFX)%.cpp.d: %.cpp
+ 	$(if $(quiet),@echo "    [DEP] $@")
+@@ -195,7 +201,7 @@ $(BUILD_PFX)%.cpp.d: %.cpp
+ $(BUILD_PFX)%.cpp.o: %.cpp
+ 	$(if $(quiet),@echo "    [CXX] $@")
+ 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
+-	$(qexec)$(CXX) $(INTERNAL_CFLAGS) $(CXXFLAGS) -c -o $@ $<
++	$(qexec)$(CXX) $(INTERNAL_CFLAGS) $(CXXFLAGS) -c -Fo: $@ $<
+ 
+ $(BUILD_PFX)%.asm.d: %.asm
+ 	$(if $(quiet),@echo "    [DEP] $@")
+@@ -224,7 +230,7 @@ $(BUILD_PFX)%.S.o: %.S
+ $(BUILD_PFX)%.c.S: %.c
+ 	$(if $(quiet),@echo "    [GEN] $@")
+ 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
+-	$(qexec)$(CC) -S $(CFLAGS) -o $@ $<
++	$(qexec)$(CC) -S $(CFLAGS) -Fo: $@ $<
+ 
+ .PRECIOUS: %.asm.S
+ $(BUILD_PFX)%.asm.S: %.asm
+@@ -240,12 +246,12 @@ ifeq ($(HAVE_GNU_STRIP),yes)
+ # when given --strip-unneeded. Using nm and awk to identify globals and
+ # keep them caused command line length issues under mingw and segfaults in
+ # test_libvpx were observed under OS/2: simply use --strip-debug.
+-%.a: %_g.a
++%.$(LIB_EXT_NAME): %_g.$(LIB_EXT_NAME)
+ 	$(if $(quiet),@echo "    [STRIP] $@ < $<")
+ 	$(qexec)$(STRIP) --strip-debug \
+           -o $@ $<
+ else
+-%.a: %_g.a
++%.$(LIB_EXT_NAME): %_g.$(LIB_EXT_NAME)
+ 	$(if $(quiet),@echo "    [CP] $@ < $<")
+ 	$(qexec)cp $< $@
+ endif
+@@ -282,13 +288,13 @@ define linker_template
+ $(1): $(filter-out -%,$(2))
+ $(1):
+ 	$(if $(quiet),@echo    "    [LD] $$@")
+-	$(qexec)$$(LD) $$(strip $$(INTERNAL_LDFLAGS) $$(LDFLAGS) -o $$@ $(2) $(3) $$(extralibs))
++	$(qexec)$$(LD) $$(strip $$(INTERNAL_LDFLAGS) $$(LDFLAGS) -out:$$@ $(2) $(3) $$(extralibs))
+ endef
+ define linkerxx_template
+ $(1): $(filter-out -%,$(2))
+ $(1):
+ 	$(if $(quiet),@echo    "    [LD] $$@")
+-	$(qexec)$$(CXX) $$(strip $$(INTERNAL_LDFLAGS) $$(LDFLAGS) -o $$@ $(2) $(3) $$(extralibs))
++	$(qexec)$$(CXX) $$(strip $$(INTERNAL_LDFLAGS) $$(LDFLAGS) -Fo: $$@ $(2) $(3) $$(extralibs))
+ endef
+ # make-3.80 has a bug with expanding large input strings to the eval function,
+ # which was triggered in some cases by the following component of
+@@ -311,7 +317,7 @@ define archive_template
+ # for creating them.
+ $(1):
+ 	$(if $(quiet),@echo "    [AR] $$@")
+-	$(qexec)$$(AR) $$(ARFLAGS) $$@ $$^
++	$(qexec)$$(AR) $$(ARFLAGS) -out:$$@ $$^
+ endef
+ 
+ # Don't use -Wl,-z,defs with Clang's sanitizers.
+@@ -338,7 +344,7 @@ $(1):
+ 	$(qexec)$$(LD) -shared $$(LDFLAGS) \
+             $(NO_UNDEFINED) \
+             -Wl,-soname,$$(SONAME) \
+-            -Wl,--version-script,$$(EXPORTS_FILE) -o $$@ \
++            -Wl,--version-script,$$(EXPORTS_FILE) -out:$$@ \
+             $$(filter %.o,$$^) $$(extralibs)
+ endef
+ 
+@@ -351,7 +357,7 @@ $(1):
+ 	$(qexec)$$(LD) -dynamiclib $$(LDFLAGS) \
+ 	    -exported_symbols_list $$(EXPORTS_FILE) \
+         -Wl,-headerpad_max_install_names,-compatibility_version,1.0,-current_version,$$(VERSION_MAJOR) \
+-        -o $$@ \
++        -out:$$@ \
+         $$(filter %.o,$$^) $$(extralibs)
+ endef
+ 
+@@ -362,7 +368,7 @@ define dll_template
+ $(1):
+ 	$(if $(quiet),@echo "    [LD] $$@")
+ 	$(qexec)$$(LD) -Zdll $$(LDFLAGS) \
+-        -o $$@ \
++        -out:$$@ \
+         $$(filter %.o,$$^) $$(extralibs) $$(EXPORTS_FILE)
+ endef
+ 
+@@ -421,7 +427,7 @@ clean::
+ LIBS=$(call enabled,LIBS)
+ .libs: $(LIBS)
+ 	@touch $@
+-$(foreach lib,$(filter %_g.a,$(LIBS)),$(eval $(call archive_template,$(lib))))
++$(foreach lib,$(filter %_g.$(LIB_EXT_NAME),$(LIBS)),$(eval $(call archive_template,$(lib))))
+ $(foreach lib,$(filter %so.$(SO_VERSION_MAJOR).$(SO_VERSION_MINOR).$(SO_VERSION_PATCH),$(LIBS)),$(eval $(call so_template,$(lib))))
+ $(foreach lib,$(filter %$(SO_VERSION_MAJOR).dylib,$(LIBS)),$(eval $(call dl_template,$(lib))))
+ $(foreach lib,$(filter %$(SO_VERSION_MAJOR).dll,$(LIBS)),$(eval $(call dll_template,$(lib))))
+diff --git a/build/make/configure.sh b/build/make/configure.sh
+index d1d89aa69..155c43c54 100644
+--- a/build/make/configure.sh
++++ b/build/make/configure.sh
+@@ -302,33 +302,33 @@ check_cc() {
+   log check_cc "$@"
+   cat >${TMP_C}
+   log_file ${TMP_C}
+-  check_cmd ${CC} ${CFLAGS} "$@" -c -o ${TMP_O} ${TMP_C}
++  check_cmd ${CC} ${CFLAGS} "$@" -c -Fo: ${TMP_O} ${TMP_C}
+ }
+ 
+ check_cxx() {
+   log check_cxx "$@"
+   cat >${TMP_CC}
+   log_file ${TMP_CC}
+-  check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_CC}
++  check_cmd ${CXX} ${CXXFLAGS} "$@" -c -Fo: ${TMP_O} ${TMP_CC}
+ }
+ 
+ check_cpp() {
+   log check_cpp "$@"
+   cat > ${TMP_C}
+   log_file ${TMP_C}
+-  check_cmd ${CC} ${CFLAGS} "$@" -E -o ${TMP_O} ${TMP_C}
++  check_cmd ${CC} ${CFLAGS} "$@" -E -Fo: ${TMP_O} ${TMP_C}
+ }
+ 
+ check_ld() {
+   log check_ld "$@"
+   check_cc $@ \
+-    && check_cmd ${LD} ${LDFLAGS} "$@" -o ${TMP_X} ${TMP_O} ${extralibs}
++    && check_cmd ${LD} ${LDFLAGS} "$@" -out:${TMP_X} ${TMP_O} ${extralibs}
+ }
+ 
+ check_lib() {
+   log check_lib "$@"
+   check_cc $@ \
+-    && check_cmd ${LD} ${LDFLAGS} -o ${TMP_X} ${TMP_O} "$@" ${extralibs}
++    && check_cmd ${LD} ${LDFLAGS} -out:${TMP_X} ${TMP_O} "$@" ${extralibs}
+ }
+ 
+ check_header(){
+@@ -551,7 +551,7 @@ STRIP=${STRIP}
+ 
+ CFLAGS  = ${CFLAGS}
+ CXXFLAGS  = ${CXXFLAGS}
+-ARFLAGS = -crs\$(if \$(quiet),,v)
++ARFLAGS = ${ARFLAGS}
+ LDFLAGS = ${LDFLAGS}
+ ASFLAGS = ${ASFLAGS}
+ extralibs = ${extralibs}
+diff --git a/build/make/gen_msvs_sln.sh b/build/make/gen_msvs_sln.sh
+index 0b312850f..b7ee11182 100755
+--- a/build/make/gen_msvs_sln.sh
++++ b/build/make/gen_msvs_sln.sh
+@@ -70,7 +70,9 @@ parse_project() {
+     cur_config_list=`grep -B1 'Label="Configuration"' $file |
+         grep Condition | cut -d\' -f4`
+     new_config_list=$(for i in $config_list $cur_config_list; do
+-        echo $i
++        if [[ $i =~ ^$target_config ]];then
++            echo $i
++        fi
+     done | sort | uniq)
+     if [ "$config_list" != "" ] && [ "$config_list" != "$new_config_list" ]; then
+         mixed_platforms=1
+@@ -190,7 +192,7 @@ ${TAB}rm -rf "$platform"/"$config"
+ ifneq (\$(found_devenv),)
+ $nows_sln_config: $outfile
+ ${TAB}\$(MSBUILD_TOOL) $outfile -m -t:Build \\
+-${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform"
++${TAB}${TAB}-p:Configuration="$config" -p:Platform="$platform" -p:VCToolsVersion="$VCToolsVersion" -p:WindowsTargetPlatformVersion="$UCRTVersion"
+ else
+ $nows_sln_config: $outfile .nodevenv.once
+ ${TAB}@echo "  * Skipping build of $sln_config (\$(MSBUILD_TOOL) not in path)."
+@@ -225,6 +227,8 @@ for opt in "$@"; do
+     ;;
+     --target=*) target="${optval}"
+     ;;
++    --config=*) target_config="${optval}"
++    ;;
+     -*) die_unknown $opt
+     ;;
+     *) file_list[${#file_list[@]}]="$opt"
+diff --git a/build/make/gen_msvs_vcxproj.sh b/build/make/gen_msvs_vcxproj.sh
+index 1e1db05bb..6f6ea0eda 100755
+--- a/build/make/gen_msvs_vcxproj.sh
++++ b/build/make/gen_msvs_vcxproj.sh
+@@ -270,9 +270,9 @@ case "$target" in
+     arm64*)
+         platforms[0]="ARM64"
+         # As of Visual Studio 2022 17.5.5, clang-cl does not support ARM64EC.
+-        if [ "$vs_ver" -ge 17 -a "$platform_toolset" != "ClangCl" ]; then
+-            platforms[1]="ARM64EC"
+-        fi
++        # if [ "$vs_ver" -ge 17 -a "$platform_toolset" != "ClangCl" ]; then
++        #     platforms[1]="ARM64EC"
++        # fi
+         asm_Debug_cmdline="armasm64 -nologo -oldit &quot;%(FullPath)&quot;"
+         asm_Release_cmdline="armasm64 -nologo -oldit &quot;%(FullPath)&quot;"
+     ;;
+@@ -311,7 +311,8 @@ generate_vcxproj() {
+         tag_content RootNamespace ${name}
+         tag_content Keyword ManagedCProj
+         if [ $vs_ver -ge 12 ] && [ "${platforms[0]}" = "ARM" ]; then
+-            tag_content AppContainerApplication true
++            :
++            # tag_content AppContainerApplication true
+             # The application type can be one of "Windows Store",
+             # "Windows Phone" or "Windows Phone Silverlight". The
+             # actual value doesn't matter from the libvpx point of view,
+@@ -319,8 +320,8 @@ generate_vcxproj() {
+             # The PlatformToolset field needs to be set in sync with this;
+             # for Windows Store and Windows Phone Silverlight it should be
+             # v120 while it should be v120_wp81 if the type is Windows Phone.
+-            tag_content ApplicationType "Windows Store"
+-            tag_content ApplicationTypeRevision 8.1
++            # tag_content ApplicationType "Windows Store"
++            # tag_content ApplicationTypeRevision 8.1
+         fi
+         if [ "${platforms[0]}" = "ARM64" ]; then
+             # Require the first Visual Studio version to have ARM64 support.
+@@ -402,6 +403,7 @@ generate_vcxproj() {
+               fi
+               tag_content TargetName "${name}${lib_sfx}${config_suffix}"
+             fi
++            tag_content ExecutablePath "\$(VC_ExecutablePath_${VSCMD_ARG_HOST_ARCH}_${VSCMD_ARG_TGT_ARCH});\$(CommonExecutablePath)"
+             close_tag PropertyGroup
+         done
+     done
+diff --git a/libs.mk b/libs.mk
+index d5076b7e8..70affdace 100644
+--- a/libs.mk
++++ b/libs.mk
+@@ -152,8 +152,8 @@ INSTALL_MAPS += include/vpx/% $(SRC_PATH_BARE)/vpx_ports/%
+ INSTALL_MAPS += $(LIBSUBDIR)/%     %
+ INSTALL_MAPS += src/%     $(SRC_PATH_BARE)/%
+ ifeq ($(CONFIG_MSVS),yes)
+-INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Release/%)
+-INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Debug/%)
++INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/%  $(p)/Release/%)
++#INSTALL_MAPS += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/%  $(p)/Debug/%)
+ endif
+ 
+ CODEC_SRCS-yes += build/make/version.sh
+@@ -181,10 +181,10 @@ INSTALL-LIBS-$(CONFIG_ENCODERS) += include/vpx/vpx_encoder.h
+ INSTALL-LIBS-$(CONFIG_ENCODERS) += include/vpx/vpx_tpl.h
+ ifeq ($(CONFIG_EXTERNAL_BUILD),yes)
+ ifeq ($(CONFIG_MSVS),yes)
+-INSTALL-LIBS-yes                  += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/$(CODEC_LIB).lib)
+-INSTALL-LIBS-$(CONFIG_DEBUG_LIBS) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/$(CODEC_LIB)d.lib)
+-INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/vpx.dll)
+-INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(p)/vpx.exp)
++INSTALL-LIBS-yes                  += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(CODEC_LIB).lib)
++INSTALL-LIBS-$(CONFIG_DEBUG_LIBS) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/$(CODEC_LIB)d.lib)
++INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/vpx.dll)
++INSTALL-LIBS-$(CONFIG_SHARED) += $(foreach p,$(VS_PLATFORMS),$(LIBSUBDIR)/vpx.exp)
+ endif
+ else
+ INSTALL-LIBS-$(CONFIG_STATIC) += $(LIBSUBDIR)/libvpx.a
+@@ -299,6 +299,32 @@ PROJECTS-yes += vpxrc.$(VCPROJ_SFX)
+ vpxrc.$(VCPROJ_SFX): vpx_config.asm
+ vpxrc.$(VCPROJ_SFX): $(RTCD)
+ 
++
++LIBS-yes += vpx.pc
++vpx.pc: config.mk libs.mk
++	@echo "    [CREATE] $@"
++	$(qexec)echo '# pkg-config file from libvpx $(VERSION_STRING)' > $@
++	$(qexec)echo 'prefix=$(PREFIX)' >> $@
++	$(qexec)echo 'exec_prefix=$${prefix}' >> $@
++	$(qexec)echo 'libdir=$${prefix}/$(LIBSUBDIR)' >> $@
++	$(qexec)echo 'includedir=$${prefix}/include' >> $@
++	$(qexec)echo '' >> $@
++	$(qexec)echo 'Name: vpx' >> $@
++	$(qexec)echo 'Description: WebM Project VPx codec implementation' >> $@
++	$(qexec)echo 'Version: $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)' >> $@
++	$(qexec)echo 'Requires:' >> $@
++	$(qexec)echo 'Conflicts:' >> $@
++	$(qexec)echo 'Libs: -L$${libdir} -lvpx$(if $(CONFIG_STATIC_MSVCRT),mt,md -lmsvcrt)' >> $@
++ifeq ($(HAVE_PTHREAD_H),yes)
++	$(qexec)echo 'Libs.private: -lpthread' >> $@
++else
++	$(qexec)echo 'Libs.private: ' >> $@
++endif
++	$(qexec)echo 'Cflags: -I$${includedir}' >> $@
++INSTALL-LIBS-yes += $(LIBSUBDIR)/pkgconfig/vpx.pc
++INSTALL_MAPS += $(LIBSUBDIR)/pkgconfig/%.pc %.pc
++CLEAN-OBJS += vpx.pc
++
+ endif # ifeq ($(CONFIG_MSVS),yes)
+ else # ifeq ($(CONFIG_EXTERNAL_BUILD),yes)
+ LIBVPX_OBJS=$(call objs, $(filter-out $(ASM_INCLUDES), $(CODEC_SRCS)))
+diff --git a/solution.mk b/solution.mk
+index 145adc0dd..5c1b3ff19 100644
+--- a/solution.mk
++++ b/solution.mk
+@@ -16,6 +16,7 @@ VPX_RDEPS=$(foreach vcp,\
+ vpx.sln: $(wildcard *.$(VCPROJ_SFX))
+ 	@echo "    [CREATE] $@"
+ 	$(SRC_PATH_BARE)/build/make/gen_msvs_sln.sh \
++            "--config=Release" \
+             $(if $(filter vpx.$(VCPROJ_SFX),$^),$(VPX_RDEPS)) \
+             --dep=test_libvpx:gtest \
+             --ver=$(CONFIG_VS_VERSION)\

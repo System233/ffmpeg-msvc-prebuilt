@@ -62,6 +62,8 @@ All builds include the following libraries:
 - [freetype](https://gitlab.freedesktop.org/freetype/freetype.git)
 - [harfbuzz](https://github.com/harfbuzz/harfbuzz.git)
 - [SDL2](https://github.com/libsdl-org/SDL.git)
+- [libvpx](https://github.com/webmproject/libvpx.git)
+- [libwebp](https://github.com/webmproject/libwebp.git)
 - [x264](https://code.videolan.org/videolan/x264.git) (GPL builds only)
 - [x265](https://bitbucket.org/multicoreware/x265_git.git) (GPL builds only)
 

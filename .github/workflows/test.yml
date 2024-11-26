@@ -1,0 +1,22 @@
+env:
+  MSYS2_PATH_TYPE: inherit
+  SDK_VER: 10.0.22621.0
+  REF_NAME: ${{ inputs.ref_name||github.ref_name }}
+
+name: Test
+run-name: Test ${{inputs.ref_name||github.ref_name}}
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      ref_name:
+        description: "Tag"
+        required: false
+
+jobs:
+  test:
+    name: Test ${{inputs.ref_name||github.ref_name}}
+    uses: ./.github/workflows/build.yml
+    with:
+      ref_name: ${{inputs.ref_name||github.ref_name}}
