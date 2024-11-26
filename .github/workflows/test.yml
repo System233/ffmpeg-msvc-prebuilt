@@ -16,6 +16,7 @@ on:
 
 jobs:
   test:
+    name: Test ${{inputs.ref_name||github.ref_name}}
     uses: ./.github/workflows/build.yml
     with:
       ref_name: ${{inputs.ref_name||github.ref_name}}

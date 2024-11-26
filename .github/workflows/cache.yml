@@ -17,6 +17,7 @@ on:
         value: ${{jobs.cache.outputs.cache-key}}
 jobs:
   cache:
+    name: Caching ${{inputs.ref_name||github.ref_name}}
     outputs:
       cache-key: ${{steps.setup.outputs.cache-key}}
     runs-on: windows-2022

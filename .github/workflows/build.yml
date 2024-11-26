@@ -23,12 +23,12 @@ on:
         type: string
 
 jobs:
-  cache:
+  prepare:
     uses: ./.github/workflows/cache.yml
     with:
       ref_name: ${{inputs.ref_name||github.ref_name}}
   build:
-    needs: cache
+    needs: prepare
     strategy:
       matrix:
         arch: [x86, amd64, arm, arm64]
@@ -60,7 +60,7 @@ jobs:
         with:
           path: .git/modules
           # key: ${{ runner.os }}-${{steps.setup.outputs.cache-key}}-submodules
-          key: ${{ needs.cache.outputs.cache-key }}
+          key: ${{ needs.prepare.outputs.cache-key }}
 
       - name: Pull submodules
         shell: bash
