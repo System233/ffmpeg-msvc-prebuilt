@@ -111,10 +111,10 @@ apply-patch harfbuzz harfbuzz.patch
 
 if [ -n "$ENABLE_LIBVPX" ]; then
     case $BUILD_ARCH in
-        amd64)) toolchain=x86_64-win64-vs17;;
-        x86)) toolchain=x86-win32-vs17;;
-        arm)) toolchain=armv7-win32-vs17;;
-        arm64)) toolchain=arm64-win64-vs17;;
+        amd64) toolchain=x86_64-win64-vs17;;
+        x86) toolchain=x86-win32-vs17;;
+        arm) toolchain=armv7-win32-vs17;;
+        arm64) toolchain=arm64-win64-vs17;;
     esac
     
     if [ "$BUILD_TYPE" == "static" ]; then
