@@ -65,7 +65,7 @@ jobs:
       - name: Pull submodules
         shell: bash
         run: |
-          git submodule update --init --recursive --depth 1
+          git submodule update --init --recursive --depth 1 --jobs $(nproc)
 
       - uses: msys2/setup-msys2@v2
         with:

@@ -37,3 +37,6 @@ url = https://github.com/webmproject/libwebp.git
 [submodule "libvpx"]
 path = libvpx
 url = https://github.com/webmproject/libvpx.git
+[submodule "gnutls"]
+	path = gnutls
+	url = https://github.com/gnutls/gnutls.git
