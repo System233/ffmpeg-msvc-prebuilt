@@ -8,11 +8,12 @@ on:
 jobs:
   check:
     runs-on: windows-latest
+    outputs:
+      ref_list: ${{steps.check.outputs.ref_list}}
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT }}
       - name: Check
+        id: check
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -20,6 +21,7 @@ jobs:
           git submodule update --init --depth 1 FFmpeg
           git -C FFmpeg fetch --tags
           git fetch --tags
+          ref_list=""
           for ref_name in `git -C FFmpeg for-each-ref --sort=-taggerdate --format '%(refname:strip=2)' refs/tags |head -n 10`;do
             if git rev-parse "${ref_name}" >/dev/null 2>&1; then
               echo "skip '${ref_name}'"
@@ -32,5 +34,18 @@ jobs:
               git tag ${ref_name} 
 
               git push origin ${ref_name}
+
+              ref_list="${ref_list},\"${ref_name}\""
             fi
           done
+          echo "ref_list=[${ref_list#?}]" >>$GITHUB_OUTPUT
+  build:
+    needs: check
+    if: ${{ needs.check.outputs.ref_list != '[]'  }}
+    strategy:
+      matrix:
+        ref_name: ${{fromJson(needs.check.outputs.ref_list)}}
+      fail-fast: false
+    uses: ./.github/workflows/build.yml
+    with:
+      ref_name: ${{matrix.ref_name}}
