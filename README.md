@@ -2,7 +2,7 @@
 
 This repository provides **FFmpeg builds** compiled with **MSVC (Microsoft Visual C++)**, leveraging GitHub Actions to automate the process. Each release includes complete precompiled binaries, libraries, and development files, optimized for various platforms and configurations.
 
-[![Build FFmpeg](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml/badge.svg)](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml)
+[![Build FFmpeg](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml/badge.svg?event=push)](https://github.com/System233/ffmpeg-builds/actions/workflows/build.yml)
 
 ## Contents of the Release Packages
 
