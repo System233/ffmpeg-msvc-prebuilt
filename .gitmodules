@@ -37,3 +37,9 @@ url = https://github.com/webmproject/libwebp.git
 [submodule "libvpx"]
 path = libvpx
 url = https://github.com/webmproject/libvpx.git
+[submodule "libass"]
+	path = libass
+	url = https://github.com/libass/libass.git
+[submodule "fribidi"]
+	path = fribidi
+	url = https://github.com/fribidi/fribidi.git
