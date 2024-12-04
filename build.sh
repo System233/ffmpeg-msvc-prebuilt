@@ -120,12 +120,9 @@ if [ -n "$ENABLE_LIBVPX" ]; then
     arm64) libvpx_target=arm64-win64-vs17 ;;
     esac
 
-    if [ "$BUILD_TYPE" == "static" ]; then
-        LIBVPX_ARGS="--enable-static-msvcrt"
-    fi
+    LIBVPX_ARGS="--enable-static-msvcrt"
     apply-patch libvpx libvpx.patch
-    export
-    AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
+    CFLAGS="" AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
     add_ffargs "--enable-libvpx"
 fi
 
