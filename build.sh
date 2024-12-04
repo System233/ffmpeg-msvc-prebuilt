@@ -45,38 +45,6 @@ apply-patch zlib zlib.patch
 apply-patch FFmpeg ffmpeg.patch
 apply-patch harfbuzz harfbuzz.patch
 
-if [ "$BUILD_LICENSE" == "gpl" ]; then
-
-    apply-patch x265_git x265_git-${BUILD_TYPE}.patch
-
-    if [ "$BUILD_TYPE" == "static" ]; then
-        X265_ARGS="-DSTATIC_LINK_CRT=ON"
-        ENABLE_SHARED=OFF
-    else
-        X265_ARGS="-DSTATIC_LINK_CRT=OFF"
-        ENABLE_SHARED=ON
-    fi
-
-    if [ "$BUILD_ARCH" == arm ]; then
-        apply-patch x265_git x265_git-arm.patch
-    fi
-
-    git -C x265_git fetch --tags
-    ./build-cmake-dep.sh x265_git/source -DCMAKE_SYSTEM_NAME=Windows -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
-    add_ffargs "--enable-libx265"
-
-    if [ "$BUILD_TYPE" == "shared" ]; then
-        apply-patch x264 x264-${BUILD_TYPE}.patch
-    fi
-    if [[ "$BUILD_ARCH" =~ arm ]]; then
-        X264_ARGS="--disable-asm"
-    fi
-
-    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
-    add_ffargs "--enable-libx264"
-
-fi
-
 ./build-make-dep.sh nv-codec-headers
 
 ./build-cmake-dep.sh zlib -DZLIB_BUILD_EXAMPLES=OFF
@@ -91,6 +59,14 @@ if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
     ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
     add_ffargs "--enable-libharfbuzz"
 fi
+
+if [ -n "$ENABLE_LIBASS" ]; then
+    apply-patch fribidi fribidi.patch
+    ./build-libass.sh
+    add_ffargs "--enable-libass"
+fi
+
+
 
 if [ -n "$ENABLE_SDL" ]; then
     ./build-cmake-dep.sh SDL
@@ -131,10 +107,36 @@ if [ -n "$ENABLE_LIBWEBP" ]; then
     add_ffargs "--enable-libwebp"
 fi
 
+if [ "$BUILD_LICENSE" == "gpl" ]; then
 
-if [ -n "$ENABLE_LIBASS" ]; then
-    ./build-libass.sh
-    add_ffargs "--enable-libass"
+    apply-patch x265_git x265_git-${BUILD_TYPE}.patch
+
+    if [ "$BUILD_TYPE" == "static" ]; then
+        X265_ARGS="-DSTATIC_LINK_CRT=ON"
+        ENABLE_SHARED=OFF
+    else
+        X265_ARGS="-DSTATIC_LINK_CRT=OFF"
+        ENABLE_SHARED=ON
+    fi
+
+    if [ "$BUILD_ARCH" == arm ]; then
+        apply-patch x265_git x265_git-arm.patch
+    fi
+
+    git -C x265_git fetch --tags
+    ./build-cmake-dep.sh x265_git/source -DCMAKE_SYSTEM_NAME=Windows -DENABLE_SHARED=$ENABLE_SHARED -DENABLE_CLI=OFF $X265_ARGS
+    add_ffargs "--enable-libx265"
+
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        apply-patch x264 x264-${BUILD_TYPE}.patch
+    fi
+    if [[ "$BUILD_ARCH" =~ arm ]]; then
+        X264_ARGS="--disable-asm"
+    fi
+
+    INSTALL_TARGET=install-lib-${BUILD_TYPE} ./build-make-dep.sh x264 --enable-${BUILD_TYPE} $X264_ARGS
+    add_ffargs "--enable-libx264"
+
 fi
 
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
