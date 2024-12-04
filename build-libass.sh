@@ -12,7 +12,7 @@ export PATH=$PATH:$GNULIB_SRCDIR
 echo -e "\n[Build fribidi]"
 cd $SRC_DIR/fribidi
 ./autogen.sh
-./configure --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking CFLAGS="-DHAVE_STRINGIZE"
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking CFLAGS="-DHAVE_STRINGIZE"
 make -C lib install -j$(nproc)
 make install-data-am
 
@@ -20,7 +20,7 @@ make install-data-am
 echo -e "\n[Build libass]"
 cd $SRC_DIR/libass
 ./autogen.sh
-./configure --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static  --disable-asm --disable-dependency-tracking
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static  --disable-asm --disable-dependency-tracking
 make install -j$(nproc)
 make install-data-am
 
