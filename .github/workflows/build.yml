@@ -79,6 +79,7 @@ jobs:
             libtool
             bison
             automake
+            autoconf
 
       - name: Remove MSYS2 link
         shell: msys2 {0}
