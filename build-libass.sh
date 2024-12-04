@@ -18,7 +18,7 @@ cd $SRC_DIR/fribidi
 NOCONFIGURE=1 ./autogen.sh
 FRIBIDI_CFLAGS="-DHAVE_STRINGIZE" 
 CFLAGS="$FRIBIDI_CFLAGS" ./configure "--host=${BUILD_ARCH}-windows" --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking 
-make -C gen.tab install -j$(nproc) CFLAGS="$FRIBIDI_CFLAGS" 
+make -C gen.tab -j$(nproc) CFLAGS="$FRIBIDI_CFLAGS" 
 make -C lib install -j$(nproc) CFLAGS="$CFLAGS $FRIBIDI_CFLAGS" 
 make install-data-am
 
