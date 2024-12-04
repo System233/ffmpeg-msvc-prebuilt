@@ -5,7 +5,7 @@
 
 set -e
 SRC_DIR=$(pwd)
-export GNULIB_SRCDIR=$SRC_DIR/gnulib
+export GNULIB_SRCDIR=$SRC_DIR/gnutls/gnulib
 export PATH=$PATH:$GNULIB_SRCDIR
 
 ./build-make-dep.sh gmplib --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-assembly gmp_cv_asm_w32=.word
