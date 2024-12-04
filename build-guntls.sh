@@ -8,7 +8,7 @@ SRC_DIR=$(pwd)
 export GNULIB_SRCDIR=$SRC_DIR/gnulib
 export PATH=$PATH:$GNULIB_SRCDIR
 
-./build-make-dep.sh gmplib --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-assembly gmp_cv_asm_w32=.word
+./build-make-dep.sh gmplib --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-assembly gmp_cv_asm_w32=.word
 # mv $INSTALL_PREFIX/lib/libgmp.a $INSTALL_PREFIX/lib/gmp.lib
 
 
@@ -19,13 +19,13 @@ gnulib-tool --import unistd
 automake -a -c
 autoconf
 
-./configure --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --enable-public-key LDFLAGS="-L$INSTALL_PREFIX/lib" CFLAGS="-I$INSTALL_PREFIX/include"
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --enable-public-key LDFLAGS="-L$INSTALL_PREFIX/lib" CFLAGS="-I$INSTALL_PREFIX/include"
 
 make -j$(nproc) install
 
 cd $SRC_DIR/gnutls/devel/libtasn1
 ./bootstrap
-./configure --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static  --disable-valgrind-tests  --disable-doc   --disable-dependency-tracking CFLAGS=-DASN1_STATIC
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static  --disable-valgrind-tests  --disable-doc   --disable-dependency-tracking CFLAGS=-DASN1_STATIC
 make -C lib install
 # mv $INSTALL_PREFIX/lib/libtasn1.a $INSTALL_PREFIX/lib/tasn1.lib
 
@@ -33,7 +33,7 @@ make -C lib install
 cd $SRC_DIR/libev
 gnulib-tool --import sys_time
 autoconf
-./configure --host=amd64-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static
 # ln -sf /bin/libtool libtool
 make install -j$(nproc)
 
@@ -44,6 +44,6 @@ cd $SRC_DIR/gnutls
 gnulib-tool --add-import dirent opendir closedir readdir --local-dir=gl
 aclocal -I m4
 autoconf
-./configure --host=amd64-windows --prefix=/usr/local --disable-shared --enable-static --with-included-unistring --with-libev-prefix=/usr/local CFLAGS=-I/usr/local/include LDFLAGS=-L/usr/local/lib --without-p11-kit --disable-hardware-acceleration --disable-cxx -disable-tests    --disable-tools  --disable-doc   
+./configure --host=${BUILD_ARCH}-windows --prefix=/usr/local --disable-shared --enable-static --with-included-unistring --with-libev-prefix=/usr/local CFLAGS=-I/usr/local/include LDFLAGS=-L/usr/local/lib --without-p11-kit --disable-hardware-acceleration --disable-cxx -disable-tests    --disable-tools  --disable-doc   
 # ln -sf /bin/libtool libtool
 make install -j$(nproc)
