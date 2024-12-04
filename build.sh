@@ -141,5 +141,6 @@ if [ -n "$ENABLE_LIBWEBP" ]; then
     add_ffargs "--enable-libwebp"
 fi
 
+./build-gnutls.sh
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
 ./relocate_prefix.sh

@@ -1,0 +1,62 @@
+diff --git a/configure.ac b/configure.ac
+index 65c756469..7d559ddd1 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -544,7 +544,7 @@ fi
+ AM_CONDITIONAL(ENABLE_OLDGNUTLS_INTEROP, test "$enable_oldgnutls_interop" != "no")
+ 
+ # check for libev - used in full test suite
+-AC_LIB_HAVE_LINKFLAGS(ev,, [#include <ev.h>], [ev_run(0,0);])
++AC_LIB_HAVE_LINKFLAGS(ev,ws2_32, [#include <ev.h>], [ev_run(0,0);])
+ if test "$ac_cv_libev" = yes; then
+         AC_SUBST([LIBEV_LIBS], [$LIBEV])
+ elif test "$full_test_suite" = yes;then
+diff --git a/lib/algorithms/groups.c b/lib/algorithms/groups.c
+index 88d0cf630..15940e375 100644
+--- a/lib/algorithms/groups.c
++++ b/lib/algorithms/groups.c
+@@ -90,7 +90,14 @@ static const gnutls_group_entry_st supported_groups[] = {
+ 		.tls_id = 25,
+ 		.pk = GNUTLS_PK_ECDSA,
+ 	},
+-	group_x25519,
++	// group_x25519,
++	{
++		.name = "X25519",
++		.id = GNUTLS_GROUP_X25519,
++		.curve = GNUTLS_ECC_CURVE_X25519,
++		.tls_id = 29,
++		.pk = GNUTLS_PK_ECDH_X25519,
++	},
+ #ifdef ENABLE_GOST
+ 	/* draft-smyshlyaev-tls12-gost-suites-06, Section 6 */
+ 	{
+diff --git a/lib/gnutls.pc.in b/lib/gnutls.pc.in
+index 7cdedda5d..4e2726f67 100644
+--- a/lib/gnutls.pc.in
++++ b/lib/gnutls.pc.in
+@@ -18,7 +18,7 @@ Name: GnuTLS
+ Description: Transport Security Layer implementation for the GNU system
+ URL: https://www.gnutls.org/
+ Version: @VERSION@
+-Libs: -L${libdir} -lgnutls
++Libs: -L${libdir} -lgnutls -lcrypt32
+ Libs.private: @LIBINTL@ @LIBSOCKET@ @INET_PTON_LIB@ @LIBPTHREAD@ @LIB_SELECT@ @TSS_LIBS@ @GMP_LIBS@ @LIBUNISTRING@ @LIBATOMIC_LIBS@ @GNUTLS_LIBS_PRIVATE@
+ @GNUTLS_REQUIRES_PRIVATE@
+-Cflags: -I${includedir}
++Cflags: -I${includedir} -DNO_SSIZE_T
+diff --git a/lib/includes/gnutls/gnutls.h.in b/lib/includes/gnutls/gnutls.h.in
+index 8b3bb5213..db18b0b10 100644
+--- a/lib/includes/gnutls/gnutls.h.in
++++ b/lib/includes/gnutls/gnutls.h.in
+@@ -45,6 +45,10 @@
+ /* Get time_t. */
+ #include <time.h>
+ 
++#if defined(_WIN32) && defined(NO_SSIZE_T)
++typedef intptr_t ssize_t;
++#endif
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif

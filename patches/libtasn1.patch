@@ -1,0 +1,16 @@
+diff --git a/gnulib b/gnulib
+--- a/gnulib
++++ b/gnulib
+@@ -1 +1 @@
+-Subproject commit aa52cadc36fb1af0509dc3a4bce4ce73197ece68
++Subproject commit aa52cadc36fb1af0509dc3a4bce4ce73197ece68-dirty
+diff --git a/lib/libtasn1.pc.in b/lib/libtasn1.pc.in
+index f480de7..8ac7c49 100644
+--- a/lib/libtasn1.pc.in
++++ b/lib/libtasn1.pc.in
+@@ -27,4 +27,4 @@ Description: Library for ASN.1 and DER manipulation
+ URL: https://www.gnu.org/software/libtasn1/
+ Version: @VERSION@
+ Libs: -L${libdir} -ltasn1
+-Cflags: -I${includedir}
++Cflags: -I${includedir} -DASN1_STATIC

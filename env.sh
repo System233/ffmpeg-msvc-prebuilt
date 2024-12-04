@@ -12,3 +12,5 @@ export BUILD_LICENSE=${3:-gpl}
 
 export CC=cl
 export CXX=cl
+export LDFLAGS="-L$INSTALL_PREFIX/lib"
+export CFLAGS="-I$INSTALL_PREFIX/include"
