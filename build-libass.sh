@@ -12,8 +12,8 @@ export PATH=$PATH:$GNULIB_SRCDIR
 echo -e "\n[Build fribidi]"
 cd $SRC_DIR/fribidi
 ./autogen.sh
-CFLAGS="$CFLAGS -DHAVE_STRINGIZE" ./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking 
-make -C lib install -j$(nproc)
+./configure --host=${BUILD_ARCH}-windows --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking 
+make -C lib install -j$(nproc) CFLAGS="$CFLAGS -DHAVE_STRINGIZE" 
 make install-data-am
 
 
