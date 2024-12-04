@@ -76,6 +76,9 @@ jobs:
             pkgconf
             yasm
             nasm
+            libtool
+            bison
+            automake
 
       - name: Remove MSYS2 link
         shell: msys2 {0}
