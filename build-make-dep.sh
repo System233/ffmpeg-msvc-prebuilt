@@ -12,4 +12,5 @@ cd $SRC_DIR
 if [ -e ./configure ]; then
     CFLAGS="$CFLAGS" ./configure $@
 fi
+make -j$(nproc)
 make ${INSTALL_TARGET:-install} PREFIX=$INSTALL_PREFIX
