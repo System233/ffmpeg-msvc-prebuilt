@@ -35,7 +35,7 @@ add_ffargs() {
 apply-patch() {
     GIT_CMD="git -C $1 apply $(pwd)/patches/$2 --ignore-whitespace"
     if ! $GIT_CMD -R --check 2>/dev/null; then
-        echo Apply patch $2 for $1
+        echo Apply $2 for $1
         $GIT_CMD
     else
         echo Skip $2 for $1
@@ -62,7 +62,7 @@ if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
 fi
 
 if [ -n "$ENABLE_LIBASS" ]; then
-    apply-patch fribidi fribidi.patch
+    # apply-patch fribidi fribidi.patch
     ./build-libass.sh
     add_ffargs "--enable-libass"
 fi
