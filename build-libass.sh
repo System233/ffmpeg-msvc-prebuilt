@@ -8,6 +8,11 @@ set -e -x
 echo SET test
 SRC_DIR=$(pwd)
 
+export TOOLCHAIN_SRCDIR="$(pwd)/toolchain"
+export AR=win-ar
+export RANLIB=win-ranlib
+export PATH=$TOOLCHAIN_SRCDIR:$PATH
+
 export GNULIB_SRCDIR="$SRC_DIR/gnutls/gnulib"
 export PATH=$PATH:$GNULIB_SRCDIR
 
