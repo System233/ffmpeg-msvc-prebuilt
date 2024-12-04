@@ -5,7 +5,7 @@
 # https://opensource.org/licenses/MIT
 
 HELP_MSG="Usage: build.sh <x86,amd64,arm,arm64> [static,shared] [gpl,lgpl] ...FF_ARGS"
-set -e
+set -ex
 source ./env.sh
 
 if [ -z $BUILD_ARCH ]; then
