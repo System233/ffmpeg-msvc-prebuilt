@@ -12,3 +12,4 @@ export BUILD_LICENSE=${3:-gpl}
 
 export CC=cl
 export CXX=cl
+export AR=lib
