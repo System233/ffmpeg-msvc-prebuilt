@@ -4,7 +4,8 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
-set -ex
+set -e -x
+echo SET test
 SRC_DIR=$(pwd)
 export GNULIB_SRCDIR="$SRC_DIR/gnutls/gnulib"
 export PATH=$PATH:$GNULIB_SRCDIR
