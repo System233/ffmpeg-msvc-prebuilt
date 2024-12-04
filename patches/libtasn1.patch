@@ -1,9 +1,3 @@
-diff --git a/gnulib b/gnulib
---- a/gnulib
-+++ b/gnulib
-@@ -1 +1 @@
--Subproject commit aa52cadc36fb1af0509dc3a4bce4ce73197ece68
-+Subproject commit aa52cadc36fb1af0509dc3a4bce4ce73197ece68-dirty
 diff --git a/lib/libtasn1.pc.in b/lib/libtasn1.pc.in
 index f480de7..8ac7c49 100644
 --- a/lib/libtasn1.pc.in
