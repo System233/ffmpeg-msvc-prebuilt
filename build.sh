@@ -34,8 +34,9 @@ add_ffargs() {
 
 apply-patch() {
     GIT_CMD="git -C $1 apply $(pwd)/patches/$2 --ignore-whitespace"
-    if ! $GIT_CMD -R --check; then
-        $GIT_CMD --ignore-whitespace
+    if ! $GIT_CMD -R --check 2>/dev/null; then
+        echo Apply patch $2 for $1
+        $GIT_CMD
     else
         echo Skip $2 for $1
     fi
