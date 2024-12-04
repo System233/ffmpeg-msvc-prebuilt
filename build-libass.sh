@@ -13,8 +13,6 @@ export AR=win-ar
 export RANLIB=win-ranlib
 export PATH=$TOOLCHAIN_SRCDIR:$PATH
 
-export GNULIB_SRCDIR="$SRC_DIR/gnutls/gnulib"
-export PATH=$PATH:$GNULIB_SRCDIR
 
 echo -e "\n[Build fribidi]"
 cd $SRC_DIR/fribidi

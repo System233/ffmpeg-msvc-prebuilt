@@ -14,6 +14,8 @@ This release contains FFmpeg builds, compiled with MSVC (Microsoft Visual C++) v
   - [openexr](https://github.com/AcademySoftwareFoundation/openexr.git)
 - [freetype](https://gitlab.freedesktop.org/freetype/freetype.git)
 - [harfbuzz](https://github.com/harfbuzz/harfbuzz.git)
+- [libass](https://github.com/libass/libass.git)
+  - [fribidi](https://github.com/fribidi/fribidi.git)
 - [SDL2](https://github.com/libsdl-org/SDL.git)
 - [libvpx](https://github.com/webmproject/libvpx.git)
 - [libwebp](https://github.com/webmproject/libwebp.git)
