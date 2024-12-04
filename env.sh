@@ -10,6 +10,10 @@ export BUILD_ARCH=${1:-$VSCMD_ARG_TGT_ARCH}
 export BUILD_TYPE=${2:-shared}
 export BUILD_LICENSE=${3:-gpl}
 
+export TOOLCHAIN_SRCDIR="$(pwd)/toolchain"
+export AR=win-ar
+export RANLIB=win-ranlib
+export PATH=$TOOLCHAIN_SRCDIR:$PATH
+
 export CC=cl
 export CXX=cl
-export AR=lib
