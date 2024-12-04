@@ -13,19 +13,18 @@ export AR=win-ar
 export RANLIB=win-ranlib
 export PATH=$TOOLCHAIN_SRCDIR:$PATH
 
-
 echo -e "\n[Build fribidi]"
 cd $SRC_DIR/fribidi
 NOCONFIGURE=1 ./autogen.sh
-./configure "--host=${BUILD_ARCH}-windows" --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking 
-make -C lib install -j1 CFLAGS="$CFLAGS -DHAVE_STRINGIZE" 
+CFLAGS="$CFLAGS -DHAVE_STRINGIZE" ./configure "--host=${BUILD_ARCH}-windows" --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-dependency-tracking 
+make -C lib install -j1
 make install-data-am
 
 
 echo -e "\n[Build libass]"
 cd $SRC_DIR/libass
 NOCONFIGURE=1 ./autogen.sh
-./configure "--host=${BUILD_ARCH}-windows" --prefix=$INSTALL_PREFIX --disable-shared --enable-static  --disable-asm --disable-dependency-tracking
+CFLAGS="$CFLAGS" ./configure "--host=${BUILD_ARCH}-windows" --prefix=$INSTALL_PREFIX --disable-shared --enable-static --disable-asm --disable-dependency-tracking
 make install -j$(nproc)
 make install-data-am
 

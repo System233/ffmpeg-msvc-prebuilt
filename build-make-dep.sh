@@ -10,6 +10,6 @@ SRC_DIR=$(pwd)/$1
 shift 1
 cd $SRC_DIR
 if [ -e ./configure ]; then
-    ./configure $@
+    CFLAGS="$CFLAGS" ./configure $@
 fi
 make ${INSTALL_TARGET:-install} PREFIX=$INSTALL_PREFIX

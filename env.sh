@@ -10,5 +10,7 @@ export BUILD_ARCH=${1:-$VSCMD_ARG_TGT_ARCH}
 export BUILD_TYPE=${2:-shared}
 export BUILD_LICENSE=${3:-gpl}
 
+export CFLAGS="-MT"
+export CMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded"
 export CC=cl
 export CXX=cl
