@@ -80,6 +80,7 @@ jobs:
             bison
             libtool
             autoconf
+            texinfo
 
       - name: Remove MSYS2 link
         shell: msys2 {0}
