@@ -1,3 +1,7 @@
+## Deprecated
+> [!CAUTION]
+> Windows平台具有[tls_schannel.c](FFmpeg\libavformat\tls_schannel.c)的TLS支持，不需要gnutls/openssl
+> 
 # FFmpeg GitHub Action Builds (MSVC)
 
 This repository provides **FFmpeg builds** compiled with **MSVC (Microsoft Visual C++)**, leveraging GitHub Actions to automate the process. Each release includes complete precompiled binaries, libraries, and development files, optimized for various platforms and configurations.
