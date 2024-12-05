@@ -1,0 +1,64 @@
+diff --git a/Makefile.am b/Makefile.am
+index 8c516fb..88827ef 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -4,11 +4,11 @@
+ ACLOCAL_AMFLAGS = -I m4
+ 
+ ## The order of subdirs is important, don't change without a reason.
+-SUBDIRS = gen.tab lib bin doc test
++SUBDIRS = lib bin doc test
+ 
+ EXTRA_DIST = autogen.sh ChangeLog.old \
+ 	meson.build meson_options.txt bin/meson.build doc/meson.build \
+-	gen.tab/meson.build lib/meson.build test/meson.build \
++	lib/meson.build test/meson.build \
+ 	test/test-runner.py test/unicode-conformance/meson.build \
+         README.md
+ 
+diff --git a/configure.ac b/configure.ac
+index 9be44d0..7abb3d2 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -168,7 +168,6 @@ AC_SUBST(ENABLE_SHARED_FALSE)
+ AC_CONFIG_FILES([fribidi.pc
+ 		 lib/fribidi-config.h
+ 		 Makefile
+-		 gen.tab/Makefile
+ 		 lib/Makefile
+ 		 bin/Makefile
+ 		 doc/Makefile
+diff --git a/lib/Makefile.am b/lib/Makefile.am
+index 22b680a..8dcbfd0 100644
+--- a/lib/Makefile.am
++++ b/lib/Makefile.am
+@@ -56,28 +56,11 @@ libfribidi_la_SOURCES =	\
+ 
+ libfribidi_la_CPPFLAGS = @FRIBIDI_CPPFLAGS@ -DFRIBIDI_BUILD
+ 
+-GENERATEDSOURCES = \
+-		fribidi-unicode-version.h \
+-		arabic-shaping.tab.i \
+-		bidi-type.tab.i \
+-		joining-type.tab.i \
+-		mirroring.tab.i \
+-		brackets.tab.i \
+-		brackets-type.tab.i 
+-
+-BUILT_SOURCES = \
+-		$(GENERATEDSOURCES) \
+-		fribidi-config.h
+ 
+-$(GENERATEDSOURCES):
+-	@(cd $(top_builddir)/gen.tab && \
+-	$(MAKE) $(AM_MAKEFLAGS) $@) && \
+-	(test -f $@ || mv $(top_builddir)/gen.tab/$@ .)
++BUILT_SOURCES = fribidi-config.h
+ 
+ # re-generate all built sources:
+ gen:
+-	@(cd $(top_builddir)/gen.tab && \
+-	$(MAKE) $(AM_MAKEFLAGS) $@) && \
+ 	$(RM) $(BUILT_SOURCES)
+ 	$(MAKE) $(AM_MAKEFLAGS) $(BUILT_SOURCES)
+ 

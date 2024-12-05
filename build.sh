@@ -16,7 +16,7 @@ fi
 shift 3 || true
 FF_ARGS=$@
 
-for dep in libharfbuzz libfreetype sdl libjxl libvpx libwebp; do
+for dep in libharfbuzz libfreetype sdl libjxl libvpx libwebp libass; do
     if grep -q "enable-${dep}" FFmpeg/configure; then
         export ENABLE_${dep^^}=1
         # FF_ARGS="$FF_ARGS --enable-$dep"
@@ -33,9 +33,10 @@ add_ffargs() {
 }
 
 apply-patch() {
-    GIT_CMD="git -C $1 apply ../patches/$2 --ignore-whitespace"
-    if ! $GIT_CMD -R --check; then
-        $GIT_CMD --ignore-whitespace
+    GIT_CMD="git -C $1 apply $(pwd)/patches/$2 --ignore-whitespace"
+    if ! $GIT_CMD -R --check 2>/dev/null; then
+        echo Apply $2 for $1
+        $GIT_CMD
     else
         echo Skip $2 for $1
     fi
@@ -45,9 +46,67 @@ apply-patch zlib zlib.patch
 apply-patch FFmpeg ffmpeg.patch
 apply-patch harfbuzz harfbuzz.patch
 
-# --enable-libfribidi --enable-libass
-# ./build-meson-dep.sh fribidi -Ddocs=false
-# ./build-meson-dep.sh libass
+./build-make-dep.sh nv-codec-headers
+
+./build-cmake-dep.sh zlib -DZLIB_BUILD_EXAMPLES=OFF
+add_ffargs "--enable-zlib"
+
+if [ -n "$ENABLE_LIBFREETYPE" ]; then
+    ./build-cmake-dep.sh freetype
+    add_ffargs "--enable-libfreetype"
+fi
+
+if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
+    ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
+    add_ffargs "--enable-libharfbuzz"
+fi
+
+if [ -n "$ENABLE_LIBASS" ]; then
+    # apply-patch fribidi fribidi.patch
+    ./build-libass.sh
+    add_ffargs "--enable-libass"
+fi
+
+
+
+if [ -n "$ENABLE_SDL" ]; then
+    ./build-cmake-dep.sh SDL
+    add_ffargs "--enable-sdl"
+fi
+
+if [ -n "$ENABLE_LIBJXL" ]; then
+
+    if [ "$BUILD_TYPE" == "shared" ]; then
+        JPEGXL_STATIC=OFF
+    else
+        JPEGXL_STATIC=ON
+    fi
+
+    apply-patch libjxl libjxl.patch
+    ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DOPENEXR_IS_SUBPROJECT=ON
+    ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
+    add_ffargs "--enable-libjxl"
+
+fi
+
+if [ -n "$ENABLE_LIBVPX" ]; then
+    case $BUILD_ARCH in
+    amd64) libvpx_target=x86_64-win64-vs17 ;;
+    x86) libvpx_target=x86-win32-vs17 ;;
+    arm) libvpx_target=armv7-win32-vs17 ;;
+    arm64) libvpx_target=arm64-win64-vs17 ;;
+    esac
+
+    LIBVPX_ARGS="--enable-static-msvcrt"
+    apply-patch libvpx libvpx.patch
+    CFLAGS="" AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
+    add_ffargs "--enable-libvpx"
+fi
+
+if [ -n "$ENABLE_LIBWEBP" ]; then
+    ./build-cmake-dep.sh libwebp -DWEBP_BUILD_EXTRAS=OFF -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF
+    add_ffargs "--enable-libwebp"
+fi
 
 if [ "$BUILD_LICENSE" == "gpl" ]; then
 
@@ -81,65 +140,5 @@ if [ "$BUILD_LICENSE" == "gpl" ]; then
 
 fi
 
-./build-make-dep.sh nv-codec-headers
-
-./build-cmake-dep.sh zlib -DZLIB_BUILD_EXAMPLES=OFF
-add_ffargs "--enable-zlib"
-
-if [ -n "$ENABLE_LIBFREETYPE" ]; then
-    ./build-cmake-dep.sh freetype
-    add_ffargs "--enable-libfreetype"
-fi
-
-if [ -n "$ENABLE_LIBHARFBUZZ" ]; then
-    ./build-cmake-dep.sh harfbuzz -DHB_HAVE_FREETYPE=ON
-    add_ffargs "--enable-libharfbuzz"
-fi
-
-if [ -n "$ENABLE_SDL" ]; then
-    ./build-cmake-dep.sh SDL
-    add_ffargs "--enable-sdl"
-fi
-
-if [ -n "$ENABLE_LIBJXL" ]; then
-
-    if [ "$BUILD_TYPE" == "shared" ]; then
-        JPEGXL_STATIC=OFF
-    else
-        JPEGXL_STATIC=ON
-    fi
-
-    apply-patch libjxl libjxl.patch
-    ./build-cmake-dep.sh openexr -DOPENEXR_INSTALL_TOOLS=OFF -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DOPENEXR_IS_SUBPROJECT=ON
-    ./build-cmake-dep.sh libjxl -DBUILD_TESTING=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_STATIC=$JPEGXL_STATIC
-    add_ffargs "--enable-libjxl"
-
-fi
-
-# libvpx AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon
-# AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false ./configure --target=armv7-win32-vs17 --as=yasm --disable-optimizations   --disable-dependency-tracking --disable-runtime-cpu-detect  --disable-thumb --disable-neon --enable-external-build --enable-static-msvcrt
-
-if [ -n "$ENABLE_LIBVPX" ]; then
-    case $BUILD_ARCH in
-    amd64) libvpx_target=x86_64-win64-vs17 ;;
-    x86) libvpx_target=x86-win32-vs17 ;;
-    arm) libvpx_target=armv7-win32-vs17 ;;
-    arm64) libvpx_target=arm64-win64-vs17 ;;
-    esac
-
-    if [ "$BUILD_TYPE" == "static" ]; then
-        LIBVPX_ARGS="--enable-static-msvcrt"
-    fi
-    apply-patch libvpx libvpx.patch
-    export
-    AS=yasm AR=lib ARFLAGS= CC=cl CXX=cl LD=link STRIP=false target= ./build-make-dep.sh libvpx --target=$libvpx_target --as=yasm --disable-optimizations --disable-dependency-tracking --disable-runtime-cpu-detect --disable-thumb --disable-neon --enable-external-build --disable-unit-tests --disable-decode-perf-tests --disable-encode-perf-tests --disable-tools --disable-examples $LIBVPX_ARGS
-    add_ffargs "--enable-libvpx"
-fi
-
-if [ -n "$ENABLE_LIBWEBP" ]; then
-    ./build-cmake-dep.sh libwebp -DWEBP_BUILD_EXTRAS=OFF -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF
-    add_ffargs "--enable-libwebp"
-fi
-
 ./build-ffmpeg.sh FFmpeg $FF_ARGS
-./relocate_prefix.sh
+./reprefix.sh
