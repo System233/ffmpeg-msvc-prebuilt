@@ -11,7 +11,6 @@ ffmpeg_family(
         freetype
         harfbuzz
         libass
-        openexr
         libjxl
         x265
         libvpx

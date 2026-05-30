@@ -14,12 +14,16 @@ set(STAGE_DIR "${STAGE_DIR}" CACHE PATH "Unified install prefix for all dependen
 set(LINK_TYPE "shared" CACHE STRING "Link type: static, shared")
 set_property(CACHE LINK_TYPE PROPERTY STRINGS "static" "shared")
 
-if(LINK_TYPE STREQUAL "static")
-    set(MSVC_CRT_FLAG "-MT" CACHE STRING "MSVC CRT link flag")
-    set(MSVC_CRT_LIBRARY "MultiThreaded" CACHE INTERNAL "")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "MSVC runtime library")
+set_property(CACHE CMAKE_MSVC_RUNTIME_LIBRARY PROPERTY STRINGS
+    "MultiThreaded" "MultiThreadedDLL" "MultiThreadedDebug" "MultiThreadedDebugDLL")
+if(CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL")
+    set(MSVC_CRT_FLAG "/MD")
 else()
-    set(MSVC_CRT_FLAG "-MD" CACHE STRING "MSVC CRT link flag")
-    set(MSVC_CRT_LIBRARY "MultiThreadedDLL" CACHE INTERNAL "")
+    set(MSVC_CRT_FLAG "/MT")
+endif()
+if(CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "Debug")
+    set(MSVC_CRT_FLAG "${MSVC_CRT_FLAG}d")
 endif()
 
 # ---- Unified toolchain (CMake + ENV for both CMake and autotools deps) ----
@@ -72,7 +76,8 @@ find_package(Git REQUIRED)
 
 message(STATUS "=== FFmpeg MSVC ExternalProject Build ===")
 message(STATUS "  TARGET_ARCH       = ${TARGET_ARCH} (${ARCH_NAME})")
-message(STATUS "  LINK_TYPE         = ${LINK_TYPE} (CFLAGS=${MSVC_CRT_FLAG})")
+message(STATUS "  LINK_TYPE         = ${LINK_TYPE}")
+message(STATUS "  CRT               = ${CMAKE_MSVC_RUNTIME_LIBRARY} (${MSVC_CRT_FLAG})")
 message(STATUS "  HOST_TRIPLE       = ${HOST_TRIPLE}")
 message(STATUS "  STAGE_DIR         = ${STAGE_DIR}")
 message(STATUS "  MSYS2_ROOT        = ${MSYS2_ROOT}")

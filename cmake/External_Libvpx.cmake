@@ -59,4 +59,12 @@ function(build_libvpx)
             "${STAGE_DIR}/lib/vpx.lib"
             "${STAGE_DIR}/lib/pkgconfig/vpx.pc"
     )
+    
+    ExternalProject_Add_Step(libvpx_target rename
+        COMMAND ${CMAKE_COMMAND} -E 
+            rename 
+            ${STAGE_DIR}/lib/libvpx.a 
+            ${STAGE_DIR}/lib/vpx.lib
+        DEPENDEES install
+    )
 endfunction()

@@ -45,6 +45,9 @@ function(build_ffmpeg)
                 --toolchain=msvc
                 --arch=${ARCH_NAME}
                 --prefix=${STAGE_DIR}
+                --pkg-config-flags=-static
+                --extra-ldflags="-libpath:${STAGE_DIR}/lib"
+                --extra-cflags="-I${STAGE_DIR}/include"
                 ${FFMPEG_LINK_ARG}
                 ${FFMPEG_ASM_FLAGS}
                 ${FFMPEG_GPL_FLAG}

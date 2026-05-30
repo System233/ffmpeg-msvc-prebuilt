@@ -18,10 +18,16 @@ function(build_brotli)
             -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
             -DCMAKE_INSTALL_PREFIX=${STAGE_DIR}
             -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=${MSVC_CRT_LIBRARY}
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
             -DBUILD_SHARED_LIBS=OFF
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/brotlicommon.lib"
+            "${STAGE_DIR}/lib/brotlienc.lib"
+            "${STAGE_DIR}/lib/brotlidec.lib"
             "${STAGE_DIR}/lib/pkgconfig/libbrotlicommon.pc"
+            "${STAGE_DIR}/lib/pkgconfig/libbrotlienc.pc"
+            "${STAGE_DIR}/lib/pkgconfig/libbrotlidec.pc"
     )
 endfunction()
