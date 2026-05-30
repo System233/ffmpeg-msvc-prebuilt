@@ -1,0 +1,56 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "shared-gpl",
+      "displayName": "Shared GPL (all deps, FFmpeg 7.1)",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "FFMPEG_VERSION": "7.1",
+        "LINK_TYPE": "shared",
+        "DEP_VERSION_OVERRIDE": "",
+        "LICENSE": "gpl"
+      }
+    },
+    {
+      "name": "static-minimal",
+      "displayName": "Static Minimal (zlib only, LGPL)",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "FFMPEG_VERSION": "7.1",
+        "LINK_TYPE": "static",
+        "DEP_VERSION_OVERRIDE": "",
+        "LICENSE": "lgpl",
+        "ENABLE_DEP_X264": "OFF"
+      }
+    },
+    {
+      "name": "latest-gpl",
+      "displayName": "Latest master (GPL, all deps)",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "FFMPEG_VERSION": "master",
+        "LINK_TYPE": "shared",
+        "DEP_VERSION_OVERRIDE": "",
+        "LICENSE": "gpl"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "shared-gpl",
+      "configurePreset": "shared-gpl",
+      "targets": ["all_deps"]
+    },
+    {
+      "name": "static-minimal",
+      "configurePreset": "static-minimal",
+      "targets": ["all_deps"]
+    },
+    {
+      "name": "latest-gpl",
+      "configurePreset": "latest-gpl",
+      "targets": ["all_deps"]
+    }
+  ]
+}

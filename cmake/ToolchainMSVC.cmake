@@ -19,7 +19,7 @@ set(CMAKE_RC_COMPILER   rc   CACHE STRING "" FORCE)
 set(CMAKE_AR            lib  CACHE STRING "" FORCE)
 set(CMAKE_LINKER        link CACHE STRING "" FORCE)
 set(CMAKE_MT            mt   CACHE STRING "" FORCE)
-set(CMAKE_C_FLAGS        "${CMAKE_C_FLAGS} ${MSVC_CRT_FLAG}" FORCE)
+set(CMAKE_C_FLAGS        "${CMAKE_C_FLAGS} ${MSVC_CRT_FLAG}" CACHE STRING "" FORCE)
 
 execute_process(
     COMMAND cygpath -u "${STAGE_DIR}"
@@ -40,6 +40,7 @@ set(ENV{CFLAGS}         "${CMAKE_C_FLAGS}")
 set(ENV{PKG_CONFIG_PATH} "${STAGE_DIR_UNIX}/lib/pkgconfig:${STAGE_DIR_UNIX}/share/pkgconfig")
 set(ENV{MSYSTEM}         MSYS)
 set(ENV{MSYS2_PATH_TYPE} inherit)
+set(ENV{MSYS2_ARG_CONV_EXCL} "*")
 set(ENV{VSLANG} 1033)
 set(ENV{LC_ALL} C)
 

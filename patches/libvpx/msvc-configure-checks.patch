@@ -1,0 +1,64 @@
+--- a/build/make/configure.sh
++++ b/build/make/configure.sh
+@@ -301,26 +301,54 @@ check_cc() {
+ 	log check_cc "$@"
+ 	cat >${TMP_C}
+ 	log_file ${TMP_C}
+-	check_cmd ${CC} ${CFLAGS} "$@" -c -o ${TMP_O} ${TMP_C}
++	if enabled msvs; then
++		local msvc_flags="/c /Fo${TMP_O}"
++		local filtered_args=()
++		for arg in "$@"; do
++			case "$arg" in
++				-Werror) filtered_args+=("/WX") ;;
++				-W*|-f*|-pedantic*) ;;
++				*) filtered_args+=("$arg") ;;
++			esac
++		done
++		check_cmd ${CC} ${CFLAGS} "${filtered_args[@]}" ${msvc_flags} ${TMP_C}
++	else
++		check_cmd ${CC} ${CFLAGS} "$@" -c -o ${TMP_O} ${TMP_C}
++	fi
+ }
+
+ check_cxx() {
+ 	log check_cxx "$@"
+ 	cat >${TMP_CC}
+ 	log_file ${TMP_CC}
+ 	check_cmd ${CXX} ${CXXFLAGS} "$@" -c -o ${TMP_O} ${TMP_CC}
+ }
+
+ check_cpp() {
+ 	log check_cpp "$@"
+ 	cat > ${TMP_C}
+ 	log_file ${TMP_C}
+-	check_cmd ${CC} ${CFLAGS} "$@" -E -o ${TMP_O} ${TMP_C}
++	if enabled msvs; then
++		local filtered_args=()
++		for arg in "$@"; do
++			case "$arg" in
++				-Werror) filtered_args+=("/WX") ;;
++				-W*|-f*|-pedantic*) ;;
++				*) filtered_args+=("$arg") ;;
++			esac
++		done
++		check_cmd ${CC} ${CFLAGS} "${filtered_args[@]}" /E -o ${TMP_O} ${TMP_C}
++	else
++		check_cmd ${CC} ${CFLAGS} "$@" -E -o ${TMP_O} ${TMP_C}
++	fi
+ }
+
+ check_ld() {
+ 	log check_ld "$@"
+-	check_cc $@ \
+-		&& check_cmd ${LD} ${LDFLAGS} "$@" -o ${TMP_X} ${TMP_O} ${extralibs}
++	if enabled msvs; then
++		check_cc $@ \
++			&& check_cmd ${LD:-${CC}} ${LDFLAGS} "$@" /Fe${TMP_X} ${TMP_O} ${extralibs}
++	else
++		check_cc $@ \
++			&& check_cmd ${LD:-${CC}} ${LDFLAGS} "$@" -o ${TMP_X} ${TMP_O} ${extralibs}
++	fi
+ }
+
+ check_lib() {
