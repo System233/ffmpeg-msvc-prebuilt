@@ -1,0 +1,7 @@
+build/
+stage/
+downloads/
+src/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
