@@ -46,7 +46,16 @@ endif()
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/BootstrapMSYS2.cmake")
 
 # ---- Architecture Mapping ----
-set(TARGET_ARCH "amd64" CACHE STRING "Target arch: x86, amd64, arm, arm64")
+if(NOT DEFINED CACHE{TARGET_ARCH} AND DEFINED ENV{VSCMD_ARG_TGT_ARCH})
+    if($ENV{VSCMD_ARG_TGT_ARCH} STREQUAL "x64")
+        set(TARGET_ARCH "amd64")
+    elseif($ENV{VSCMD_ARG_TGT_ARCH} STREQUAL "x86")
+        set(TARGET_ARCH "x86")
+    elseif($ENV{VSCMD_ARG_TGT_ARCH} MATCHES "^arm")
+        set(TARGET_ARCH "$ENV{VSCMD_ARG_TGT_ARCH}")
+    endif()
+endif()
+set(TARGET_ARCH "${TARGET_ARCH}" CACHE STRING "Target arch: x86, amd64, arm, arm64")
 set_property(CACHE TARGET_ARCH PROPERTY STRINGS "x86" "amd64" "arm" "arm64")
 
 if(TARGET_ARCH STREQUAL "x86")
@@ -64,6 +73,32 @@ elseif(TARGET_ARCH STREQUAL "arm64")
 else()
     message(FATAL_ERROR "Unknown TARGET_ARCH: ${TARGET_ARCH}")
 endif()
+
+# ---- Meson cross-file CPU mapping ----
+if(TARGET_ARCH STREQUAL "x86")
+    set(MESON_CPU_FAMILY "x86")
+    set(MESON_CPU "i686")
+elseif(TARGET_ARCH STREQUAL "amd64")
+    set(MESON_CPU_FAMILY "x86_64")
+    set(MESON_CPU "x86_64")
+elseif(TARGET_ARCH STREQUAL "arm")
+    set(MESON_CPU_FAMILY "arm")
+    set(MESON_CPU "armv7")
+elseif(TARGET_ARCH STREQUAL "arm64")
+    set(MESON_CPU_FAMILY "aarch64")
+    set(MESON_CPU "aarch64")
+endif()
+
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/cmake/MesonCrossFiles/msvc-cross.ini.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/cmake/MesonCrossFiles/gcc-native.ini.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/gcc-native.ini"
+    @ONLY
+)
 
 # ---- User-facing build options ----
 set(FFMPEG_VERSION       "7.1"   CACHE STRING "FFmpeg version")

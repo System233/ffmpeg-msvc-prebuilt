@@ -1,0 +1,58 @@
+--- a/av1/encoder/arm/temporal_filter_neon.c
++++ b/av1/encoder/arm/temporal_filter_neon.c
+@@ -87,8 +87,15 @@
+          ((block_height == 16) || (block_height == 32)));
+ 
+   uint32_t diff_sse[BH][BW];
++#if defined(_MSC_VER) && !defined(_M_ARM64)
++  uint16x8x4_t vmask;
++  vmask.val[0] = vld1q_u16(kSlidingWindowMask);
++  vmask.val[1] = vld1q_u16(kSlidingWindowMask + 8);
++  vmask.val[2] = vld1q_u16(kSlidingWindowMask + 16);
++  vmask.val[3] = vld1q_u16(kSlidingWindowMask + 24);
++#else
+   const uint16x8x4_t vmask = vld1q_u16_x4(kSlidingWindowMask);
+-
++#endif
+   // Traverse 4 columns at a time - first and last two columns need padding.
+   for (uint32_t col = 0; col < block_width; col += 4) {
+     uint16x8_t vsrc[5];
+--- a/aom_dsp/arm/highbd_intrapred_neon.c
++++ b/aom_dsp/arm/highbd_intrapred_neon.c
+@@ -1873,9 +1873,17 @@
+       vtbl2_u8(out_yx, vld1_u8(z2_merge_shuffles_u16x4[base_shift])));
+ #else
+   uint16x4_t out = out_y;
++#if defined(_MSC_VER)
++  uint16_t *out_ptr = (uint16_t *)&out;
++  const uint16_t *out_x_ptr = (const uint16_t *)&out_x;
++  for (int c2 = base_shift, x_idx = 0; c2 < 4; ++c2, ++x_idx) {
++    out_ptr[c2] = out_x_ptr[x_idx];
++  }
++#else
+   for (int c2 = base_shift, x_idx = 0; c2 < 4; ++c2, ++x_idx) {
+     out[c2] = out_x[x_idx];
+   }
++#endif
+   return out;
+ #endif
+ }
+@@ -1893,9 +1901,17 @@
+       vqtbl2q_u8(out_yx, vld1q_u8(z2_merge_shuffles_u16x8[base_shift])));
+ #else
+   uint16x8_t out = out_y;
+-  for (int c2 = base_shift, x_idx = 0; c2 < 8; ++c2, ++x_idx) {
++#if defined(_MSC_VER)
++  uint16_t *out_ptr = (uint16_t *)&out;
++  const uint16_t *out_x_ptr = (const uint16_t *)&out_x;
++  for (int c2 = base_shift, x_idx = 0; c2 < 4; ++c2, ++x_idx) {
++    out_ptr[c2] = out_x_ptr[x_idx];
++  }
++#else
++  for (int c2 = base_shift, x_idx = 0; c2 < 4; ++c2, ++x_idx) {
+     out[c2] = out_x[x_idx];
+   }
++#endif
+   return out;
+ #endif
+ }

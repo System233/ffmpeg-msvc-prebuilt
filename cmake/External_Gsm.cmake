@@ -20,7 +20,7 @@ function(build_gsm)
                 --prefix=${STAGE_DIR}
                 --buildtype=release
                 --default-library=static
-                --vsenv
+                --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
                 -Db_vscrt=mt
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>

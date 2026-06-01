@@ -1,0 +1,34 @@
+--- a/source/Lib/CommonLib/arm/neon/InterpolationFilter_neon.cpp
++++ b/source/Lib/CommonLib/arm/neon/InterpolationFilter_neon.cpp
+@@ -103,8 +103,14 @@
+       int16x8_t mmFiltered2 = vmlaq_n_s16( mmOffset2, mmLast4H, 16 );
+       mmFiltered2           = vmlaq_s16( mmFiltered2, vsubq_s16( mmFiltered, mmLast4H ), mmCoeffV );
+       mmFiltered2           = vshlq_s16( mmFiltered2, shift2inv );
+-
++#if defined(_MSC_VER) && !defined(_M_ARM64)
++      {
++        const int64_t *vec_ptr = (const int64_t *)&mmFiltered2;
++        *(int64_t*) dst = vec_ptr[0];
++      }
++#else
+       vst1q_lane_s64( (int64_t*) dst, (int64x2_t) mmFiltered2, 0 );
++#endif
+     }
+ 
+     mmLast4H = mmFiltered;
+--- a/source/Lib/CommonLib/CommonDef.h
++++ b/source/Lib/CommonLib/CommonDef.h
+@@ -678,6 +678,13 @@
+   _BitScanReverse( &idx, a );
+   return idx;
+ }
++#elif defined( _WIN32 ) && defined( TARGET_SIMD_ARM )
++#include <intrin.h>
++static inline unsigned int bit_scan_reverse( int a )
++{
++  if ( a == 0 ) return 0;
++  return 31 - _CountLeadingZeros( (unsigned long)a );
++}
+ // disabled because it requires x86intrin.h which conflicts with simd-everywhere
+ // #elif defined( __GNUC__ ) && defined( TARGET_SIMD_X86 ) && !defined( REAL_TARGET_WASM )
+ // static inline unsigned int bit_scan_reverse( int a )

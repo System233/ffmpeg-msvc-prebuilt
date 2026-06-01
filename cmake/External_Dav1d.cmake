@@ -17,12 +17,11 @@ function(build_dav1d)
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/dav1d"
         CONFIGURE_COMMAND
             ${SHELL_ENV} meson setup <BINARY_DIR> <SOURCE_DIR>
-                "-Dc_args=${CMAKE_C_FLAGS}"
                 --prefix=${STAGE_DIR}
                 --buildtype=release
                 --default-library=static
                 -Db_vscrt=mt
-                --vsenv
+                --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
         INSTALL_COMMAND

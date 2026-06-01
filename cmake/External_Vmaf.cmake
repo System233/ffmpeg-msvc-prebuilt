@@ -33,7 +33,7 @@ function(build_vmaf)
                 --prefix=${STAGE_DIR}
                 --buildtype=release
                 --default-library=static
-                --vsenv
+                --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
                 -Denable_tests=false
                 -Denable_tools=false
                 -Denable_docs=false

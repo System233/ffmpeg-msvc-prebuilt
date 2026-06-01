@@ -1,0 +1,14 @@
+[binaries]
+c = 'gcc'
+cpp = 'g++'
+ar = 'ar'
+as = 'as'
+pkg-config = 'pkg-config'
+cmake = 'cmake'
+
+
+[host_machine]
+system = 'windows'
+cpu_family = 'x64'
+cpu = 'x64'
+endian = 'little'

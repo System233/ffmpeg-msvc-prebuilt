@@ -1,0 +1,31 @@
+--- a/meson.build
++++ b/meson.build
+@@ -74,7 +74,7 @@
+ 
+ incs = include_directories('.', 'lib', 'gen.tab')
+ 
+-subdir('gen.tab')
++#subdir('gen.tab')
+ subdir('lib')
+ if get_option('bin') or get_option('tests')
+   subdir('bin')
+--- a/lib/meson.build
++++ b/lib/meson.build
+@@ -72,8 +72,7 @@
+ ]
+ 
+ libfribidi = library('fribidi',
+-  fribidi_sources, fribidi_unicode_version_h, fribidi_config_h,
+-  generated_tab_include_files, config_h,
++  fribidi_sources, fribidi_config_h, config_h,
+   include_directories: incs,
+   c_args: ['-DHAVE_CONFIG_H'] + fribidi_build_cargs + fribidi_static_cargs,
+   gnu_symbol_visibility: 'hidden',
+@@ -83,6 +82,6 @@
+ 
+ libfribidi_dep = declare_dependency(link_with: libfribidi,
+   include_directories: incs,
+-  sources: [fribidi_unicode_version_h, fribidi_config_h],
++  sources: [fribidi_config_h],
+   compile_args: fribidi_static_cargs)
+ meson.override_dependency('fribidi', libfribidi_dep)

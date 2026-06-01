@@ -62,10 +62,7 @@ func_file_conv ()
 	esac
       fi
       case $file_conv in
-	mingw)
-	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
-	  ;;
-	cygwin | msys)
+	mingw | cygwin | msys)
 	  file=`cygpath -m "$file" || echo "$file"`
 	  ;;
 	wine)
@@ -232,7 +229,7 @@ elif test -n "$extract"; then
       esac
     done
   else
-    $AR -NOLOGO -LIST "$archive" | tr -d '\r' | sed -e 's/\\/\\\\/g' \
+    $AR -NOLOGO -LIST "$archive" | tr -d '\r' | cygpath -m -f - \
       | while read member
         do
           $AR -NOLOGO -EXTRACT:"$member" "$archive" || exit $?

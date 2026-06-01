@@ -22,7 +22,7 @@ function(build_liblc3)
                 --prefix=${STAGE_DIR}
                 --buildtype=release
                 --default-library=static
-                --vsenv
+                --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
                 -Db_vscrt=mt
                 -Dtools=false
         BUILD_COMMAND

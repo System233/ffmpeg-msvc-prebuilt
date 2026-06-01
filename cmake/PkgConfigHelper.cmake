@@ -38,7 +38,7 @@ endmacro()
 # ---- add_rename_step(target from to) ----
 macro(add_rename_step _target _from _to)
     ExternalProject_Add_Step(${_target} rename
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        COMMAND ${CMAKE_COMMAND} -E rename
             "${STAGE_DIR}/lib/${_from}"
             "${STAGE_DIR}/lib/${_to}"
         DEPENDEES install
@@ -57,4 +57,18 @@ macro(patch_pkg_config _prefix)
         string(REPLACE "${STAGE_DIR}" "\${pcfiledir}/../.." _content "${_content}")
         file(WRITE "${_pc}" "${_content}")
     endforeach()
+endmacro()
+
+macro(add_libtool_step _target)
+    set(_dest "ltmain.sh")
+    if(${ARGC} GREATER 1)
+        set(_dest "${ARGV1}")
+    endif()
+    ExternalProject_Add_Step(${_target} copy_libtool
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/ltmain.sh"
+            <SOURCE_DIR>/${_dest}
+        DEPENDEES download update patch
+        DEPENDERS configure
+    )
 endmacro()

@@ -21,6 +21,8 @@ function(build_sndfile)
             -DENABLE_PACKAGE_CONFIG=ON
             -DBUILD_TESTING=OFF
             -DBUILD_PROGRAMS=OFF
+            -DBUILD_REGTEST=OFF
+            -DBUILD_EXAMPLES=OFF
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/sndfile.lib"
             "${STAGE_DIR}/lib/pkgconfig/sndfile.pc"

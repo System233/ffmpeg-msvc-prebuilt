@@ -14,16 +14,16 @@ dep_package_version(NAME libvpx VERSION 1.15.0
 # ---- Architecture-specific target and flags ----
 if(TARGET_ARCH STREQUAL "amd64")
     set(LIBVPX_TARGET "x86_64-win64-vs17")
-    set(LIBVPX_ARCH_FLAGS "")
+    set(LIBVPX_ARCH_FLAGS "--as=yasm")
 elseif(TARGET_ARCH STREQUAL "x86")
     set(LIBVPX_TARGET "x86-win32-vs17")
-    set(LIBVPX_ARCH_FLAGS "")
+    set(LIBVPX_ARCH_FLAGS "--as=yasm")
 elseif(TARGET_ARCH STREQUAL "arm")
     set(LIBVPX_TARGET "armv7-win32-vs17")
-    set(LIBVPX_ARCH_FLAGS "--disable-neon --disable-thumb")
+    set(LIBVPX_ARCH_FLAGS "")
 elseif(TARGET_ARCH STREQUAL "arm64")
     set(LIBVPX_TARGET "arm64-win64-vs17")
-    set(LIBVPX_ARCH_FLAGS "--disable-neon --disable-thumb")
+    set(LIBVPX_ARCH_FLAGS "")
 else()
     message(FATAL_ERROR "Unsupported TARGET_ARCH for libvpx: ${TARGET_ARCH}")
 endif()
@@ -48,7 +48,7 @@ function(build_libvpx)
                 --disable-docs
                 --disable-unit-tests
                 --disable-dependency-tracking
-                --as=yasm ${LIBVPX_ARCH_FLAGS}
+                ${LIBVPX_ARCH_FLAGS}
         BUILD_COMMAND
             $(MAKE) -C <SOURCE_DIR>
         INSTALL_COMMAND

@@ -26,7 +26,7 @@ endif()
 
 # ---- Architecture-specific flags ----
 if(TARGET_ARCH MATCHES "^arm")
-    set(FFMPEG_ARCH_FLAGS "--enable-cross-compile --disable-asm")
+    set(FFMPEG_ARCH_FLAGS "--enable-cross-compile")
 else()
     set(FFMPEG_ARCH_FLAGS "")
 endif()
@@ -53,6 +53,7 @@ function(build_ffmpeg)
                 ${FFMPEG_GPL_FLAG}
                 ${FFMPEG_ARCH_FLAGS}
                 --enable-version3
+                "--as=${CMAKE_CURRENT_LIST_DIR}/compile-as"
         BUILD_COMMAND
             $(MAKE) -C <SOURCE_DIR>
         INSTALL_COMMAND

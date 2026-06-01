@@ -2,7 +2,7 @@
 dep_package(
     NAME        twolame
     DEFAULT     0.4.0
-    BUILD       autotools
+    BUILD       meson
     FFMPEG_FLAG --enable-libtwolame
     LICENSE     lgpl
 )
@@ -19,20 +19,26 @@ function(build_twolame)
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/twolame"
         PATCH_COMMAND ${TWOLAME_RESOLVED_PATCH_CMDS}
         CONFIGURE_COMMAND
-            ${SHELL_COMPAT_ENV} 
-            ./configure
+            meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --host=${HOST_TRIPLE}
-                --enable-shared=no
-                --enable-static
-                --disable-dependency-tracking
+                --buildtype=release
+                --default-library=static
+                --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
+                -Db_vscrt=mt
         BUILD_COMMAND
-            $(MAKE) -C <SOURCE_DIR>
+            meson compile -C <BINARY_DIR>
         INSTALL_COMMAND
-            $(MAKE) -C <SOURCE_DIR> install
-        BUILD_IN_SOURCE 1
+            meson install -C <BINARY_DIR>
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/twolame.lib"
             "${STAGE_DIR}/lib/pkgconfig/twolame.pc"
     )
+    ExternalProject_Add_Step(twolame_target copy_meson_build
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/../patches/twolame/meson.build"
+            <SOURCE_DIR>/meson.build
+        DEPENDEES download update patch
+        DEPENDERS configure
+    )
+    add_rename_step(twolame_target libtwolame.a twolame.lib)
 endfunction()

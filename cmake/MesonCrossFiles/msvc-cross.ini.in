@@ -1,0 +1,19 @@
+[binaries]
+c = 'cl'
+cpp = 'cl'
+ar = 'lib'
+as = '@CMAKE_ASM_COMPILER@'
+pkg-config = 'pkg-config'
+cmake = 'cmake'
+gas-preprocessor.pl = ['perl', '@CMAKE_CURRENT_LIST_DIR@/cmake/gas-preprocessor.pl']
+
+[built-in options]
+c_args = ['@MSVC_CRT_FLAG@']
+c_link_args = ['/LIBPATH:@STAGE_DIR@/lib']
+pkg_config_path = '@STAGE_DIR@/lib/pkgconfig;@STAGE_DIR@/share/pkgconfig'
+
+[host_machine]
+system = 'windows'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'
