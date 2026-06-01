@@ -17,11 +17,11 @@ function(build_dav1d)
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/dav1d"
         CONFIGURE_COMMAND
             ${SHELL_ENV} meson setup <BINARY_DIR> <SOURCE_DIR>
-                -Dc_args="${CMAKE_C_FLAGS}"
-                -Dcpp_args="${CMAKE_CXX_FLAGS}"
+                "-Dc_args=${CMAKE_C_FLAGS}"
                 --prefix=${STAGE_DIR}
                 --buildtype=release
                 --default-library=static
+                -Db_vscrt=mt
                 --vsenv
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
@@ -32,11 +32,5 @@ function(build_dav1d)
             "${STAGE_DIR}/lib/pkgconfig/dav1d.pc"
     )
     
-    ExternalProject_Add_Step(dav1d_target rename
-        COMMAND ${CMAKE_COMMAND} -E 
-            rename 
-            ${STAGE_DIR}/lib/libdav1d.a 
-            ${STAGE_DIR}/lib/dav1d.lib
-        DEPENDEES install
-    )
+    add_rename_step(dav1d_target libdav1d.a dav1d.lib)
 endfunction()

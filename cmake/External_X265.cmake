@@ -21,20 +21,10 @@ function(build_x265)
         SOURCE_SUBDIR "source"
         PATCH_COMMAND ${X265_RESOLVED_PATCH_CMDS}
         CMAKE_ARGS
-                -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
-                -DCMAKE_INSTALL_PREFIX=${STAGE_DIR}
-                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
-                -DBUILD_SHARED_LIBS=OFF
+                ${DEPS_CMAKE_ARGS}
                 -DENABLE_CLI=OFF
                 -DENABLE_SHARED=OFF
                 -DSTATIC_LINK_CRT=ON
-                -DCMAKE_SYSTEM_NAME=Windows
-                -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/x265.lib"
             "${STAGE_DIR}/lib/pkgconfig/x265.pc"

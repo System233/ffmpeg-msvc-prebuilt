@@ -15,14 +15,8 @@ function(build_freetype)
         URL          ${FREETYPE_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/freetype"
-        CMAKE_ARGS
-            -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
-            -DCMAKE_INSTALL_PREFIX=${STAGE_DIR}
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
-            -DBUILD_SHARED_LIBS=OFF
+        CMAKE_ARGS 
+            ${DEPS_CMAKE_ARGS}
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/freetype.lib"
             "${STAGE_DIR}/lib/pkgconfig/freetype2.pc"

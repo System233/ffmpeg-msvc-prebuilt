@@ -41,13 +41,13 @@ function(build_ffmpeg)
         PATCH_COMMAND ${FFMPEG_RESOLVED_PATCH_CMDS}
         CONFIGURE_COMMAND
             ${SHELL_ENV}
+            "LDFLAGS=-libpath:${STAGE_DIR}/lib"
+            "CFLAGS=$ENV{CFLAGS} -I${STAGE_DIR}/include"
             ./configure
                 --toolchain=msvc
                 --arch=${ARCH_NAME}
                 --prefix=${STAGE_DIR}
                 --pkg-config-flags=-static
-                --extra-ldflags="-libpath:${STAGE_DIR}/lib"
-                --extra-cflags="-I${STAGE_DIR}/include"
                 ${FFMPEG_LINK_ARG}
                 ${FFMPEG_ASM_FLAGS}
                 ${FFMPEG_GPL_FLAG}
@@ -61,4 +61,13 @@ function(build_ffmpeg)
             ${FFMPEG_BUILD_BYPRODUCTS}
         BUILD_IN_SOURCE 1
     )
+    
+    # ExternalProject_Add_Step(ffmpeg_target patch_pkg_config
+    #     COMMAND ${CMAKE_COMMAND} 
+    #         -DSTAGE_DIR=${STAGE_DIR}
+    #         -DSTAGE_DIR3=${STAGE_DIR}
+    #         -P ${CMAKE_CURRENT_LIST_DIR}/PatchPkgConfig.cmake
+    #     DEPENDEES install
+    #     COMMENT "Patching pkg-config files for relocatable paths"
+    # )
 endfunction()

@@ -19,13 +19,14 @@ function(build_libass)
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/libass"
         CONFIGURE_COMMAND
             ${SHELL_ENV} ./autogen.sh &&
-            ${SHELL_ENV} AR=ar AR_FLAGS=cr ./configure
+            ${SHELL_ENV} ./configure
                 --prefix=${STAGE_DIR}
                 --host=${HOST_TRIPLE}
                 --disable-shared
                 --enable-static
                 --disable-asm
                 --disable-dependency-tracking
+                AR=ar AR_FLAGS=cr
         BUILD_COMMAND
             $(MAKE) -C <SOURCE_DIR>
         INSTALL_COMMAND

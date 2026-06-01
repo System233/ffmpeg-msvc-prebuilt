@@ -17,12 +17,15 @@ function(build_fribidi)
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/fribidi"
         PATCH_COMMAND ${FRIBIDI_RESOLVED_PATCH_CMDS}
         CONFIGURE_COMMAND
-            ${SHELL_ENV} AR=ar "AR_FLAGS=cr" "CFLAGS=-DHAVE_STRINGIZE" ./autogen.sh
+            ${SHELL_ENV} ./autogen.sh
                 --prefix=${STAGE_DIR}
                 --host=${HOST_TRIPLE}
                 --disable-shared
                 --enable-static
                 --disable-dependency-tracking
+                AR=ar 
+                "AR_FLAGS=cr" 
+                "CFLAGS=-DHAVE_STRINGIZE" 
 
         BUILD_COMMAND
             $(MAKE)

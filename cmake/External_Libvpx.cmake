@@ -36,10 +36,8 @@ function(build_libvpx)
         PATCH_COMMAND ${LIBVPX_RESOLVED_PATCH_CMDS}
         BUILD_IN_SOURCE 1
             CONFIGURE_COMMAND
-                ${SHELL_ENV} TMPDIR=<SOURCE_DIR> 
-                CC=${CMAKE_CURRENT_LIST_DIR}/compile-cl 
-                CXX=${CMAKE_CURRENT_LIST_DIR}/compile-cl 
-                AR=${CMAKE_CURRENT_LIST_DIR}/compile-lib
+                ${SHELL_COMPAT_ENV} 
+                "TMPDIR=<SOURCE_DIR>"
                 ./configure
                 --prefix=${STAGE_DIR}
                 --target=${LIBVPX_TARGET}

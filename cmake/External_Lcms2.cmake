@@ -18,14 +18,7 @@ function(build_lcms2)
         PATCH_COMMAND
             ${CMAKE_COMMAND} -E copy "${_patch_cmake}" <SOURCE_DIR>/CMakeLists.txt
         CMAKE_ARGS
-            -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
-            -DCMAKE_INSTALL_PREFIX=${STAGE_DIR}
-            -DCMAKE_PREFIX_PATH=${STAGE_DIR}
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
-            -DBUILD_SHARED_LIBS=OFF
+            ${DEPS_CMAKE_ARGS}
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/lcms2.lib"
             "${STAGE_DIR}/lib/pkgconfig/lcms2.pc"

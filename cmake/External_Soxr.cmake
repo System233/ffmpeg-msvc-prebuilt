@@ -19,13 +19,7 @@ function(build_soxr)
         PATCH_COMMAND ${SOXR_RESOLVED_PATCH_CMDS}
 
         CMAKE_ARGS
-            -DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}
-            -DCMAKE_INSTALL_PREFIX=${STAGE_DIR}
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}
-            -DBUILD_SHARED_LIBS=OFF
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+            ${DEPS_CMAKE_ARGS}
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/soxr.lib"
             "${STAGE_DIR}/lib/pkgconfig/soxr.pc"

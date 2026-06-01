@@ -1,0 +1,10 @@
+--- a/libtwolame/twolame.h
++++ b/libtwolame/twolame.h
+@@ -41,6 +41,7 @@
+ #endif
+ 
+ #ifdef _WIN32
++#  define LIBTWOLAME_STATIC
+ # ifdef LIBTWOLAME_BUILD
+ #  ifdef DLL_EXPORT
+ #   define TL_API __declspec(dllexport)
