@@ -16,6 +16,9 @@ dep_package_version(NAME zlib VERSION 1.2.13
 
 # ---- Build function ----
 function(build_zlib)
+    skip_if_staged_target(zlib_target
+        LIBS zlib
+    )
     ExternalProject_Add(zlib_target
         URL          ${ZLIB_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

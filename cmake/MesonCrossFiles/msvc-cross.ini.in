@@ -7,10 +7,18 @@ pkg-config = 'pkg-config'
 cmake = 'cmake'
 gas-preprocessor.pl = ['perl', '@CMAKE_CURRENT_LIST_DIR@/cmake/gas-preprocessor.pl']
 
+[properties]
+has_function_printf = true
+sys_root = '@STAGE_DIR@'
+pkg_config_libdir = '@STAGE_DIR@/lib/pkgconfig;@STAGE_DIR@/share/pkgconfig'
+
 [built-in options]
-c_args = ['@MSVC_CRT_FLAG@']
 c_link_args = ['/LIBPATH:@STAGE_DIR@/lib']
 pkg_config_path = '@STAGE_DIR@/lib/pkgconfig;@STAGE_DIR@/share/pkgconfig'
+b_vscrt='mt'
+buildtype = 'debugoptimized'
+default_library = 'static'
+vsenv = true
 
 [host_machine]
 system = 'windows'

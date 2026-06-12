@@ -12,6 +12,9 @@ dep_package_version(NAME mp3lame VERSION 3.100
 
 # ---- Build function ----
 function(build_mp3lame)
+    skip_if_staged_target(mp3lame_target
+        LIBS lame
+    )
     ExternalProject_Add(mp3lame_target
         URL          ${MP3LAME_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -48,10 +51,7 @@ function(build_mp3lame)
     #     CONFIGURE_COMMAND
     #         meson setup <BINARY_DIR> <SOURCE_DIR>
     #             --prefix=${STAGE_DIR}
-    #             --buildtype=release
-    #             --default-library=static
     #             --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-    #             -Db_vscrt=mt
     #     BUILD_COMMAND
     #         meson compile -C <BINARY_DIR>
     #     INSTALL_COMMAND

@@ -10,6 +10,7 @@ dep_package_version(NAME brotli VERSION 1.1.0
 
 # ---- Build function ----
 function(build_brotli)
+    skip_if_staged_target(brotli_target LIBS libbrotlicommon;libbrotlienc;libbrotlidec)
     ExternalProject_Add(brotli_target
         URL          ${BROTLI_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

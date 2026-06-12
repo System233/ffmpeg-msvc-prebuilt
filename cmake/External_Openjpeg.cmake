@@ -11,6 +11,9 @@ dep_package_version(NAME openjpeg VERSION 2.5.4
 
 # ---- Build function ----
 function(build_openjpeg)
+    skip_if_staged_target(openjpeg_target
+        LIBS libopenjp2
+    )
     ExternalProject_Add(openjpeg_target
         URL          ${OPENJPEG_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

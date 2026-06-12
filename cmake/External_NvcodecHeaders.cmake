@@ -10,6 +10,7 @@ dep_package_version(NAME nvcodec VERSION 12.2.72.0
 
 # ---- Build function ----
 function(build_nvcodec)
+    skip_if_staged_target(nvcodec_target ffnvcodec)
     ExternalProject_Add(nvcodec_target
         URL          ${NVCODEC_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

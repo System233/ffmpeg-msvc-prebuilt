@@ -11,6 +11,9 @@ dep_package_version(NAME srt VERSION 1.5.4
 
 # ---- Build function ----
 function(build_srt)
+    skip_if_staged_target(srt_target
+        LIBS srt
+    )
     ExternalProject_Add(srt_target
         URL          ${SRT_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

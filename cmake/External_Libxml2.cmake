@@ -11,6 +11,9 @@ dep_package_version(NAME libxml2 VERSION 2.13.5
 
 # ---- Build function ----
 function(build_libxml2)
+    skip_if_staged_target(libxml2_target
+        LIBS libxml-2.0
+    )
     ExternalProject_Add(libxml2_target
         URL          ${LIBXML2_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

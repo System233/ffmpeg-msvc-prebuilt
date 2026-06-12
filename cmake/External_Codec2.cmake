@@ -12,6 +12,7 @@ dep_package_version(NAME codec2 VERSION 1.2.0
 
 # ---- Build function ----
 function(build_codec2)
+    skip_if_staged_target(codec2_target LIBS codec2)
     ExternalProject_Add(codec2_target
         DEPENDS      ${CODEC2_RESOLVED_DEPENDS}
         URL          ${CODEC2_RESOLVED_URL}

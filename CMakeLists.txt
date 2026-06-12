@@ -11,6 +11,8 @@ endif()
 set(STAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/stage")
 set(STAGE_DIR "${STAGE_DIR}" CACHE PATH "Unified install prefix for all dependencies")
 
+set(DIST_DIR "${CMAKE_CURRENT_BINARY_DIR}/dist")
+
 set(LINK_TYPE "shared" CACHE STRING "Link type: static, shared")
 set_property(CACHE LINK_TYPE PROPERTY STRINGS "static" "shared")
 
@@ -167,6 +169,16 @@ include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Twolame.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Sndfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Bs2b.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Gme.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Ogg.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Vorbis.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Theora.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Expat.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Fontconfig.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Bluray.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Mbedtls.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Ssh.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Openh264.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_Ilbc.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/External_FFmpeg.cmake")
 
 # =======================================================

@@ -11,6 +11,9 @@ dep_package_version(NAME opus VERSION 1.5.2
 
 # ---- Build function ----
 function(build_opus)
+    skip_if_staged_target(opus_target
+        LIBS opus
+    )
     ExternalProject_Add(opus_target
         URL          ${OPUS_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

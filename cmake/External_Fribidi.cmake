@@ -12,6 +12,9 @@ dep_package_version(NAME fribidi VERSION 1.0.16
 
 # ---- Build function ----
 function(build_fribidi)
+    skip_if_staged_target(fribidi_target
+        LIBS fribidi
+    )
     ExternalProject_Add(fribidi_target
         URL          ${FRIBIDI_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -20,10 +23,7 @@ function(build_fribidi)
         CONFIGURE_COMMAND
             meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
                 -Ddeprecated=false
                 -Ddocs=false
                 -Dtests=false

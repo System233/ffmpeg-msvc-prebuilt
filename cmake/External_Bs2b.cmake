@@ -4,7 +4,6 @@ dep_package(
     DEFAULT     3.1.0
     BUILD       meson
     FFMPEG_FLAG --enable-libbs2b
-    REQUIRES    sndfile
 )
 dep_package_version(NAME bs2b VERSION 3.1.0
     URL      "https://downloads.sourceforge.net/project/bs2b/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz"
@@ -12,6 +11,9 @@ dep_package_version(NAME bs2b VERSION 3.1.0
 
 # ---- Build function ----
 function(build_bs2b)
+    skip_if_staged_target(bs2b_target
+        LIBS libbs2b
+    )
     ExternalProject_Add(bs2b_target
         DEPENDS      ${BS2B_RESOLVED_DEPENDS}
         URL          ${BS2B_RESOLVED_URL}
@@ -20,17 +22,14 @@ function(build_bs2b)
         CONFIGURE_COMMAND
             meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
         INSTALL_COMMAND
             meson install -C <BINARY_DIR>
         BUILD_BYPRODUCTS
             "${STAGE_DIR}/lib/bs2b.lib"
-            "${STAGE_DIR}/lib/pkgconfig/bs2b.pc"
+            "${STAGE_DIR}/lib/pkgconfig/libbs2b.pc"
     )
     ExternalProject_Add_Step(bs2b_target copy_meson_build
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

@@ -5,3 +5,4 @@ src/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
+.vscode

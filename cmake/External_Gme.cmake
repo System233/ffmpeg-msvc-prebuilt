@@ -12,6 +12,9 @@ dep_package_version(NAME gme VERSION 0.6.5
 
 # ---- Build function ----
 function(build_gme)
+    skip_if_staged_target(gme_target
+        LIBS libgme
+    )
     ExternalProject_Add(gme_target
         URL          ${GME_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

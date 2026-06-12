@@ -10,6 +10,7 @@ dep_package_version(NAME highway VERSION 1.2.0
 
 # ---- Build function ----
 function(build_highway)
+    skip_if_staged_target(highway_target FILES "${STAGE_DIR}/lib/hwy.lib")
     ExternalProject_Add(highway_target
         URL          ${HIGHWAY_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

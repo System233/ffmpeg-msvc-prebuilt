@@ -11,6 +11,9 @@ dep_package_version(NAME gsm VERSION 1.0.24
 
 # ---- Build function ----
 function(build_gsm)
+    skip_if_staged_target(gsm_target
+        LIBS gsm
+    )
     ExternalProject_Add(gsm_target
         URL          ${GSM_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -18,10 +21,7 @@ function(build_gsm)
         CONFIGURE_COMMAND
             meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
         INSTALL_COMMAND

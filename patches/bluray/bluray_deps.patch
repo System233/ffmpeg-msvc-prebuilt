@@ -1,0 +1,15 @@
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -69,6 +69,12 @@
+     if freetype_dependency.found()
+         # for EnumFontFamiliesExW
+         extra_dependencies += cc.find_library('gdi32')
++        # for RegOpen/CloseKey, RegQuery/EnumValue
++        extra_dependencies += cc.find_library('advapi32')
++        # SHGetFolderPathW
++        extra_dependencies += cc.find_library('shell32')
++        # Get/Release DC
++        extra_dependencies += cc.find_library('user32')
+     endif
+ 
+ elif host_machine.system() == 'darwin'

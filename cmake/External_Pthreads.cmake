@@ -10,6 +10,7 @@ dep_package_version(NAME pthreads VERSION 4.1.0.0
 
 # ---- Build function ----
 function(build_pthreads)
+    skip_if_staged_target(pthreads_target FILES "${STAGE_DIR}/lib/pthreadVSE3.lib" "${STAGE_DIR}/include/pthread.h")
     ExternalProject_Add(pthreads_target
         URL          ${PTHREADS_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

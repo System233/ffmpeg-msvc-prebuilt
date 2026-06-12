@@ -38,4 +38,13 @@ ffmpeg_family(
         twolame
         bs2b
         gme
+        ogg
+        vorbis
+        theora
+        # expat
+        # fontconfig
+        bluray
+        ssh
+        openh264
+        # ilbc
 )

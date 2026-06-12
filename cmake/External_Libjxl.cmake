@@ -13,6 +13,7 @@ dep_package_version(NAME libjxl VERSION 0.11.1
 
 # ---- Build function ----
 function(build_libjxl)
+    skip_if_staged_target(libjxl_target LIBS libjxl)
     ExternalProject_Add(libjxl_target
         DEPENDS      ${LIBJXL_RESOLVED_DEPENDS}
         URL          ${LIBJXL_RESOLVED_URL}

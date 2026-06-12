@@ -22,6 +22,9 @@ else()
 endif()
 # ---- Build function ----
 function(build_aom)
+    skip_if_staged_target(aom_target
+        LIBS aom
+    )
     ExternalProject_Add(aom_target
         URL          ${AOM_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

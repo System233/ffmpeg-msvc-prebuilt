@@ -14,6 +14,9 @@ if(TARGET_ARCH STREQUAL "arm")
 endif()
 # ---- Build function ----
 function(build_vvenc)
+    skip_if_staged_target(vvenc_target
+        LIBS libvvenc
+    )
     ExternalProject_Add(vvenc_target
         URL          ${VVENC_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

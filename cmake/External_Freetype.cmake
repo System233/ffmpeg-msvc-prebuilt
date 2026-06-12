@@ -11,6 +11,9 @@ dep_package_version(NAME freetype VERSION VER-2-13-3
 
 # ---- Build function ----
 function(build_freetype)
+    skip_if_staged_target(freetype_target
+        LIBS freetype2
+    )
     ExternalProject_Add(freetype_target
         URL          ${FREETYPE_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

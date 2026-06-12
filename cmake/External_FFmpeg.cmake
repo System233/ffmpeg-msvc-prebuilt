@@ -26,43 +26,54 @@ endif()
 
 # ---- Architecture-specific flags ----
 if(TARGET_ARCH MATCHES "^arm")
-    set(FFMPEG_ARCH_FLAGS "--enable-cross-compile")
-else()
-    set(FFMPEG_ARCH_FLAGS "")
+    set(FFMPEG_ARCH_FLAGS "--enable-cross-compile" )
+endif()
+
+if(TARGET_ARCH STREQUAL "arm64")
+    set(FFMPEG_ARCH_FLAGS ${FFMPEG_ARCH_FLAGS} "--disable-asm" )
 endif()
 
 # ---- Build function ----
 function(build_ffmpeg)
+    skip_if_staged_target(ffmpeg_target LIBS libavcodec)
     ExternalProject_Add(ffmpeg_target
         DEPENDS      ${FFMPEG_ASM_DEPENDS}
         URL          ${FFMPEG_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
+        DOWNLOAD_NAME ${FFMPEG_RESOLVED_DOWNLOAD_NAME}
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/ffmpeg"
         PATCH_COMMAND ${FFMPEG_RESOLVED_PATCH_CMDS}
         CONFIGURE_COMMAND
             ${SHELL_ENV}
-            "LDFLAGS=-libpath:${STAGE_DIR}/lib"
-            "CFLAGS=$ENV{CFLAGS} -I${STAGE_DIR}/include"
+            "prefix=${STAGE_DIR}"
+            "LDFLAGS=$ENV{LDFLAGS} -libpath:${STAGE_DIR}/lib"
+            "CFLAGS=$ENV{CFLAGS} -I${STAGE_DIR}/include -Ddec_init=ff_dec_init"
             ./configure
                 --toolchain=msvc
                 --arch=${ARCH_NAME}
-                --prefix=${STAGE_DIR}
+                --enable-version3
                 --pkg-config-flags=-static
                 ${FFMPEG_LINK_ARG}
                 ${FFMPEG_ASM_FLAGS}
                 ${FFMPEG_GPL_FLAG}
                 ${FFMPEG_ARCH_FLAGS}
-                --enable-version3
-                "--as=${CMAKE_CURRENT_LIST_DIR}/compile-as"
         BUILD_COMMAND
             $(MAKE) -C <SOURCE_DIR>
         INSTALL_COMMAND
-            $(MAKE) -C <SOURCE_DIR> install prefix=${STAGE_DIR}
+            $(MAKE) -C <SOURCE_DIR> install prefix=${DIST_DIR}
         BUILD_BYPRODUCTS
             ${FFMPEG_BUILD_BYPRODUCTS}
         BUILD_IN_SOURCE 1
     )
     
+    ExternalProject_Add_Step(ffmpeg_target install_pdb
+        COMMAND ${CMAKE_COMMAND}
+            "-DSRC_DIR=<SOURCE_DIR>"
+            "-DDST_DIR=${DIST_DIR}/bin"
+            -P "${CMAKE_CURRENT_LIST_DIR}/CopyPdbs.cmake"
+        DEPENDEES install
+        COMMENT "Installing PDB files to dist"
+    )
     # ExternalProject_Add_Step(ffmpeg_target patch_pkg_config
     #     COMMAND ${CMAKE_COMMAND} 
     #         -DSTAGE_DIR=${STAGE_DIR}

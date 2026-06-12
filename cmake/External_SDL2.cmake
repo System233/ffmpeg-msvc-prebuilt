@@ -11,6 +11,9 @@ dep_package_version(NAME sdl2 VERSION 2.30.11
 
 # ---- Build function ----
 function(build_sdl2)
+    skip_if_staged_target(sdl2_target
+        LIBS sdl2
+    )
     ExternalProject_Add(sdl2_target
         URL          ${SDL2_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

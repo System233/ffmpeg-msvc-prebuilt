@@ -12,6 +12,9 @@ dep_package_version(NAME libass VERSION 0.17.3
 
 # ---- Build function ----
 function(build_libass)
+    skip_if_staged_target(libass_target
+        LIBS libass
+    )
     ExternalProject_Add(libass_target
         DEPENDS      ${LIBASS_RESOLVED_DEPENDS}
         URL          ${LIBASS_RESOLVED_URL}
@@ -20,10 +23,7 @@ function(build_libass)
         CONFIGURE_COMMAND
             ${SHELL_ENV} meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
                 -Dasm=disabled
                 -Dtest=false
                 -Dprofile=false

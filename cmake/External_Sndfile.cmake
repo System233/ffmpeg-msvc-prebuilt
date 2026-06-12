@@ -11,9 +11,13 @@ dep_package_version(NAME sndfile VERSION 1.2.2
 
 # ---- Build function ----
 function(build_sndfile)
+    skip_if_staged_target(sndfile_target
+        LIBS sndfile
+    )
     ExternalProject_Add(sndfile_target
         URL          ${SNDFILE_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
+        DOWNLOAD_NAME ${SNDFILE_RESOLVED_DOWNLOAD_NAME}
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/sndfile"
         CMAKE_ARGS
             ${DEPS_CMAKE_ARGS}

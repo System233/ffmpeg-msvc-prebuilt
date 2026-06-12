@@ -11,6 +11,9 @@ dep_package_version(NAME libwebp VERSION 1.5.0
 
 # ---- Build function ----
 function(build_libwebp)
+    skip_if_staged_target(libwebp_target
+        LIBS libwebp
+    )
     ExternalProject_Add(libwebp_target
         URL          ${LIBWEBP_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

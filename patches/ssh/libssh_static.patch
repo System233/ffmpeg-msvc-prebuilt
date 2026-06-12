@@ -1,0 +1,8 @@
+--- a/libssh.pc.cmake
++++ b/libssh.pc.cmake
+@@ -7,4 +7,4 @@
+ Description: The SSH Library
+ Version: @PROJECT_VERSION@
+ Libs: -L${libdir} -lssh
+-Cflags: -I${includedir}
++Cflags: -I${includedir} -DLIBSSH_STATIC

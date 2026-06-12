@@ -907,7 +907,7 @@ sub handle_serialized_line {
                      ($arch eq "aarch64" and !is_aarch64_register($target))) {
                 $call_targets{$target}++;
             }
-        } elsif ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(cbn?z|adr|tbz)\s+(\w+)\s*,(\s*#\d+\s*,)?\s*(\w+)/) {
+        } elsif ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(cbn?z|adr|tbn?z)\s+(\w+)\s*,(\s*#\d+\s*,)?\s*(\w+)/) {
             my $instr = $2;
             my $reg = $3;
             my $bit = $4;

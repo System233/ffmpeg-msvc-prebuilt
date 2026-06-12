@@ -29,6 +29,7 @@ else()
 endif()
 
 function(build_libvpx)
+    skip_if_staged_target(libvpx_target LIBS vpx)
     ExternalProject_Add(libvpx_target
         URL          ${LIBVPX_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

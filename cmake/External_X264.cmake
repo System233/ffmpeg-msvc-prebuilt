@@ -17,11 +17,10 @@ dep_package_version(NAME x264 VERSION stable
 # ---- Architecture-specific flags ----
 if(TARGET_ARCH MATCHES "^arm")
     set(X264_ARCH_FLAGS "--disable-asm")
-else()
-    set(X264_ARCH_FLAGS "")
 endif()
 
 function(build_x264)
+    skip_if_staged_target(x264_target LIBS x264)
     ExternalProject_Add(x264_target
         URL          ${X264_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

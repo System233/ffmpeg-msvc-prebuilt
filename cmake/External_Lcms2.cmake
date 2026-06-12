@@ -11,6 +11,7 @@ dep_package_version(NAME lcms2 VERSION 2.16
 # ---- Build function ----
 function(build_lcms2)
     set(_patch_cmake "${CMAKE_CURRENT_LIST_DIR}/../patches/lcms2/CMakeLists.txt")
+    skip_if_staged_target(lcms2_target LIBS lcms2)
     ExternalProject_Add(lcms2_target
         URL          ${LCMS2_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

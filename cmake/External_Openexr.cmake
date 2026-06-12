@@ -10,6 +10,7 @@ dep_package_version(NAME openexr VERSION 3.3.2
 
 # ---- Build function ----
 function(build_openexr)
+    skip_if_staged_target(openexr_target LIBS OpenEXR)
     ExternalProject_Add(openexr_target
         URL          ${OPENEXR_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

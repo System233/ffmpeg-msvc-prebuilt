@@ -11,6 +11,14 @@
    subdir('bin')
 --- a/lib/meson.build
 +++ b/lib/meson.build
+@@ -46,6 +46,7 @@
+   'fribidi-shape.h',
+   'fribidi-types.h',
+   'fribidi-unicode.h',
++  'fribidi-unicode-version.h',
+   'fribidi.h',
+ )
+ install_headers(fribidi_headers, subdir: 'fribidi')
 @@ -72,8 +72,7 @@
  ]
  

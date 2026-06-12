@@ -8,22 +8,23 @@ dep_package(
 )
 dep_package_version(NAME liblc3 VERSION 1.1.3
     URL "https://github.com/google/liblc3/archive/refs/tags/v1.1.3.tar.gz"
+    PATCHES liblc3/common_h.patch
 )
 
 # ---- Build function ----
 function(build_liblc3)
+    skip_if_staged_target(liblc3_target
+        LIBS lc3
+    )
     ExternalProject_Add(liblc3_target
         URL          ${LIBLC3_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/liblc3"
+        PATCH_COMMAND ${LIBLC3_RESOLVED_PATCH_CMDS}
         CONFIGURE_COMMAND
             ${SHELL_ENV} meson setup <BINARY_DIR> <SOURCE_DIR>
-                -Dc_args="${CMAKE_C_FLAGS}"
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
                 -Dtools=false
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>

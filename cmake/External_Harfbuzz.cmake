@@ -13,6 +13,9 @@ dep_package_version(NAME harfbuzz VERSION 10.1.0
 
 # ---- Build function ----
 function(build_harfbuzz)
+    skip_if_staged_target(harfbuzz_target
+        LIBS harfbuzz
+    )
     ExternalProject_Add(harfbuzz_target
         DEPENDS      ${HARFBUZZ_RESOLVED_DEPENDS}
         URL          ${HARFBUZZ_RESOLVED_URL}

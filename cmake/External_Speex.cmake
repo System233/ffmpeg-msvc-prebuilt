@@ -11,6 +11,7 @@ dep_package_version(NAME speex VERSION 1.2.1
 
 # ---- Build function ----
 function(build_speex)
+    skip_if_staged_target(speex_target LIBS speex)
     ExternalProject_Add(speex_target
         URL          ${SPEEX_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"

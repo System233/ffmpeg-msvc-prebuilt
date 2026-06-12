@@ -13,6 +13,9 @@ dep_package_version(NAME twolame VERSION 0.4.0
 
 # ---- Build function ----
 function(build_twolame)
+    skip_if_staged_target(twolame_target
+        LIBS twolame
+    )
     ExternalProject_Add(twolame_target
         URL          ${TWOLAME_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -21,10 +24,7 @@ function(build_twolame)
         CONFIGURE_COMMAND
             meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
-                -Db_vscrt=mt
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>
         INSTALL_COMMAND

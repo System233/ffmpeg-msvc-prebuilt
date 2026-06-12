@@ -11,6 +11,9 @@ dep_package_version(NAME dav1d VERSION 1.5.1
 
 # ---- Build function ----
 function(build_dav1d)
+    skip_if_staged_target(dav1d_target
+        LIBS dav1d
+    )
     ExternalProject_Add(dav1d_target
         URL          ${DAV1D_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -18,9 +21,6 @@ function(build_dav1d)
         CONFIGURE_COMMAND
             ${SHELL_ENV} meson setup <BINARY_DIR> <SOURCE_DIR>
                 --prefix=${STAGE_DIR}
-                --buildtype=release
-                --default-library=static
-                -Db_vscrt=mt
                 --cross-file "${CMAKE_CURRENT_BINARY_DIR}/msvc-cross.ini"
         BUILD_COMMAND
             meson compile -C <BINARY_DIR>

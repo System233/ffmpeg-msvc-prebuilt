@@ -182,8 +182,15 @@ macro(_dep_resolve_single _name)
         message(FATAL_ERROR "Unknown version '${_ver}' for dependency '${_name}'")
     endif()
 
+
+    set(${_name_upper}_RESOLVED_VERSION      "${_ver}")
     set(${_name_upper}_RESOLVED_URL      "${_url}")
     set(${_name_upper}_RESOLVED_URL_TYPE "${_url_type}")
+    
+    string(REGEX REPLACE "\\?.*$" "" _clean_url "${_url}")
+    cmake_path(GET _clean_url FILENAME _filename)
+    set(${_name_upper}_RESOLVED_DOWNLOAD_NAME "${_name}_${_filename}")
+
     _dep_build_patch_cmds("${_name}" _patches ${_name_upper}_RESOLVED_PATCH_CMDS)
 
     message(STATUS "  ${_name} = ${_ver} (${_url_type})")

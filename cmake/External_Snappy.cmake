@@ -11,9 +11,13 @@ dep_package_version(NAME snappy VERSION 1.2.2
 
 # ---- Build function ----
 function(build_snappy)
+    skip_if_staged_target(snappy_target
+        LIBS snappy
+    )
     ExternalProject_Add(snappy_target
         URL          ${SNAPPY_RESOLVED_URL}
         DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/downloads"
+        DOWNLOAD_NAME ${SNAPPY_RESOLVED_DOWNLOAD_NAME}
         SOURCE_DIR   "${CMAKE_CURRENT_BINARY_DIR}/src/snappy"
         PATCH_COMMAND ${SNAPPY_RESOLVED_PATCH_CMDS}
         CMAKE_ARGS
