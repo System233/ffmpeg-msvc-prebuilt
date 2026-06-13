@@ -1,0 +1,180 @@
+# ---------------------------------------------------------------------------
+# build-release.yml — Build & release FFmpeg (MSVC prebuilt)
+#
+# Triggered manually (workflow_dispatch) or called from another workflow
+# (workflow_call).  Builds FFmpeg across a matrix of triplets, licenses,
+# and linkage types, then publishes all artifacts as a GitHub Release.
+# ---------------------------------------------------------------------------
+
+name: Build FFmpeg Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: "FFmpeg version (e.g. 8.1.1)"
+        required: true
+        type: string
+      port:
+        description: "Port name (e.g. ffmpeg-8-1-1)"
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      ffmpeg_version:
+        type: string
+        required: true
+      port:
+        type: string
+        required: true
+
+# ─── Jobs ────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── Seed: build base dependencies once per triplet ─────────────────────────
+  seed:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        triplet:
+          - arm-windows-mixed
+          - arm64-windows-mixed
+          - x86-windows-mixed
+          - x64-windows-mixed
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: make pkg-config diffutils nasm
+
+      - name: Clone vcpkg
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Bootstrap vcpkg
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Install vcpkg base deps
+        env:
+          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
+        run: |
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install ffmpeg-base-deps `
+            --triplet=${{ matrix.triplet }} `
+            --overlay-ports=ports/ `
+            --overlay-triplets=triplets/ `
+            --binarysource=clear
+
+      - name: Upload binary cache artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-cache-${{ matrix.triplet }}
+          path: ${{ runner.temp }}/vcpkg-cache
+          compression-level: 1
+
+  # ── Build: compile FFmpeg for every triplet × license × linkage ───────────
+  build:
+    needs: seed
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        triplet:
+          - arm-windows-mixed
+          - arm64-windows-mixed
+          - x86-windows-mixed
+          - x64-windows-mixed
+        license:
+          - lgpl
+          - gpl
+          - nonfree
+        linkage:
+          - shared
+          - static
+      # 4 × 3 × 2 = 24 parallel jobs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: make pkg-config diffutils nasm
+
+      - name: Clone vcpkg
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Bootstrap vcpkg
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Restore binary cache from seed
+        uses: actions/download-artifact@v4
+        with:
+          name: vcpkg-cache-${{ matrix.triplet }}
+          path: ${{ runner.temp }}/vcpkg-cache
+
+      - name: Build FFmpeg
+        env:
+          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
+        run: |
+          $portName = "ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.linkage }}"
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${portName}[${{ matrix.license }}]" `
+            --triplet=${{ matrix.triplet }} `
+            --overlay-ports=ports/ `
+            --overlay-triplets=triplets/
+
+      - name: Package release archive
+        run: |
+          $ver = "${{ inputs.ffmpeg_version }}"
+          python scripts/package_release.py `
+            --version $ver `
+            --triplet ${{ matrix.triplet }} `
+            --license ${{ matrix.license }} `
+            --linkage ${{ matrix.linkage }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          path: Release/*.zip
+          compression-level: 0  # already compressed
+
+  # ── Release: create a GitHub Release with all archives ─────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ffmpeg-${{ inputs.ffmpeg_version }}-*
+          path: artifacts/
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ffmpeg-${{ inputs.ffmpeg_version }}
+          name: "FFmpeg ${{ inputs.ffmpeg_version }} (MSVC Prebuilt)"
+          body: |
+            Automated build of FFmpeg ${{ inputs.ffmpeg_version }} using MSVC via vcpkg.
+
+            ## Archives
+
+            Each `.zip` file follows the naming convention:
+            `ffmpeg-<version>-<triplet>-<linkage>-<license>.zip`
+
+            - **Triplet**: architecture/ABI (x64, x86, arm64, arm)
+            - **Linkage**: `shared` (DLLs) or `static` (static libs)
+            - **License**: `lgpl`, `gpl`, or `nonfree`
+          files: artifacts/*.zip

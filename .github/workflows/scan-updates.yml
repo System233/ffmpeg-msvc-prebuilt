@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# scan-updates.yml — Scan for new FFmpeg upstream releases
+#
+# Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API and compares
+# against the local ports/ directory.  If a new version is found, this
+# workflow can be extended to automatically trigger a build.
+# ---------------------------------------------------------------------------
+
+name: Scan for new FFmpeg releases
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # Daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Scan for new upstream releases
+        id: scan
+        run: |
+          python scripts/scan_updates.py > scan_output.txt 2>&1
+          cat scan_output.txt
+
+          # Extract "new —" lines containing version numbers
+          NEW_VERSIONS=$(grep 'new —' scan_output.txt \
+            | sed 's/.*\([0-9]\+\.[0-9]\+\(\.[0-9]\+\)*\).*/\1/' \
+            | tr '\n' ',' | sed 's/,$//')
+
+          if [ -n "$NEW_VERSIONS" ]; then
+            echo "new_versions=$NEW_VERSIONS" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No new upstream releases detected."
+          fi
+
+      - name: Trigger build for new versions
+        if: steps.scan.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "New FFmpeg version(s) detected: ${{ steps.scan.outputs.new_versions }}"
+          echo ""
+          echo "To trigger a build for a specific version, run:"
+          echo ""
+          IFS=',' read -ra VERSIONS <<< "${{ steps.scan.outputs.new_versions }}"
+          for ver in "${VERSIONS[@]}"; do
+            port_name="ffmpeg-${ver//./-}"
+            echo "  gh workflow run build-release.yml \\"
+            echo "    --input ffmpeg_version=$ver \\"
+            echo "    --input port=$port_name"
+          done
+          # Generate port files and trigger build for each new version
+          for ver in "${VERSIONS[@]}"; do
+            # Generate port files
+            python scripts/generate_port.py --version "$ver"
+            # Commit and push new port files
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add ports/ scripts/ffmpeg/
+            git commit -m "Auto-generate port for FFmpeg $ver" || true
+            git push || true
+            # Trigger build
+            port_name="ffmpeg-${ver//./-}"
+            gh workflow run build-release.yml \
+              --input ffmpeg_version="$ver" \
+              --input port="$port_name"
+          done

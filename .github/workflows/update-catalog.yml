@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# update-catalog.yml — Update catalog.json when a GitHub Release is published
+#
+# Triggered on release published events. Parses release asset zip filenames
+# and calls scripts/update_catalog.py for each matching asset.
+# ---------------------------------------------------------------------------
+
+name: Update Catalog
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-catalog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Update catalog from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/update_catalog_from_release.py

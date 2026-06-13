@@ -1,21 +1,8 @@
 set(VCPKG_TARGET_ARCHITECTURE arm)
 set(VCPKG_CMAKE_SYSTEM_VERSION 10.0.19041.0)
-# 强制所有库（无论静态动态）统一使用静态 CRT (/MT 或 /MTd)
 set(VCPKG_CRT_LINKAGE static)
-# set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 
-# 核心混编逻辑
-if(PORT STREQUAL "ffmpeg")
+if(PORT MATCHES "^ffmpeg-.+-shared$")
     set(VCPKG_LIBRARY_LINKAGE dynamic)
-    message(STATUS "[VCPKG-MIXED] Configuring ${PORT} as SHARED")
-else()
-    message(STATUS "[VCPKG-MIXED] Configuring ${PORT} as STATIC")
-endif()
-
-if(PORT STREQUAL "opencl")
-    set(VCPKG_LINKER_FLAGS "${VCPKG_LINKER_FLAGS} /DEFAULTLIB:advapi32.lib /DEFAULTLIB:ole32.lib")
-    set(VCPKG_LINKER_FLAGS_DEBUG "${VCPKG_LINKER_FLAGS_DEBUG} /DEFAULTLIB:advapi32.lib /DEFAULTLIB:ole32.lib")
-    set(VCPKG_LINKER_FLAGS_RELEASE "${VCPKG_LINKER_FLAGS_RELEASE} /DEFAULTLIB:advapi32.lib /DEFAULTLIB:ole32.lib")
-    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS "-DENABLE_OPENCL_DEVELOPER_TOOLS=OFF")
 endif()

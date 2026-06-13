@@ -1,0 +1,281 @@
+{
+  "name": "ffmpeg-6-0-static",
+  "version": "6.0",
+  "port-version": 0,
+  "description": [
+    "FFmpeg 6.0 static build for MSVC. Includes ffmpeg.exe, ffplay.exe, ffprobe.exe.",
+    "All codec dependencies are provided by ffmpeg-base-deps virtual port."
+  ],
+  "homepage": "https://ffmpeg.org",
+  "license": null,
+  "default-features": [
+    "alsa",
+    "amf",
+    "aom",
+    "ass",
+    "avcodec",
+    "avdevice",
+    "avfilter",
+    "avformat",
+    "avisynthplus",
+    "bzip2",
+    "dav1d",
+    "fdk-aac",
+    "ffmpeg",
+    "ffplay",
+    "ffprobe",
+    "fontconfig",
+    "freetype",
+    "fribidi",
+    "gpl",
+    "iconv",
+    "ilbc",
+    "lzma",
+    "modplug",
+    "mp3lame",
+    "nonfree",
+    "nvcodec",
+    "opencl",
+    "opengl",
+    "openh264",
+    "openjpeg",
+    "openmpt",
+    "openssl",
+    "opus",
+    "postproc",
+    "sdl2",
+    "snappy",
+    "soxr",
+    "speex",
+    "srt",
+    "ssh",
+    "swresample",
+    "swscale",
+    "tensorflow",
+    "tesseract",
+    "theora",
+    "version3",
+    "vorbis",
+    "vpx",
+    "webp",
+    "x264",
+    "x265",
+    "xml2",
+    "zlib",
+    "w32threads",
+    "d3d11va",
+    "dxva2",
+    "mediafoundation",
+    "mfx"
+  ],
+  "dependencies": [
+    {
+      "name": "ffmpeg-base-deps"
+    },
+    {
+      "name": "vcpkg-cmake-get-vars",
+      "host": true
+    },
+    {
+      "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    },
+    {
+      "name": "ffnvcodec-11"
+    }
+  ],
+  "features": {
+    "alsa": {
+      "description": "Enable ALSA support"
+    },
+    "amf": {
+      "description": "AMD AMF codec support"
+    },
+    "aom": {
+      "description": "AV1 video encoding/decoding via libaom support in ffmpeg"
+    },
+    "ass": {
+      "description": "Libass subtitles rendering, needed for subtitles and ass filter support in ffmpeg"
+    },
+    "avcodec": {
+      "description": "Build the avcodec library"
+    },
+    "avdevice": {
+      "description": "Build the avdevice library"
+    },
+    "avfilter": {
+      "description": "Build the avfilter library"
+    },
+    "avformat": {
+      "description": "Build the avformat library"
+    },
+    "avisynthplus": {
+      "description": "Reading of AviSynth script files"
+    },
+    "bzip2": {
+      "description": "Bzip2 support"
+    },
+    "dav1d": {
+      "description": "AV1 decoding via libdav1d"
+    },
+    "fdk-aac": {
+      "description": "AAC de/encoding via libfdk-aac, **including GPL-incompatible patent-encumbered HE-AAC**. If you do not require HE-AAC, use the built-in FFmpeg AAC codec."
+    },
+    "ffmpeg": {
+      "description": "Build the ffmpeg application"
+    },
+    "ffplay": {
+      "description": "Build the ffplay application"
+    },
+    "ffprobe": {
+      "description": "Build the ffprobe application"
+    },
+    "fontconfig": {
+      "description": "Useful for drawtext filter"
+    },
+    "freetype": {
+      "description": "Needed for drawtext filter"
+    },
+    "fribidi": {
+      "description": "Improves drawtext filter"
+    },
+    "gpl": {
+      "description": "GPL license build — includes x264, x265",
+      "dependencies": [
+        {
+          "name": "ffmpeg-6-0-static",
+          "features": [
+            "x264",
+            "x265"
+          ]
+        }
+      ]
+    },
+    "iconv": {
+      "description": "Iconv support"
+    },
+    "ilbc": {
+      "description": "iLBC de/encoding via libilbc"
+    },
+    "lzma": {
+      "description": "lzma support"
+    },
+    "modplug": {
+      "description": "ModPlug via libmodplug"
+    },
+    "mp3lame": {
+      "description": "MP3 encoding via libmp3lame"
+    },
+    "nonfree": {
+      "description": "Non-free license build — includes fdk-aac",
+      "dependencies": [
+        {
+          "name": "ffmpeg-6-0-static",
+          "features": [
+            "gpl",
+            "fdk-aac"
+          ]
+        }
+      ]
+    },
+    "nvcodec": {
+      "description": "Nvidia video decoding/encoding acceleration"
+    },
+    "opencl": {
+      "description": "OpenCL processing"
+    },
+    "opengl": {
+      "description": "OpenGL rendering"
+    },
+    "openh264": {
+      "description": "H.264 de/encoding via openh264"
+    },
+    "openjpeg": {
+      "description": "JPEG 2000 de/encoding via OpenJPEG"
+    },
+    "openmpt": {
+      "description": "Decoding tracked files via libopenmpt"
+    },
+    "openssl": {
+      "description": "Needed for https support if gnutls, libtls or mbedtls is not used"
+    },
+    "opus": {
+      "description": "Opus de/encoding via libopus"
+    },
+    "postproc": {
+      "description": "Build the postproc library"
+    },
+    "sdl2": {
+      "description": "Sdl2 support"
+    },
+    "snappy": {
+      "description": "Snappy compression, needed for hap encoding"
+    },
+    "soxr": {
+      "description": "Include libsoxr resampling"
+    },
+    "speex": {
+      "description": "Speex de/encoding via libspeex"
+    },
+    "srt": {
+      "description": "Haivision SRT protocol"
+    },
+    "ssh": {
+      "description": "SFTP protocol via libssh"
+    },
+    "swresample": {
+      "description": "Build the swresample library"
+    },
+    "swscale": {
+      "description": "Build the swscale library"
+    },
+    "tensorflow": {
+      "description": "TensorFlow as a DNN module backend for DNN based filters like sr"
+    },
+    "tesseract": {
+      "description": "Tesseract, needed for ocr filter"
+    },
+    "theora": {
+      "description": "Theora encoding via libtheora"
+    },
+    "version3": {
+      "description": "Upgrade (L)GPL to version 3"
+    },
+    "vorbis": {
+      "description": "Vorbis en/decoding via libvorbis, native implementation exists"
+    },
+    "vpx": {
+      "description": "VP8 and VP9 de/encoding via libvpx"
+    },
+    "webp": {
+      "description": "WebP encoding via libwebp"
+    },
+    "x264": {
+      "description": "H.264 encoding via x264"
+    },
+    "x265": {
+      "description": "HEVC encoding via x265"
+    },
+    "xml2": {
+      "description": "XML parsing using the C library libxml2, needed for dash demuxing support"
+    },
+    "zlib": {
+      "description": "zlib support"
+    },
+    "w32threads": {
+      "description": "Windows thread support"
+    },
+    "d3d11va": {
+      "description": "Direct3D 11 Video Acceleration"
+    },
+    "dxva2": {
+      "description": "DXVA2 hardware decoding"
+    },
+    "mediafoundation": {
+      "description": "Media Foundation support"
+    },
+    "mfx": {
+      "description": "Intel QSV via libmfx (pre-8.0)"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+FFmpeg Base Dependencies (Virtual Port)
+
+This is a virtual vcpkg port that aggregates all static library
+dependencies required to build FFmpeg with maximum feature coverage.
+
+This port produces no build artifacts of its own.
+All actual libraries are provided by their respective vcpkg ports
+under their own licenses (LGPL, GPL, BSD, etc.).
+
+See each individual package's copyright file for license details.

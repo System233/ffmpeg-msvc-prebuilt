@@ -1,0 +1,8 @@
+{
+  "name": "ffnvcodec-11",
+  "version": "11.1.5.3",
+  "port-version": 0,
+  "description": "NVIDIA Video Codec SDK headers (fixed 11.x for FFmpeg pre-7.0 compatibility)",
+  "homepage": "https://github.com/FFmpeg/nv-codec-headers",
+  "license": "MIT"
+}

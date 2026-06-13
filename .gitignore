@@ -1,0 +1,4 @@
+# Build and extracted data
+_work/
+*.pyc
+__pycache__

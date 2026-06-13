@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# pages.yml — Deploy the FFmpeg prebuilt SPA to GitHub Pages
+#
+# Triggered on pushes to main that touch the web/ directory.
+# Builds the SPA with Node 20 and publishes to the gh-pages branch.
+# ---------------------------------------------------------------------------
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+        # NOTE: This workflow requires the React SPA to be implemented in web/src/ first.
+        # Currently only SPEC.md and package.json exist.
+        # If the SPA is not yet implemented, this step will fail safely.
+
+      - name: Build SPA
+        working-directory: web
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist   # Vite default output; adjust if vite.config.ts changes this
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

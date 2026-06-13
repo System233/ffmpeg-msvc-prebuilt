@@ -1,0 +1,95 @@
+{
+  "name": "ffmpeg-5-1-static",
+  "version": "5.1",
+  "port-version": 0,
+  "description": [
+    "FFmpeg 5.1 static build for MSVC. Includes ffmpeg.exe, ffplay.exe, ffprobe.exe.",
+    "All codec dependencies are provided by ffmpeg-base-deps virtual port."
+  ],
+  "homepage": "https://ffmpeg.org",
+  "license": null,
+  "default-features": [
+    "avcodec",
+    "avdevice",
+    "avformat",
+    "avfilter",
+    "swresample",
+    "swscale",
+    "w32threads",
+    "d3d11va",
+    "dxva2",
+    "mediafoundation"
+  ],
+  "dependencies": [
+    {
+      "name": "ffmpeg-base-deps"
+    },
+    {
+      "name": "vcpkg-cmake-get-vars",
+      "host": true
+    },
+    {
+      "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    },
+    {
+      "name": "ffnvcodec-11"
+    }
+  ],
+  "features": {
+    "avcodec": {
+      "description": "Build the avcodec library"
+    },
+    "avdevice": {
+      "description": "Build the avdevice library"
+    },
+    "avformat": {
+      "description": "Build the avformat library"
+    },
+    "avfilter": {
+      "description": "Build the avfilter library"
+    },
+    "swresample": {
+      "description": "Build the swresample library"
+    },
+    "swscale": {
+      "description": "Build the swscale library"
+    },
+    "w32threads": {
+      "description": "Windows thread support"
+    },
+    "d3d11va": {
+      "description": "Direct3D 11 Video Acceleration"
+    },
+    "dxva2": {
+      "description": "DXVA2 hardware decoding"
+    },
+    "mediafoundation": {
+      "description": "Media Foundation support"
+    },
+    "gpl": {
+      "description": "GPL license build — includes x264, x265",
+      "dependencies": [
+        {
+          "name": "ffmpeg-5-1-static",
+          "features": [
+            "x264",
+            "x265"
+          ]
+        }
+      ]
+    },
+    "nonfree": {
+      "description": "Non-free license build — includes fdk-aac",
+      "dependencies": [
+        {
+          "name": "ffmpeg-5-1-static",
+          "features": [
+            "gpl",
+            "fdk-aac"
+          ]
+        }
+      ]
+    }
+  }
+}
