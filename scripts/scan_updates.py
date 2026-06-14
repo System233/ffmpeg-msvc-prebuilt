@@ -31,9 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PORTS_DIR = REPO_ROOT / "ports"
 
 # Regex for port directory names.  Matches both:
-#   ffmpeg-7-0-shared       (X.Y,  two digit groups)
-#   ffmpeg-8-1-1-shared     (X.Y.Z, three digit groups)
-PORT_DIR_RE = re.compile(r"^ffmpeg-(\d+)-(\d+)(?:-(\d+))?-(shared|static)$")
+#   ffmpeg-7-0       (X.Y,  two digit groups)
+#   ffmpeg-8-1-1     (X.Y.Z, three digit groups)
+PORT_DIR_RE = re.compile(r"^ffmpeg-(\d+)-(\d+)(?:-(\d+))?$")
 
 # Regex for FFmpeg upstream tags (e.g. n8.1.1, n7.0.2)
 TAG_RE = re.compile(r"^n(\d+)\.(\d+)\.(\d+)$")

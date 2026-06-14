@@ -7,20 +7,13 @@ source:
   sha512: 3b273769ef1a1b63aed0691eef317a760f8c83b1d0e1c232b67bbee26db60b4864aafbc88df0e86d6bebf07185bbd057f33e2d5258fde6d97763b9994cd48b6f
 
 build:
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
   debug:
     options: "--disable-optimizations"
   release:
     options: "--enable-optimizations"
-
-features:
-  include:
-    - vulkan
-    - zmq
-    - d3d12va
-    - srt
-    - harfbuzz
-  exclude:
-    - mfx
-    - "post*"
-  defaults:
-    - "@all"
+  host_deps:
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true

@@ -22,31 +22,5 @@ build:
       host: true
 
 features:
-  include:
-    - "@all"
-    - nvenc
-  exclude:
-    - sdl2 # configure Package 'sdl2' has version '2.32.10', required version is '< 2.1.0'
-    - openssl # configure
-    - opencl # configure
-    - openjpeg # configure
-    - vulkan #unsupported
-    - aom
-    - dav1d
-    - srt
-    - svtav1
-    - jxl
-    - harfbuzz
-    - shaderc
-    - vvenc
-    - dvdnav
-    - dvdread
-    - d3d12va
-    - amf
-    - lensfun #unsupported
-    - mediafoundation
-    - qsv
   nvcodec:
     flag: "--enable-cuda --enable-nvenc"
-  defaults:
-    - "@all"

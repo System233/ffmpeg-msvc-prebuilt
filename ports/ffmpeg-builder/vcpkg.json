@@ -1,0 +1,17 @@
+{
+  "name": "ffmpeg-builder",
+  "version": "1.0.0",
+  "description": "Shared FFmpeg build infrastructure for ffmpeg-msvc-prebuilt ports",
+  "homepage": "https://github.com/System233/ffmpeg-msvc-prebuilt",
+  "license": "LGPL-2.1-or-later",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake-get-vars",
+      "host": true
+    },
+    {
+      "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    }
+  ]
+}

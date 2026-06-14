@@ -21,11 +21,3 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
 
-features:
-  include:
-    - qsv
-  exclude:
-    - avresample
-    - mfx
-  defaults:
-    - "@all"

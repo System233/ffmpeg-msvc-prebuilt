@@ -38,10 +38,10 @@ jobs:
     strategy:
       matrix:
         triplet:
-          - arm-windows-mixed
-          - arm64-windows-mixed
-          - x86-windows-mixed
-          - x64-windows-mixed
+          - arm-windows
+          - arm64-windows
+          - x86-windows
+          - x64-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -83,20 +83,26 @@ jobs:
     strategy:
       matrix:
         triplet:
-          - arm-windows-mixed
-          - arm64-windows-mixed
-          - x86-windows-mixed
-          - x64-windows-mixed
+          - arm-windows
+          - arm64-windows
+          - x86-windows
+          - x64-windows
         license:
           - lgpl
           - gpl
           - nonfree
-        linkage:
-          - shared
+        static:
+          - ""
           - static
       # 4 × 3 × 2 = 24 parallel jobs
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set linkage name
+        id: linkage
+        run: |
+          $linkage = if ("${{ matrix.static }}" -eq "static") { "static" } else { "shared" }
+          echo "name=$linkage" >> $env:GITHUB_OUTPUT
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -122,9 +128,10 @@ jobs:
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
         run: |
-          $ver = "${{ inputs.ffmpeg_version }}".Replace('.', '-')
-          $portName = "ffmpeg-${ver}-${{ matrix.linkage }}"
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${portName}[${{ matrix.license }}]" `
+          $features = "${{ matrix.license }}"
+          if ("${{ matrix.static }}" -ne "") { $features = "$features,${{ matrix.static }}" }
+          $portName = "ffmpeg-${{ inputs.ffmpeg_version }}".Replace('.', '-')
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${portName}[${features}]" `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `
             --overlay-triplets=triplets/
@@ -136,12 +143,12 @@ jobs:
             --version $ver `
             --triplet ${{ matrix.triplet }} `
             --license ${{ matrix.license }} `
-            --linkage ${{ matrix.linkage }}
+            --linkage ${{ steps.linkage.outputs.name }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          name: ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ steps.linkage.outputs.name }}
           path: Release/*.zip
           compression-level: 0  # already compressed
 

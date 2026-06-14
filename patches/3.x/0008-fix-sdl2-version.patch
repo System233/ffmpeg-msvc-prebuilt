@@ -1,0 +1,33 @@
+From 64dc63bfd2fc258248ddf0d740b52c4cd26347a5 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Sun, 14 Jun 2026 18:35:42 +0800
+Subject: [PATCH] Relax SDL2 version constraint for MSVC static builds
+
+---
+ configure | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configure b/configure
+index f164e15..069ec69 100644
+--- a/configure
++++ b/configure
+@@ -6106,14 +6106,14 @@ fi
+ 
+ if enabled sdl2; then
+     SDL2_CONFIG="${cross_prefix}sdl2-config"
+-    if check_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 2.1.0" SDL_events.h SDL_PollEvent; then
++    if check_pkg_config sdl2 "sdl2 >= 2.0.1 sdl2 < 3.0.0" SDL_events.h SDL_PollEvent; then
+         check_func SDL_Init $sdl2_extralibs $sdl2_cflags ||
+             disable sdl2
+     elif "${SDL2_CONFIG}" --version > /dev/null 2>&1; then
+         sdl2_cflags=$("${SDL2_CONFIG}" --cflags)
+         sdl2_extralibs=$("${SDL2_CONFIG}" --libs)
+         check_cpp_condition SDL.h "(SDL_MAJOR_VERSION<<16 | SDL_MINOR_VERSION<<8 | SDL_PATCHLEVEL) >= 0x020001" $sdl2_cflags &&
+-        check_cpp_condition SDL.h "(SDL_MAJOR_VERSION<<16 | SDL_MINOR_VERSION<<8 | SDL_PATCHLEVEL) < 0x020100" $sdl2_cflags &&
++        check_cpp_condition SDL.h "(SDL_MAJOR_VERSION<<16 | SDL_MINOR_VERSION<<8 | SDL_PATCHLEVEL) < 0x030000" $sdl2_cflags &&
+         check_func SDL_Init $sdl2_extralibs $sdl2_cflags &&
+             enable sdl2
+     fi
+-- 
+2.47.1.windows.2
+

@@ -30,14 +30,15 @@ features:
     flag: "--enable-avresample"
     pkgconfig: libavresample
     description: "Build the avresample library"
+    version: "<5.0"
   postproc:
     flag: "--enable-postproc"
     pkgconfig: libpostproc
     description: "Build the postproc library"
-  gpl:
+  license-gpl:
     flag: "--enable-gpl --enable-version3"
     description: "Allow use of GPL code, the resulting libs and binaries will be under GPL"
-  nonfree:
+  license-nonfree:
     flag: "--enable-nonfree"
     description: "Allow use of nonfree code, the resulting libs and binaries will be unredistributable"
   # Compression / Text / Fonts
@@ -75,6 +76,7 @@ features:
     flag: "--enable-libharfbuzz"
     depends: ["harfbuzz"]
     platform: "!uwp"
+    version: ">=6.1"
     description: "Enable drawtext filter"
   ass:
     flag: "--enable-libass"
@@ -137,11 +139,13 @@ features:
   dav1d:
     flag: "--enable-libdav1d"
     depends: ["dav1d"]
+    version: ">=4.2"
     description: "AV1 decoding via libdav1d"
   aom:
     flag: "--enable-libaom"
     depends: ["aom"]
     platform: "!uwp"
+    version: ">=4.0"
     description: "AV1 video encoding/decoding via libaom support in ffmpeg"
   vpx:
     flag: "--enable-libvpx"
@@ -167,24 +171,29 @@ features:
     flag: "--enable-liblensfun"
     depends: ["lensfun"]
     platform: "!arm"
+    version: ">=4.1"
     description: "Lens correction via lensfun"
   jxl:
     flag: "--enable-libjxl"
     depends: ["libjxl"]
+    version: ">=5.1"
     description: "JPEG XL de/encoding via libjxl"
   shaderc:
     flag: "--enable-libshaderc"
     depends: ["shaderc"]
+    version: ">=5.0"
     description: "GLSL/Vulkan shader compilation via shaderc (required by libplacebo)"
   svtav1:
     flag: "--enable-libsvtav1"
     depends: ["svt-av1"]
     platform: "!x86 & !arm32 & !uwp"
+    version: ">=4.4"
     description: "AV1 encoding via SVT-AV1"
   vvenc:
     flag: "--enable-libvvenc"
     depends: ["vvenc"]
     platform: "!x86 & !arm"
+    version: ">=7.1"
     description: "VVC/H.266 encoding via vvenc"
   # Network / Graphics / Container
   sdl2:
@@ -199,6 +208,7 @@ features:
     flag: "--enable-libsrt"
     depends: ["libsrt"]
     platform: "!uwp & !xbox"
+    version: ">=4.0"
     description: "Haivision SRT protocol"
   ssh:
     flag: "--enable-libssh"
@@ -232,21 +242,25 @@ features:
   amf:
     flag: "--enable-amf"
     depends: ["amd-amf"]
+    version: ">=4.0"
     description: "AMD AMF codec support"
   qsv:
     flag: "--enable-libvpl"
     depends: ["libvpl"]
     platform: "!uwp & !arm & !arm64"
+    version: ">=6.0"
     description: "Intel QSV Codec via oneVPL"
   mfx:
     flag: "--enable-libmfx"
     depends: ["mfx-dispatch"]
     platform: "!uwp & !arm & !arm64"
+    version: "<8.0"
     description: "Intel QSV Codec via libmfx (pre-8.0)"
   vulkan:
     flag: "--enable-vulkan"
     depends: ["vulkan"]
     platform: "!uwp & !xbox"
+    version: ">=4.3 <5.0,>=7.0"
     description: "H.264, HEVC and AV1 de/encoding via Vulkan"
   opencl:
     flag: "--enable-opencl"
@@ -268,23 +282,25 @@ features:
   d3d12va:
     flag: "--enable-d3d12va"
     description: "Direct3D 12 Video Acceleration"
+    version: ">=7.0"
   dxva2:
     flag: "--enable-dxva2"
     description: "DXVA2 hardware decoding"
   mediafoundation:
     flag: "--enable-mediafoundation"
     description: "Media Foundation support"
+    version: ">=4.0"
   pthreads:
     flag: "--enable-pthreads"
     description: "POSIX threads support"
   # GPL
   x264:
     flag: "--enable-libx264"
-    depends: ["x264", "@gpl"]
+    depends: ["x264", "@license-gpl"]
     description: "H.264 encoding via x264"
   x265:
     flag: "--enable-libx265"
-    depends: ["x265", "@gpl"]
+    depends: ["x265", "@license-gpl"]
     platform: "!uwp & !xbox"
     description: "HEVC encoding via x265"
   # rubberband disabled — incompatible with static CRT builds.
@@ -297,19 +313,25 @@ features:
   #   description: "Audio time-stretching and pitch-shifting via librubberband"
   dvdnav:
     flag: "--enable-libdvdnav"
-    depends: ["libdvdnav", "@gpl"]
+    depends: ["libdvdnav", "@license-gpl"]
     platform: "!uwp & !xbox"
+    version: ">=7.0"
     description: "DVD, Blu-ray, and Matroska navigation via libdvdnav"
   dvdread:
     flag: "--enable-libdvdread"
-    depends: ["libdvdread", "@gpl"]
+    depends: ["libdvdread", "@license-gpl"]
     platform: "!uwp & !xbox"
+    version: ">=7.0"
     description: "DVD reading support via libdvdread"
   # Non-free
   fdk-aac:
     flag: "--enable-libfdk-aac"
-    depends: ["fdk-aac", "@nonfree"]
+    depends: ["fdk-aac", "@license-nonfree"]
     description: "AAC de/encoding via libfdk-aac"
+
+  # Linkage
+  static:
+    description: "Build FFmpeg as static libraries instead of shared"
 
 define:
   defaults:
@@ -327,8 +349,7 @@ define:
     - w32threads
   all:
     - "@all-lgpl"
-    - "@windows-hw"
-  all-lgpl:
+  lgpl:
     - zlib
     - bzip2
     - lzma
@@ -375,12 +396,21 @@ define:
     - zmq
     - nvcodec
     - amf
-  all-gpl:
+  all-lgpl:
+    - "@lgpl"
+    - "@windows-hw"
+  gpl:
     - "@all-lgpl"
     - dvdnav
     - dvdread
     - x264
     - x265
+  all-gpl:
+    - "@all"
+    - "@gpl"
+    - postproc
+  nonfree:
+    - fdk-aac
   all-nonfree:
     - "@all-gpl"
-    - fdk-aac
+    - "@nonfree"

@@ -131,10 +131,8 @@ def resolve_package_dir(
 
     Returns the package Path or None.
     """
-    # Derive a versioned name without the linkage suffix for fallback
-    # port_name = ffmpeg-8-1-1-shared  →  versioned = ffmpeg-8-1-1
-    # port_name = ffmpeg-8-1-1-static  →  versioned = ffmpeg-8-1-1
-    versioned = port_name.rsplit("-", 1)[0]  # strip "-shared"/"-static"
+    # port_name is already versioned (no linkage suffix), use as-is
+    versioned = port_name
 
     candidates = [
         f"{port_name}_{triplet}",
@@ -352,8 +350,7 @@ def find_share_files(
 
     # Possible share subdirectory names (in priority order)
     share_names = [
-        port_name,                     # ffmpeg-8-1-1-shared
-        port_name.rsplit("-", 1)[0],   # ffmpeg-8-1-1
+        port_name,                     # ffmpeg-8-1-1
         "ffmpeg",                      # generic
     ]
 
@@ -575,7 +572,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     installed_dir = vcpkg_root / "installed" / triplet
     packages_dir = vcpkg_root / "packages"
     version_dashed = dashed(version)  # "8.1.1" → "8-1-1"
-    port_name = f"ffmpeg-{version_dashed}-{linkage}"  # e.g. ffmpeg-8-1-1-shared
+    port_name = f"ffmpeg-{version_dashed}"  # e.g. ffmpeg-8-1-1
 
     # ---- Validate environment ----
     if not vcpkg_root.is_dir():

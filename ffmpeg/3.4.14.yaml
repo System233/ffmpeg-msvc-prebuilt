@@ -9,3 +9,7 @@ patches:
   - detect-openssl-3.4.14.patch
   - windres-configure-fix-3.4.14.patch
   - 0006-fix-libmp3lame-static.patch
+  - 0007-fix-msvc-lib-naming.patch
+  - 0008-fix-sdl2-version.patch
+  - 0009-fix-openjpeg-lib-name.patch
+  - 0010-fix-opencl.patch

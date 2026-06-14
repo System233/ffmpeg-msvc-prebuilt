@@ -21,19 +21,3 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
 
-features:
-  include:
-    - "@all"
-    - nvcodec
-    - amf
-    - mfx
-  exclude:
-    - vulkan #need 1.3.268.0?
-    - d3d12va
-    - zmq
-    - srt
-    - dvdnav
-    - dvdread
-    - vvenc
-  defaults:
-    - "@all"

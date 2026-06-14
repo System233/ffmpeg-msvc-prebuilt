@@ -41,7 +41,7 @@ def scan_ports_for_versions():
         if not d.is_dir() or not d.name.startswith('ffmpeg-'):
             continue
         # ffmpeg-8-1-1-static or ffmpeg-8-1-shared
-        m = re.match(r'ffmpeg-(\d+-\d+(?:-\d+)?)-(?:static|shared)', d.name)
+        m = re.match(r'ffmpeg-(\d+-\d+(?:-\d+)?)', d.name)
         if m:
             base = m.group(1)      # e.g. '8-1-1' or '8-1'
             ver = base.replace('-', '.')
@@ -59,7 +59,7 @@ def get_changed_versions(before: str, after: str):
     for line in result.stdout.strip().split('\n'):
         if not line:
             continue
-        m = re.match(r'ports/ffmpeg-(\d+)-(\d+)(?:-(\d+))?-(?:static|shared)/', line)
+        m = re.match(r'ports/ffmpeg-(\d+)-(\d+)(?:-(\d+))?/', line)
         if m:
             major, minor, patch = m.groups()
             ver = f'{major}.{minor}.{patch}' if patch else f'{major}.{minor}'

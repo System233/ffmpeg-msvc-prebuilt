@@ -21,18 +21,3 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
 
-features:
-  include:
-    - "@all"
-  exclude:
-    - jxl
-    - vulkan #INTERNAL COMPILER ERROR
-    - harfbuzz
-    - shaderc
-    - vvenc
-    - dvdnav
-    - dvdread
-    - d3d12va
-    - qsv
-  defaults:
-    - "@all"

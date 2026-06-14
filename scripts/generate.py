@@ -117,16 +117,57 @@ def apply_exclusions(items: set, exclusions: set) -> set:
     return result
 
 
-def merge_features(docs: list[dict]) -> dict:
+def version_gate_match(gate: str, target_version: str) -> bool:
+    """Check if a target version satisfies a version-gate expression.
+    
+    Syntax: comma-separated OR groups, each group has space-separated AND conditions.
+    Operators: >= > <= <
+    Examples:
+      ">=4.0"               — target >= 4.0
+      "<5.0"                 — target < 5.0
+      ">=4.3 <5.0,>=7.0"    — (4.3 <= target < 5.0) OR (target >= 7.0)
+    """
+    if not gate:
+        return True  # no gate = all versions
+    target = tuple(int(x) for x in target_version.split('.'))
+    groups = [g.strip() for g in gate.split(',')]
+    for group in groups:
+        conditions = group.split()
+        ok = True
+        for cond in conditions:
+            # cond is like ">=4.0" or "<5.0"
+            for op in ('>=', '<=', '>', '<'):
+                if cond.startswith(op):
+                    ver_str = cond[len(op):]
+                    ver = tuple(int(x) for x in ver_str.split('.'))
+                    if op == '>=' and not target >= ver:
+                        ok = False
+                    elif op == '<=' and not target <= ver:
+                        ok = False
+                    elif op == '>' and not target > ver:
+                        ok = False
+                    elif op == '<' and not target < ver:
+                        ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            return True
+    return False
+
+
+def merge_features(docs: list[dict], version_str: str = None) -> dict:
     """Merge feature include/exclude/defaults along the chain."""
     registry = docs[0]["features"]
     defines = docs[0].get("define", {})
 
-    # Seed: all license-gated features (gpl / nonfree) from base.yaml,
-    # plus the gpl/nonfree license meta-features themselves.
-    # Version YAML excludes can later remove version-gated ones
-    # (e.g. dvdnav is FFmpeg 7.0+ only).
-    included = set()
+    # Seed: include ALL registry features, then filter by version-gate
+    included = set(registry.keys())
+    if version_str:
+        for name in list(included):
+            gate = registry.get(name, {}).get("version")
+            if gate and not version_gate_match(gate, version_str):
+                included.discard(name)
     defaults = set()
     default_aliases = []
 
@@ -206,6 +247,14 @@ def merge_features(docs: list[dict]) -> dict:
     for name in defines.get("defaults", []):
         if isinstance(name, str) and not name.startswith("@") and name in registry:
             included.add(name)
+
+    # Re-apply version-gate filtering (auto-include and @ref resolution above
+    # may have re-added features that were previously filtered out).
+    if version_str:
+        for name in list(included):
+            gate = registry.get(name, {}).get("version")
+            if gate and not version_gate_match(gate, version_str):
+                included.discard(name)
 
     # Intersect with registry to remove unknown features
     included = {f for f in included if f in registry}
@@ -429,6 +478,8 @@ def generate_features_cmake(feat_registry: dict | None = None) -> str:
     for name, info in feat_registry.items():
         flag = info.get("flag", "")
         pkgconfig = info.get("pkgconfig", "")
+        if not flag and not pkgconfig:
+            continue
         if pkgconfig:
             lines.append(f'ffmpeg_feature_core({name} "{flag}" {pkgconfig})')
         else:
@@ -451,6 +502,10 @@ def generate_portfile(version: str, family: str, patches: list[str],
         f'"${{CMAKE_CURRENT_LIST_DIR}}/../../scripts/ffmpeg")'
     )
     lines.append(
+        'set(FFMPEG_BUILDER_DIR '
+        f'"${{CURRENT_INSTALLED_DIR}}/share/ffmpeg-builder")'
+    )
+    lines.append(
         'set(FFMPEG_PATCHES_DIR '
         f'"${{CMAKE_CURRENT_LIST_DIR}}/../../patches/{major_x}")'
     )
@@ -466,14 +521,14 @@ def generate_portfile(version: str, family: str, patches: list[str],
     lines.append(")")
     lines.append('set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")')
     lines.append(
-        'include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-port-base.cmake")'
+        'include("${FFMPEG_BUILDER_DIR}/ffmpeg-portfile.cmake")'
     )
     return "\n".join(lines) + "\n"
 
 
 def generate_vcpkg_json(version: str, port_name: str, features: dict,
                         defaults: list, feature_deps: dict, feature_refs: dict,
-                        host_deps: list, linkage_desc: str, base_registry: dict,
+                        host_deps: list, base_registry: dict,
                         default_aliases: list, defines: dict) -> str:
     """Generate the vcpkg.json content."""
     feat_defs = {}
@@ -567,11 +622,11 @@ def generate_vcpkg_json(version: str, port_name: str, features: dict,
         "version": version,
         "port-version": 0,
         "description": [
-            f"FFmpeg {version} {linkage_desc} build for MSVC.",
+            f"FFmpeg {version} build for MSVC (use 'static' feature for static libraries).",
         ],
         "homepage": "https://ffmpeg.org",
         "license": None,
-        "dependencies": host_deps,
+        "dependencies": host_deps + [{"name": "ffmpeg-builder", "host": True}],
         "features": feat_defs,
     }
     if default_features:
@@ -618,10 +673,10 @@ def generate_usage():
 # ---------------------------------------------------------------------------
 
 def generate_readme(version, port_name, features, defines, default_aliases,
-                    linkage_desc, base_registry):
+                    base_registry):
     """Generate a feature-documenting README.md for an FFmpeg port."""
     lines = []
-    lines.append(f"# FFmpeg {version} ({linkage_desc} build) — MSVC Prebuilt")
+    lines.append(f"# FFmpeg {version} — MSVC Prebuilt")
     lines.append("")
     lines.append("Built via [vcpkg](https://github.com/microsoft/vcpkg) ")
     lines.append("with MSVC on Windows.")
@@ -714,7 +769,7 @@ def generate(version_str: str, force: bool = False):
     docs, family = resolve_chain(version_str)
 
     # Merge features
-    feats = merge_features(docs)
+    feats = merge_features(docs, version_str)
     print(f"  Features: {len(feats['features'])} resolved")
 
     # Merge source
@@ -754,53 +809,48 @@ def generate(version_str: str, force: bool = False):
 
     import shutil
 
-    for linkage, linkage_desc in [
-        ("shared", "shared (dynamic)"),
-        ("static", "static"),
-    ]:
-        port_name = f"{port_base}-{linkage}"
-        port_dir = PORTS_DIR / port_name
+    port_name = port_base
+    port_dir = PORTS_DIR / port_name
 
-        if port_dir.exists():
-            if not force:
-                print(f"  SKIP {port_dir.name} (exists, use --force to overwrite)")
-                continue
-            shutil.rmtree(str(port_dir))
+    if port_dir.exists():
+        if not force:
+            print(f"  SKIP {port_dir.name} (exists, use --force to overwrite)")
+            return
+        shutil.rmtree(str(port_dir))
 
-        port_dir.mkdir(parents=True, exist_ok=True)
+    port_dir.mkdir(parents=True, exist_ok=True)
 
-        # portfile.cmake
-        (port_dir / "portfile.cmake").write_text(
-            generate_portfile(version_str, family, patches, base_opts, debug_opts, sha512),
-            encoding="utf-8")
+    # portfile.cmake
+    (port_dir / "portfile.cmake").write_text(
+        generate_portfile(version_str, family, patches, base_opts, debug_opts, sha512),
+        encoding="utf-8")
 
-        # vcpkg.json
-        (port_dir / "vcpkg.json").write_text(
-            generate_vcpkg_json(version_str, port_name, feats["features"],
-                                feats["defaults"], feature_deps, feature_refs,
-                                host_deps, linkage_desc, docs[0]["features"],
-                                feats["default_aliases"], docs[0].get("define", {})),
-            encoding="utf-8")
+    # vcpkg.json
+    (port_dir / "vcpkg.json").write_text(
+        generate_vcpkg_json(version_str, port_name, feats["features"],
+                            feats["defaults"], feature_deps, feature_refs,
+                            host_deps, docs[0]["features"],
+                            feats["default_aliases"], docs[0].get("define", {})),
+        encoding="utf-8")
 
-        # features.cmake  (use overridden registry so version YAML flag changes apply)
-        (port_dir / "features.cmake").write_text(
-            generate_features_cmake(feat_registry=docs[0]["features"]),
-            encoding="utf-8")
+    # features.cmake  (use overridden registry so version YAML flag changes apply)
+    (port_dir / "features.cmake").write_text(
+        generate_features_cmake(feat_registry=docs[0]["features"]),
+        encoding="utf-8")
 
-        file_count = len(list(port_dir.iterdir()))
-        print(f"  Generated {port_dir.name}/ ({file_count} files)")
-
-    # --- README (generated once in the shared port directory) ---
-    shared_dir = PORTS_DIR / f"{port_base}-shared"
+    # --- README ---
     readme_content = generate_readme(
-        version_str, f"{port_base}-shared", feats["features"],
+        version_str, port_name, feats["features"],
         docs[0].get("define", {}), feats["default_aliases"],
-        "shared (dynamic)", docs[0]["features"])
-    (shared_dir / "README.md").write_text(readme_content, encoding="utf-8")
+        docs[0]["features"])
+    (port_dir / "README.md").write_text(readme_content, encoding="utf-8")
 
-    # --- Usage (generated once in the shared port directory) ---
+    # --- Usage ---
     usage_content = generate_usage()
-    (shared_dir / "usage").write_text(usage_content, encoding="utf-8")
+    (port_dir / "usage").write_text(usage_content, encoding="utf-8")
+
+    file_count = len(list(port_dir.iterdir()))
+    print(f"  Generated {port_dir.name}/ ({file_count} files)")
 
 
 def list_families():

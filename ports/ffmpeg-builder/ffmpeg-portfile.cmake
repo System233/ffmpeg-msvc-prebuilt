@@ -1,4 +1,4 @@
-# ffmpeg-port-base.cmake
+# ffmpeg-builder.cmake
 #
 # Shared CMake build base class for FFmpeg vcpkg ports.
 #
@@ -6,7 +6,6 @@
 #   FFMPEG_VERSION   - FFmpeg upstream version string (e.g. "8.1.1")
 #   FFMPEG_SHA512    - Source tarball SHA512 checksum
 #   FFMPEG_PATCHES   - List of patch file names (relative to port directory)
-#   FFMPEG_SHARED_DIR - Shared scripts directory (e.g. ${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg)
 #   FFMPEG_PATCHES_DIR - Patches directory (e.g. ${CMAKE_CURRENT_LIST_DIR}/../../patches/8.x)
 #   CURRENT_PORT_DIR  - ${CMAKE_CURRENT_LIST_DIR} of the calling portfile.cmake
 #
@@ -18,11 +17,13 @@
 #       0003-fix-windowsinclude.patch
 #       ...)
 #   set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-#   include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-port-base.cmake")
+#   include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-builder.cmake")
 #
 # This base class handles: source download, toolchain config, configure flags,
 # Release+Debug dual build, DEF→LIB generation, pkgconfig fixup, install,
 # FindFFMPEG.cmake generation, and copyright.
+
+set(FFMPEG_SHARED_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 # ---- Guard ----
 if(DEFINED __FFMPEG_PORT_BASE_INCLUDED)
@@ -65,9 +66,9 @@ macro(ffmpeg_feature_core_multi _name _flag _pkgmod)
 endmacro()
 
 # ---- Required variables check ----
-foreach(_required_var FFMPEG_VERSION FFMPEG_SHA512 FFMPEG_SHARED_DIR FFMPEG_PATCHES_DIR CURRENT_PORT_DIR)
+foreach(_required_var FFMPEG_VERSION FFMPEG_SHA512 FFMPEG_PATCHES_DIR CURRENT_PORT_DIR)
     if(NOT DEFINED ${_required_var})
-        message(FATAL_ERROR "ffmpeg-port-base.cmake: required variable ${_required_var} is not set. "
+        message(FATAL_ERROR "ffmpeg-builder.cmake: required variable ${_required_var} is not set. "
                             "Set it before include().")
     endif()
 endforeach()

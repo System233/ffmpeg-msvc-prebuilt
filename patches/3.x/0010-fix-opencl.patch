@@ -1,0 +1,24 @@
+From 71c4113cb9dfbdc2847b0366c76ee7c25b5a2c77 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Mon, 15 Jun 2026 02:41:19 +0800
+Subject: [PATCH] Fix OpenCL static linking with Windows system libraries
+
+---
+ configure | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configure b/configure
+index 7550414..1c17219 100644
+--- a/configure
++++ b/configure
+@@ -6069,6 +6069,7 @@ enabled openal            && { { for al_extralibs in "${OPENAL_LIBS}" "-lopenal"
+                                die "ERROR: openal must be installed and version must be 1.1 or compatible"; }
+ enabled opencl            && { check_lib opencl OpenCL/cl.h clEnqueueNDRangeKernel -Wl,-framework,OpenCL ||
+                                check_lib opencl CL/cl.h clEnqueueNDRangeKernel -lOpenCL ||
++                               check_lib opencl CL/cl.h clEnqueueNDRangeKernel -lOpenCL -lAdvapi32 -lOle32 -lCfgmgr32 ||
+                                die "ERROR: opencl not found"; } &&
+                              { check_cpp_condition "OpenCL/cl.h" "defined(CL_VERSION_1_2)" ||
+                                check_cpp_condition "CL/cl.h" "defined(CL_VERSION_1_2)" ||
+-- 
+2.47.1.windows.2
+

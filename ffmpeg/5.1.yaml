@@ -20,22 +20,6 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
 
-features:
-  include:
-    - "@all"
-    - nvcodec
-    - amf
-    - mfx
-  exclude:
-    - d3d12va
-    - zmq
-    - srt
-    - harfbuzz
-    - dvdnav
-    - dvdread
-    - vvenc
-  defaults:
-    - "@all"
 
 patches:
   - 0050-lensfun-0.3.4-compat.patch

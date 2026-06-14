@@ -18,17 +18,3 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
 
-features:
-  include:
-    - "@all"
-    - nvcodec
-    - amf
-    - mfx
-  exclude:
-    - d3d12va
-    - zmq
-    - srt
-    - harfbuzz
-    - vvenc
-  defaults:
-    - "@all"
