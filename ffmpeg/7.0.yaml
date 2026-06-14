@@ -1,0 +1,34 @@
+extends: "base"
+
+source:
+  method: git
+  repo: ffmpeg/ffmpeg
+  ref: "n${VERSION}"
+  sha512: ac147e52557b71cab0a38c0fee5f710a70d7e99107d1cb881e733c489a6b16f99d2c15e00e359ab48353bd710ead13399ee31840e6c5844a11d042eda71a0aa0
+
+build:
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
+  debug:
+    options: "--disable-optimizations"
+  release:
+    options: "--enable-optimizations"
+  host_deps:
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
+
+features:
+  include:
+    - "@all"
+    - nvcodec
+    - amf
+    - mfx
+  exclude:
+    - d3d12va
+    - zmq
+    - srt
+    - harfbuzz
+    - vvenc
+  defaults:
+    - "@all"

@@ -232,7 +232,7 @@ def print_results(
     print("To add new ports:")
     for v in new_versions:
         ver_str = format_version(v)
-        print(f"  python scripts/generate_port.py --version {ver_str}")
+        print(f"  python scripts/generate.py --version {ver_str}")
 
 
 # ---------------------------------------------------------------------------

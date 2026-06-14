@@ -63,7 +63,7 @@ jobs:
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
         run: |
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install ffmpeg-base-deps `
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install ffmpeg-deps `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `
             --overlay-triplets=triplets/ `
@@ -122,7 +122,8 @@ jobs:
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
         run: |
-          $portName = "ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.linkage }}"
+          $ver = "${{ inputs.ffmpeg_version }}".Replace('.', '-')
+          $portName = "ffmpeg-${ver}-${{ matrix.linkage }}"
           & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${portName}[${{ matrix.license }}]" `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `

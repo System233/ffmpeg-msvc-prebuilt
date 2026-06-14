@@ -6,8 +6,9 @@
 #   FFMPEG_VERSION   - FFmpeg upstream version string (e.g. "8.1.1")
 #   FFMPEG_SHA512    - Source tarball SHA512 checksum
 #   FFMPEG_PATCHES   - List of patch file names (relative to port directory)
-#   FFMPEG_SHARED_DIR - Version family directory (e.g. ${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg/8.1)
-#   CURRENT_PORT_DIR - ${CMAKE_CURRENT_LIST_DIR} of the calling portfile.cmake
+#   FFMPEG_SHARED_DIR - Shared scripts directory (e.g. ${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg)
+#   FFMPEG_PATCHES_DIR - Patches directory (e.g. ${CMAKE_CURRENT_LIST_DIR}/../../patches/8.x)
+#   CURRENT_PORT_DIR  - ${CMAKE_CURRENT_LIST_DIR} of the calling portfile.cmake
 #
 # Example caller:
 #   set(FFMPEG_VERSION "8.1.1")
@@ -62,7 +63,7 @@ macro(ffmpeg_feature_core_multi _name _flag _pkgmod)
 endmacro()
 
 # ---- Required variables check ----
-foreach(_required_var FFMPEG_VERSION FFMPEG_SHA512 FFMPEG_SHARED_DIR CURRENT_PORT_DIR)
+foreach(_required_var FFMPEG_VERSION FFMPEG_SHA512 FFMPEG_SHARED_DIR FFMPEG_PATCHES_DIR CURRENT_PORT_DIR)
     if(NOT DEFINED ${_required_var})
         message(FATAL_ERROR "ffmpeg-port-base.cmake: required variable ${_required_var} is not set. "
                             "Set it before include().")
@@ -77,7 +78,7 @@ foreach(_patch IN LISTS FFMPEG_PATCHES)
     if(IS_ABSOLUTE "${_patch}")
         list(APPEND _FFMPEG_ABSOLUTE_PATCHES "${_patch}")
     else()
-        list(APPEND _FFMPEG_ABSOLUTE_PATCHES "${FFMPEG_SHARED_DIR}/patches/${_patch}")
+        list(APPEND _FFMPEG_ABSOLUTE_PATCHES "${FFMPEG_PATCHES_DIR}/${_patch}")
     endif()
 endforeach()
 
@@ -98,7 +99,7 @@ if(SOURCE_PATH MATCHES " ")
 endif()
 
 # ffmpeg-bin2c bin2c path: only needed for 8.1+ (uses prebuilt-bin2c patch)
-if(FFMPEG_VERSION VERSION_GREATER_EQUAL "8.1")
+if(DEFINED FFMPEG_NEED_BIN2C AND FFMPEG_NEED_BIN2C)
     vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/manual-tools/ffmpeg-bin2c")
 endif()
 
@@ -262,90 +263,11 @@ file(REMOVE_RECURSE
 set(FFMPEG_PKGCONFIG_MODULES libavutil)
 
 # ========== 8b. Feature → --enable-* flag mapping ==========
-# Each feature declared in vcpkg.json is mapped to its FFmpeg configure flag.
+# Generated from base.yaml by scripts/generate.py.
 # The base cmake has NO knowledge of FFmpeg versions; features alone control
 # what is enabled.
 
-ffmpeg_feature_core(avcodec    "--enable-avcodec"    libavcodec)
-ffmpeg_feature_core(avdevice   "--enable-avdevice"   libavdevice)
-ffmpeg_feature_core(avformat   "--enable-avformat"   libavformat)
-ffmpeg_feature_core(avfilter   "--enable-avfilter"   libavfilter)
-ffmpeg_feature_core(swresample "--enable-swresample" libswresample)
-ffmpeg_feature_core(swscale    "--enable-swscale"    libswscale)
-ffmpeg_feature_core(avresample "--enable-avresample" libavresample)
-ffmpeg_feature_core(postproc   "--enable-postproc"   libpostproc)
-
-# --- License ---
-if("nonfree" IN_LIST FEATURES)
-    set(OPTIONS "${OPTIONS} --enable-gpl --enable-version3 --enable-nonfree")
-elseif("gpl" IN_LIST FEATURES)
-    set(OPTIONS "${OPTIONS} --enable-gpl --enable-version3")
-endif()
-
-# --- Compression / Text / Fonts ---
-ffmpeg_feature(zlib       "--enable-zlib")
-ffmpeg_feature(bzip2      "--enable-bzlib")
-ffmpeg_feature(lzma       "--enable-lzma")
-ffmpeg_feature(iconv      "--enable-iconv")
-ffmpeg_feature(freetype   "--enable-libfreetype")
-ffmpeg_feature(fribidi    "--enable-libfribidi")
-ffmpeg_feature(fontconfig "--enable-libfontconfig")
-ffmpeg_feature(harfbuzz   "--enable-libharfbuzz")
-ffmpeg_feature(ass        "--enable-libass")
-
-# --- Audio codecs ---
-ffmpeg_feature(opus       "--enable-libopus")
-ffmpeg_feature(vorbis     "--enable-libvorbis")
-ffmpeg_feature(theora     "--enable-libtheora")
-ffmpeg_feature(speex      "--enable-libspeex")
-ffmpeg_feature(mp3lame    "--enable-libmp3lame")
-ffmpeg_feature(soxr       "--enable-libsoxr")
-ffmpeg_feature(openmpt    "--enable-libopenmpt")
-ffmpeg_feature(ilbc       "--enable-libilbc")
-ffmpeg_feature(modplug    "--enable-libmodplug")
-
-# --- Video codecs ---
-ffmpeg_feature(dav1d      "--enable-libdav1d")
-ffmpeg_feature(aom        "--enable-libaom")
-ffmpeg_feature(vpx        "--enable-libvpx")
-
-# --- Image / Web ---
-ffmpeg_feature(webp       "--enable-libwebp")
-ffmpeg_feature(openjpeg   "--enable-libopenjpeg")
-ffmpeg_feature(snappy     "--enable-libsnappy")
-ffmpeg_feature(openh264   "--enable-libopenh264")
-
-# --- Platform / Network / Container ---
-ffmpeg_feature(sdl2       "--enable-sdl2")
-ffmpeg_feature(xml2       "--enable-libxml2")
-ffmpeg_feature(vulkan     "--enable-vulkan")
-ffmpeg_feature(opencl     "--enable-opencl")
-ffmpeg_feature(opengl     "--enable-opengl")
-ffmpeg_feature(srt        "--enable-libsrt")
-ffmpeg_feature(ssh        "--enable-libssh")
-ffmpeg_feature(openssl    "--enable-openssl")
-ffmpeg_feature(zmq        "--enable-libzmq")
-
-# --- Hardware acceleration ---
-ffmpeg_feature(nvcodec    "--enable-cuda --enable-nvenc --enable-ffnvcodec")
-ffmpeg_feature(amf        "--enable-amf")
-ffmpeg_feature(qsv        "--enable-libvpl")
-ffmpeg_feature(mfx        "--enable-libmfx")
-
-# --- Platform-specific ---
-ffmpeg_feature(w32threads       "--enable-w32threads")
-ffmpeg_feature(d3d11va          "--enable-d3d11va")
-ffmpeg_feature(d3d12va          "--enable-d3d12va")
-ffmpeg_feature(dxva2            "--enable-dxva2")
-ffmpeg_feature(mediafoundation   "--enable-mediafoundation")
-ffmpeg_feature(pthreads         "--enable-pthreads")
-
-# --- GPL codecs ---
-ffmpeg_feature(x264       "--enable-libx264")
-ffmpeg_feature(x265       "--enable-libx265")
-
-# --- Non-free codecs ---
-ffmpeg_feature(fdk-aac    "--enable-libfdk-aac")
+include("${CURRENT_PORT_DIR}/features.cmake")
 
 # ========== 10. Programs: always enabled (except UWP) ==========
 

@@ -1,0 +1,12 @@
+diff --git a/configure b/configure
+index 9a49bcc..91d40cf 100644
+--- a/configure
++++ b/configure
+@@ -2295,6 +2295,7 @@ CMDLINE_SET="
+     target_samples
+     tempprefix
+     toolchain
++    windres
+     valgrind
+     x86asmexe
+ "

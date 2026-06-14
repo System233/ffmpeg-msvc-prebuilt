@@ -3,71 +3,11 @@
   "version": "6.1",
   "port-version": 0,
   "description": [
-    "FFmpeg 6.1 static build for MSVC. Includes ffmpeg.exe, ffplay.exe, ffprobe.exe.",
+    "FFmpeg 6.1 static build for MSVC.",
     "All codec dependencies are provided by ffmpeg-base-deps virtual port."
   ],
   "homepage": "https://ffmpeg.org",
   "license": null,
-  "default-features": [
-    "alsa",
-    "amf",
-    "aom",
-    "ass",
-    "avcodec",
-    "avdevice",
-    "avfilter",
-    "avformat",
-    "avisynthplus",
-    "bzip2",
-    "dav1d",
-    "fdk-aac",
-    "ffmpeg",
-    "ffplay",
-    "ffprobe",
-    "fontconfig",
-    "freetype",
-    "fribidi",
-    "gpl",
-    "iconv",
-    "ilbc",
-    "lzma",
-    "modplug",
-    "mp3lame",
-    "nonfree",
-    "nvcodec",
-    "opencl",
-    "opengl",
-    "openh264",
-    "openjpeg",
-    "openmpt",
-    "openssl",
-    "opus",
-    "postproc",
-    "sdl2",
-    "snappy",
-    "soxr",
-    "speex",
-    "srt",
-    "ssh",
-    "swresample",
-    "swscale",
-    "tensorflow",
-    "tesseract",
-    "theora",
-    "version3",
-    "vorbis",
-    "vpx",
-    "webp",
-    "x264",
-    "x265",
-    "xml2",
-    "zlib",
-    "w32threads",
-    "d3d11va",
-    "dxva2",
-    "mediafoundation",
-    "mfx"
-  ],
   "dependencies": [
     {
       "name": "ffmpeg-base-deps"
@@ -85,59 +25,146 @@
     }
   ],
   "features": {
-    "alsa": {
-      "description": "Enable ALSA support"
-    },
     "amf": {
-      "description": "AMD AMF codec support"
+      "description": "Enable amf support"
     },
     "aom": {
-      "description": "AV1 video encoding/decoding via libaom support in ffmpeg"
+      "description": "Enable aom support"
     },
     "ass": {
-      "description": "Libass subtitles rendering, needed for subtitles and ass filter support in ffmpeg"
+      "description": "Enable ass support"
     },
     "avcodec": {
-      "description": "Build the avcodec library"
+      "description": "Enable avcodec support"
     },
     "avdevice": {
-      "description": "Build the avdevice library"
+      "description": "Enable avdevice support"
     },
     "avfilter": {
-      "description": "Build the avfilter library"
+      "description": "Enable avfilter support"
     },
     "avformat": {
-      "description": "Build the avformat library"
-    },
-    "avisynthplus": {
-      "description": "Reading of AviSynth script files"
+      "description": "Enable avformat support"
     },
     "bzip2": {
-      "description": "Bzip2 support"
+      "description": "Enable bzip2 support"
+    },
+    "d3d11va": {
+      "description": "Enable d3d11va support"
     },
     "dav1d": {
-      "description": "AV1 decoding via libdav1d"
+      "description": "Enable dav1d support"
+    },
+    "dxva2": {
+      "description": "Enable dxva2 support"
     },
     "fdk-aac": {
-      "description": "AAC de/encoding via libfdk-aac, **including GPL-incompatible patent-encumbered HE-AAC**. If you do not require HE-AAC, use the built-in FFmpeg AAC codec."
-    },
-    "ffmpeg": {
-      "description": "Build the ffmpeg application"
-    },
-    "ffplay": {
-      "description": "Build the ffplay application"
-    },
-    "ffprobe": {
-      "description": "Build the ffprobe application"
+      "description": "Enable fdk-aac support"
     },
     "fontconfig": {
-      "description": "Useful for drawtext filter"
+      "description": "Enable fontconfig support"
     },
     "freetype": {
-      "description": "Needed for drawtext filter"
+      "description": "Enable freetype support"
     },
     "fribidi": {
-      "description": "Improves drawtext filter"
+      "description": "Enable fribidi support"
+    },
+    "harfbuzz": {
+      "description": "Enable harfbuzz support"
+    },
+    "iconv": {
+      "description": "Enable iconv support"
+    },
+    "ilbc": {
+      "description": "Enable ilbc support"
+    },
+    "lzma": {
+      "description": "Enable lzma support"
+    },
+    "mediafoundation": {
+      "description": "Enable mediafoundation support"
+    },
+    "mfx": {
+      "description": "Enable mfx support"
+    },
+    "modplug": {
+      "description": "Enable modplug support"
+    },
+    "mp3lame": {
+      "description": "Enable mp3lame support"
+    },
+    "nvcodec": {
+      "description": "Enable nvcodec support"
+    },
+    "opencl": {
+      "description": "Enable opencl support"
+    },
+    "opengl": {
+      "description": "Enable opengl support"
+    },
+    "openh264": {
+      "description": "Enable openh264 support"
+    },
+    "openjpeg": {
+      "description": "Enable openjpeg support"
+    },
+    "openmpt": {
+      "description": "Enable openmpt support"
+    },
+    "openssl": {
+      "description": "Enable openssl support"
+    },
+    "opus": {
+      "description": "Enable opus support"
+    },
+    "sdl2": {
+      "description": "Enable sdl2 support"
+    },
+    "snappy": {
+      "description": "Enable snappy support"
+    },
+    "soxr": {
+      "description": "Enable soxr support"
+    },
+    "speex": {
+      "description": "Enable speex support"
+    },
+    "ssh": {
+      "description": "Enable ssh support"
+    },
+    "swresample": {
+      "description": "Enable swresample support"
+    },
+    "swscale": {
+      "description": "Enable swscale support"
+    },
+    "theora": {
+      "description": "Enable theora support"
+    },
+    "vorbis": {
+      "description": "Enable vorbis support"
+    },
+    "vpx": {
+      "description": "Enable vpx support"
+    },
+    "w32threads": {
+      "description": "Enable w32threads support"
+    },
+    "webp": {
+      "description": "Enable webp support"
+    },
+    "x264": {
+      "description": "Enable x264 support"
+    },
+    "x265": {
+      "description": "Enable x265 support"
+    },
+    "xml2": {
+      "description": "Enable xml2 support"
+    },
+    "zlib": {
+      "description": "Enable zlib support"
     },
     "gpl": {
       "description": "GPL license build — includes x264, x265",
@@ -151,21 +178,6 @@
         }
       ]
     },
-    "iconv": {
-      "description": "Iconv support"
-    },
-    "ilbc": {
-      "description": "iLBC de/encoding via libilbc"
-    },
-    "lzma": {
-      "description": "lzma support"
-    },
-    "modplug": {
-      "description": "ModPlug via libmodplug"
-    },
-    "mp3lame": {
-      "description": "MP3 encoding via libmp3lame"
-    },
     "nonfree": {
       "description": "Non-free license build — includes fdk-aac",
       "dependencies": [
@@ -177,105 +189,51 @@
           ]
         }
       ]
-    },
-    "nvcodec": {
-      "description": "Nvidia video decoding/encoding acceleration"
-    },
-    "opencl": {
-      "description": "OpenCL processing"
-    },
-    "opengl": {
-      "description": "OpenGL rendering"
-    },
-    "openh264": {
-      "description": "H.264 de/encoding via openh264"
-    },
-    "openjpeg": {
-      "description": "JPEG 2000 de/encoding via OpenJPEG"
-    },
-    "openmpt": {
-      "description": "Decoding tracked files via libopenmpt"
-    },
-    "openssl": {
-      "description": "Needed for https support if gnutls, libtls or mbedtls is not used"
-    },
-    "opus": {
-      "description": "Opus de/encoding via libopus"
-    },
-    "postproc": {
-      "description": "Build the postproc library"
-    },
-    "sdl2": {
-      "description": "Sdl2 support"
-    },
-    "snappy": {
-      "description": "Snappy compression, needed for hap encoding"
-    },
-    "soxr": {
-      "description": "Include libsoxr resampling"
-    },
-    "speex": {
-      "description": "Speex de/encoding via libspeex"
-    },
-    "srt": {
-      "description": "Haivision SRT protocol"
-    },
-    "ssh": {
-      "description": "SFTP protocol via libssh"
-    },
-    "swresample": {
-      "description": "Build the swresample library"
-    },
-    "swscale": {
-      "description": "Build the swscale library"
-    },
-    "tensorflow": {
-      "description": "TensorFlow as a DNN module backend for DNN based filters like sr"
-    },
-    "tesseract": {
-      "description": "Tesseract, needed for ocr filter"
-    },
-    "theora": {
-      "description": "Theora encoding via libtheora"
-    },
-    "version3": {
-      "description": "Upgrade (L)GPL to version 3"
-    },
-    "vorbis": {
-      "description": "Vorbis en/decoding via libvorbis, native implementation exists"
-    },
-    "vpx": {
-      "description": "VP8 and VP9 de/encoding via libvpx"
-    },
-    "webp": {
-      "description": "WebP encoding via libwebp"
-    },
-    "x264": {
-      "description": "H.264 encoding via x264"
-    },
-    "x265": {
-      "description": "HEVC encoding via x265"
-    },
-    "xml2": {
-      "description": "XML parsing using the C library libxml2, needed for dash demuxing support"
-    },
-    "zlib": {
-      "description": "zlib support"
-    },
-    "w32threads": {
-      "description": "Windows thread support"
-    },
-    "d3d11va": {
-      "description": "Direct3D 11 Video Acceleration"
-    },
-    "dxva2": {
-      "description": "DXVA2 hardware decoding"
-    },
-    "mediafoundation": {
-      "description": "Media Foundation support"
-    },
-    "mfx": {
-      "description": "Intel QSV via libmfx (pre-8.0)"
     }
-  }
+  },
+  "default-features": [
+    "amf",
+    "aom",
+    "ass",
+    "avcodec",
+    "avdevice",
+    "avfilter",
+    "avformat",
+    "bzip2",
+    "d3d11va",
+    "dav1d",
+    "dxva2",
+    "fontconfig",
+    "freetype",
+    "fribidi",
+    "harfbuzz",
+    "iconv",
+    "ilbc",
+    "lzma",
+    "mediafoundation",
+    "modplug",
+    "mp3lame",
+    "nvcodec",
+    "opencl",
+    "opengl",
+    "openh264",
+    "openjpeg",
+    "openmpt",
+    "openssl",
+    "opus",
+    "sdl2",
+    "snappy",
+    "soxr",
+    "speex",
+    "ssh",
+    "swresample",
+    "swscale",
+    "theora",
+    "vorbis",
+    "vpx",
+    "w32threads",
+    "webp",
+    "xml2",
+    "zlib"
+  ]
 }

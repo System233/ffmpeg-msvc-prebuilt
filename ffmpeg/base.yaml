@@ -1,0 +1,386 @@
+# FFmpeg feature registry — NEVER modified once a feature is added.
+# Each version YAML chooses its own include/exclude set.
+
+features:
+  avcodec:
+    flag: "--enable-avcodec"
+    pkgconfig: libavcodec
+    description: "Build the avcodec library"
+  avdevice:
+    flag: "--enable-avdevice"
+    pkgconfig: libavdevice
+    description: "Build the avdevice library"
+  avformat:
+    flag: "--enable-avformat"
+    pkgconfig: libavformat
+    description: "Build the avformat library"
+  avfilter:
+    flag: "--enable-avfilter"
+    pkgconfig: libavfilter
+    description: "Build the avfilter library"
+  swresample:
+    flag: "--enable-swresample"
+    pkgconfig: libswresample
+    description: "Build the swresample library"
+  swscale:
+    flag: "--enable-swscale"
+    pkgconfig: libswscale
+    description: "Build the swscale library"
+  avresample:
+    flag: "--enable-avresample"
+    pkgconfig: libavresample
+    description: "Build the avresample library"
+  postproc:
+    flag: "--enable-postproc"
+    pkgconfig: libpostproc
+    description: "Build the postproc library"
+  gpl:
+    flag: "--enable-gpl --enable-version3"
+    description: "Allow use of GPL code, the resulting libs and binaries will be under GPL"
+  nonfree:
+    flag: "--enable-nonfree"
+    description: "Allow use of nonfree code, the resulting libs and binaries will be unredistributable"
+  # Compression / Text / Fonts
+  zlib:
+    flag: "--enable-zlib"
+    depends: ["zlib"]
+    description: "zlib support"
+  bzip2:
+    flag: "--enable-bzlib"
+    depends: ["bzip2"]
+    description: "Bzip2 support"
+  lzma:
+    flag: "--enable-lzma"
+    depends: ["liblzma"]
+    description: "lzma support"
+  iconv:
+    flag: "--enable-iconv"
+    depends: ["libiconv"]
+    description: "Iconv support"
+  freetype:
+    flag: "--enable-libfreetype"
+    depends: ["freetype"]
+    description: "Needed for drawtext filter"
+  fribidi:
+    flag: "--enable-libfribidi"
+    depends: ["fribidi"]
+    platform: "!uwp"
+    description: "Improves drawtext filter"
+  fontconfig:
+    flag: "--enable-libfontconfig"
+    depends: ["fontconfig"]
+    platform: "!uwp"
+    description: "Useful for drawtext filter"
+  harfbuzz:
+    flag: "--enable-libharfbuzz"
+    depends: ["harfbuzz"]
+    platform: "!uwp"
+    description: "Enable drawtext filter"
+  ass:
+    flag: "--enable-libass"
+    depends: ["libass"]
+    description: "Libass subtitles rendering, needed for subtitles and ass filter support in ffmpeg"
+  # Audio
+  opus:
+    flag: "--enable-libopus"
+    depends: ["opus"]
+    description: "Opus de/encoding via libopus"
+  vorbis:
+    flag: "--enable-libvorbis"
+    depends: ["libvorbis"]
+    description: "Vorbis en/decoding via libvorbis, native implementation exists"
+  theora:
+    flag: "--enable-libtheora"
+    depends: ["libtheora"]
+    description: "Theora encoding via libtheora"
+  speex:
+    flag: "--enable-libspeex"
+    depends: ["speex"]
+    description: "Speex de/encoding via libspeex"
+  mp3lame:
+    flag: "--enable-libmp3lame"
+    depends: ["mp3lame"]
+    description: "MP3 encoding via libmp3lame"
+  soxr:
+    flag: "--enable-libsoxr"
+    depends: ["soxr"]
+    description: "Include libsoxr resampling"
+  openmpt:
+    flag: "--enable-libopenmpt"
+    depends: ["libopenmpt"]
+    description: "Decoding tracked files via libopenmpt"
+  ilbc:
+    flag: "--enable-libilbc"
+    depends: ["libilbc"]
+    description: "iLBC de/encoding via libilbc"
+  modplug:
+    flag: "--enable-libmodplug"
+    depends: ["libmodplug"]
+    platform: "!uwp"
+    description: "ModPlug via libmodplug"
+  tesseract:
+    flag: "--enable-libtesseract"
+    depends: ["tesseract"]
+    platform: "!uwp"
+    description: "Optical character recognition via tesseract"
+  # tensorflow:
+  #   flag: "--enable-libtensorflow"
+  #   depends:
+  #     - "tensorflow"
+  #   platform: "!(x86 | arm | uwp)"
+  #   description: "Machine learning via TensorFlow"
+  gme:
+    flag: "--enable-libgme"
+    depends: ["libgme"]
+    description: "Video game music file de/encoding via libgme"
+  # Video
+  dav1d:
+    flag: "--enable-libdav1d"
+    depends: ["dav1d"]
+    description: "AV1 decoding via libdav1d"
+  aom:
+    flag: "--enable-libaom"
+    depends: ["aom"]
+    platform: "!uwp"
+    description: "AV1 video encoding/decoding via libaom support in ffmpeg"
+  vpx:
+    flag: "--enable-libvpx"
+    depends: ["libvpx"]
+    description: "VP8 and VP9 de/encoding via libvpx"
+  webp:
+    flag: "--enable-libwebp"
+    depends: ["libwebp"]
+    description: "WebP encoding via libwebp"
+  openjpeg:
+    flag: "--enable-libopenjpeg"
+    depends: ["openjpeg"]
+    description: "JPEG 2000 de/encoding via OpenJPEG"
+  snappy:
+    flag: "--enable-libsnappy"
+    depends: ["snappy"]
+    description: "Snappy compression, needed for hap encoding"
+  openh264:
+    flag: "--enable-libopenh264"
+    depends: ["openh264"]
+    description: "H.264 de/encoding via openh264"
+  lensfun:
+    flag: "--enable-liblensfun"
+    depends: ["lensfun"]
+    platform: "!arm"
+    description: "Lens correction via lensfun"
+  jxl:
+    flag: "--enable-libjxl"
+    depends: ["libjxl"]
+    description: "JPEG XL de/encoding via libjxl"
+  shaderc:
+    flag: "--enable-libshaderc"
+    depends: ["shaderc"]
+    description: "GLSL/Vulkan shader compilation via shaderc (required by libplacebo)"
+  svtav1:
+    flag: "--enable-libsvtav1"
+    depends: ["svt-av1"]
+    platform: "!x86 & !arm32 & !uwp"
+    description: "AV1 encoding via SVT-AV1"
+  vvenc:
+    flag: "--enable-libvvenc"
+    depends: ["vvenc"]
+    platform: "!x86 & !arm"
+    description: "VVC/H.266 encoding via vvenc"
+  # Network / Graphics / Container
+  sdl2:
+    flag: "--enable-sdl2"
+    depends: ["sdl2"]
+    description: "Sdl2 support"
+  xml2:
+    flag: "--enable-libxml2"
+    depends: ["libxml2"]
+    description: "XML parsing using the C library libxml2, needed for dash demuxing support"
+  srt:
+    flag: "--enable-libsrt"
+    depends: ["libsrt"]
+    platform: "!uwp & !xbox"
+    description: "Haivision SRT protocol"
+  ssh:
+    flag: "--enable-libssh"
+    depends: ["libssh"]
+    platform: "!uwp & !xbox"
+    description: "SFTP protocol via libssh"
+  openssl:
+    flag: "--enable-openssl"
+    depends: ["openssl"]
+    description: "Use OpenSSL for TLS support"
+  zmq:
+    flag: "--enable-libzmq"
+    depends: ["zeromq"]
+    platform: "!uwp & !xbox"
+    description: "Enable ZeroMQ support"
+  mysofa:
+    flag: "--enable-libmysofa"
+    depends: ["libmysofa"]
+    description: "Spatial audio via libmysofa"
+  bluray:
+    flag: "--enable-libbluray"
+    depends: ["libbluray"]
+    platform: "!uwp & !xbox"
+    description: "Blu-ray disc support via libbluray"
+  # HW acceleration
+  nvcodec:
+    flag: "--enable-cuda --enable-nvenc --enable-ffnvcodec"
+    depends: ["ffnvcodec"]
+    platform: "!uwp & !arm & !arm64"
+    description: "Nvidia video decoding/encoding acceleration"
+  amf:
+    flag: "--enable-amf"
+    depends: ["amd-amf"]
+    description: "AMD AMF codec support"
+  qsv:
+    flag: "--enable-libvpl"
+    depends: ["libvpl"]
+    platform: "!uwp & !arm & !arm64"
+    description: "Intel QSV Codec via oneVPL"
+  mfx:
+    flag: "--enable-libmfx"
+    depends: ["mfx-dispatch"]
+    platform: "!uwp & !arm & !arm64"
+    description: "Intel QSV Codec via libmfx (pre-8.0)"
+  vulkan:
+    flag: "--enable-vulkan"
+    depends: ["vulkan"]
+    platform: "!uwp & !xbox"
+    description: "H.264, HEVC and AV1 de/encoding via Vulkan"
+  opencl:
+    flag: "--enable-opencl"
+    depends: ["opencl"]
+    platform: "!uwp"
+    description: "OpenCL processing"
+  opengl:
+    flag: "--enable-opengl"
+    depends: ["opengl"]
+    platform: "!uwp & !xbox"
+    description: "OpenGL rendering"
+  # Windows platform
+  w32threads:
+    flag: "--enable-w32threads"
+    description: "Windows thread support"
+  d3d11va:
+    flag: "--enable-d3d11va"
+    description: "Direct3D 11 Video Acceleration"
+  d3d12va:
+    flag: "--enable-d3d12va"
+    description: "Direct3D 12 Video Acceleration"
+  dxva2:
+    flag: "--enable-dxva2"
+    description: "DXVA2 hardware decoding"
+  mediafoundation:
+    flag: "--enable-mediafoundation"
+    description: "Media Foundation support"
+  pthreads:
+    flag: "--enable-pthreads"
+    description: "POSIX threads support"
+  # GPL
+  x264:
+    flag: "--enable-libx264"
+    depends: ["x264", "@gpl"]
+    description: "H.264 encoding via x264"
+  x265:
+    flag: "--enable-libx265"
+    depends: ["x265", "@gpl"]
+    platform: "!uwp & !xbox"
+    description: "HEVC encoding via x265"
+  # rubberband disabled — incompatible with static CRT builds.
+  # rubberband:
+  #   flag: "--enable-librubberband"
+  #   depends:
+  #     name: "rubberband"
+  #     platform: "!uwp & !(windows & static) & !xbox"
+  #   license: gpl
+  #   description: "Audio time-stretching and pitch-shifting via librubberband"
+  dvdnav:
+    flag: "--enable-libdvdnav"
+    depends: ["libdvdnav", "@gpl"]
+    platform: "!uwp & !xbox"
+    description: "DVD, Blu-ray, and Matroska navigation via libdvdnav"
+  dvdread:
+    flag: "--enable-libdvdread"
+    depends: ["libdvdread", "@gpl"]
+    platform: "!uwp & !xbox"
+    description: "DVD reading support via libdvdread"
+  # Non-free
+  fdk-aac:
+    flag: "--enable-libfdk-aac"
+    depends: ["fdk-aac", "@nonfree"]
+    description: "AAC de/encoding via libfdk-aac"
+
+define:
+  defaults:
+    - avcodec
+    - avdevice
+    - avformat
+    - avfilter
+    - swresample
+    - swscale
+  windows-hw:
+    - d3d11va
+    - d3d12va
+    - dxva2
+    - mediafoundation
+    - w32threads
+  all:
+    - "@all-lgpl"
+    - "@windows-hw"
+  all-lgpl:
+    - zlib
+    - bzip2
+    - lzma
+    - iconv
+    - freetype
+    - fribidi
+    - fontconfig
+    - harfbuzz
+    - ass
+    - bluray
+    - opus
+    - vorbis
+    - theora
+    - speex
+    - mp3lame
+    - soxr
+    - openmpt
+    - ilbc
+    - modplug
+    - gme
+    - mysofa
+    - tesseract
+    # - tensorflow
+    - dav1d
+    - aom
+    - vpx
+    - webp
+    - openjpeg
+    - snappy
+    - openh264
+    - jxl
+    - lensfun
+    - shaderc
+    - svtav1
+    - vvenc
+    - sdl2
+    - xml2
+    - vulkan
+    - opencl
+    - opengl
+    - srt
+    - ssh
+    - openssl
+    - zmq
+    - nvcodec
+    - amf
+  all-gpl:
+    - "@all-lgpl"
+    - dvdnav
+    - dvdread
+    - x264
+    - x265
+  all-nonfree:
+    - "@all-gpl"
+    - fdk-aac

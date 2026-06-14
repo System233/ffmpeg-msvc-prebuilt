@@ -1,0 +1,32 @@
+extends: "base"
+
+source:
+  method: git
+  repo: ffmpeg/ffmpeg
+  ref: "n${VERSION}"
+
+build:
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect"
+  debug:
+    options: "--disable-optimizations"
+  release:
+    options: "--enable-optimizations"
+  host_deps:
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
+
+features:
+  include:
+    - "@all"
+    - nvcodec
+    - amf
+    - mfx
+  exclude:
+    - d3d12va
+    - zmq
+    - harfbuzz
+    - "post*"
+  defaults:
+    - "@all"

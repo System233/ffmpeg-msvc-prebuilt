@@ -1,0 +1,482 @@
+{
+  "name": "ffmpeg-4-4-7-shared",
+  "version": "4.4.7",
+  "port-version": 0,
+  "description": [
+    "FFmpeg 4.4.7 shared (dynamic) build for MSVC."
+  ],
+  "homepage": "https://ffmpeg.org",
+  "license": null,
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake-get-vars",
+      "host": true
+    },
+    {
+      "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    }
+  ],
+  "features": {
+    "amf": {
+      "description": "AMD AMF codec support",
+      "dependencies": [
+        "amd-amf"
+      ]
+    },
+    "aom": {
+      "description": "AV1 video encoding/decoding via libaom support in ffmpeg",
+      "dependencies": [
+        "aom"
+      ]
+    },
+    "ass": {
+      "description": "Libass subtitles rendering, needed for subtitles and ass filter support in ffmpeg",
+      "dependencies": [
+        "libass"
+      ]
+    },
+    "avcodec": {
+      "description": "Build the avcodec library"
+    },
+    "avdevice": {
+      "description": "Build the avdevice library"
+    },
+    "avfilter": {
+      "description": "Build the avfilter library"
+    },
+    "avformat": {
+      "description": "Build the avformat library"
+    },
+    "bluray": {
+      "description": "Blu-ray disc support via libbluray",
+      "dependencies": [
+        "libbluray"
+      ]
+    },
+    "bzip2": {
+      "description": "Bzip2 support",
+      "dependencies": [
+        "bzip2"
+      ]
+    },
+    "d3d11va": {
+      "description": "Direct3D 11 Video Acceleration"
+    },
+    "dav1d": {
+      "description": "AV1 decoding via libdav1d",
+      "dependencies": [
+        "dav1d"
+      ]
+    },
+    "dxva2": {
+      "description": "DXVA2 hardware decoding"
+    },
+    "fdk-aac": {
+      "description": "AAC de/encoding via libfdk-aac",
+      "dependencies": [
+        "fdk-aac",
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "nonfree"
+          ]
+        }
+      ]
+    },
+    "fontconfig": {
+      "description": "Useful for drawtext filter",
+      "dependencies": [
+        "fontconfig"
+      ]
+    },
+    "freetype": {
+      "description": "Needed for drawtext filter",
+      "dependencies": [
+        "freetype"
+      ]
+    },
+    "fribidi": {
+      "description": "Improves drawtext filter",
+      "dependencies": [
+        "fribidi"
+      ]
+    },
+    "gme": {
+      "description": "Video game music file de/encoding via libgme",
+      "dependencies": [
+        "libgme"
+      ]
+    },
+    "gpl": {
+      "description": "Allow use of GPL code, the resulting libs and binaries will be under GPL"
+    },
+    "iconv": {
+      "description": "Iconv support",
+      "dependencies": [
+        "libiconv"
+      ]
+    },
+    "ilbc": {
+      "description": "iLBC de/encoding via libilbc",
+      "dependencies": [
+        "libilbc"
+      ]
+    },
+    "lensfun": {
+      "description": "Lens correction via lensfun",
+      "dependencies": [
+        "lensfun"
+      ]
+    },
+    "lzma": {
+      "description": "lzma support",
+      "dependencies": [
+        "liblzma"
+      ]
+    },
+    "mediafoundation": {
+      "description": "Media Foundation support"
+    },
+    "modplug": {
+      "description": "ModPlug via libmodplug",
+      "dependencies": [
+        "libmodplug"
+      ]
+    },
+    "mp3lame": {
+      "description": "MP3 encoding via libmp3lame",
+      "dependencies": [
+        "mp3lame"
+      ]
+    },
+    "mysofa": {
+      "description": "Spatial audio via libmysofa",
+      "dependencies": [
+        "libmysofa"
+      ]
+    },
+    "nonfree": {
+      "description": "Allow use of nonfree code, the resulting libs and binaries will be unredistributable"
+    },
+    "nvcodec": {
+      "description": "Nvidia video decoding/encoding acceleration",
+      "dependencies": [
+        "ffnvcodec-11"
+      ]
+    },
+    "opencl": {
+      "description": "OpenCL processing",
+      "dependencies": [
+        "opencl"
+      ]
+    },
+    "opengl": {
+      "description": "OpenGL rendering",
+      "dependencies": [
+        "opengl"
+      ]
+    },
+    "openh264": {
+      "description": "H.264 de/encoding via openh264",
+      "dependencies": [
+        "openh264"
+      ]
+    },
+    "openjpeg": {
+      "description": "JPEG 2000 de/encoding via OpenJPEG",
+      "dependencies": [
+        "openjpeg"
+      ]
+    },
+    "openmpt": {
+      "description": "Decoding tracked files via libopenmpt",
+      "dependencies": [
+        "libopenmpt"
+      ]
+    },
+    "openssl": {
+      "description": "Use OpenSSL for TLS support",
+      "dependencies": [
+        "openssl"
+      ]
+    },
+    "opus": {
+      "description": "Opus de/encoding via libopus",
+      "dependencies": [
+        "opus"
+      ]
+    },
+    "sdl2": {
+      "description": "Sdl2 support",
+      "dependencies": [
+        "sdl2"
+      ]
+    },
+    "snappy": {
+      "description": "Snappy compression, needed for hap encoding",
+      "dependencies": [
+        "snappy"
+      ]
+    },
+    "soxr": {
+      "description": "Include libsoxr resampling",
+      "dependencies": [
+        "soxr"
+      ]
+    },
+    "speex": {
+      "description": "Speex de/encoding via libspeex",
+      "dependencies": [
+        "speex"
+      ]
+    },
+    "srt": {
+      "description": "Haivision SRT protocol",
+      "dependencies": [
+        "libsrt"
+      ]
+    },
+    "ssh": {
+      "description": "SFTP protocol via libssh",
+      "dependencies": [
+        "libssh"
+      ]
+    },
+    "svtav1": {
+      "description": "AV1 encoding via SVT-AV1",
+      "dependencies": [
+        "svt-av1"
+      ]
+    },
+    "swresample": {
+      "description": "Build the swresample library"
+    },
+    "swscale": {
+      "description": "Build the swscale library"
+    },
+    "tesseract": {
+      "description": "Optical character recognition via tesseract",
+      "dependencies": [
+        "tesseract"
+      ]
+    },
+    "theora": {
+      "description": "Theora encoding via libtheora",
+      "dependencies": [
+        "libtheora"
+      ]
+    },
+    "vorbis": {
+      "description": "Vorbis en/decoding via libvorbis, native implementation exists",
+      "dependencies": [
+        "libvorbis"
+      ]
+    },
+    "vpx": {
+      "description": "VP8 and VP9 de/encoding via libvpx",
+      "dependencies": [
+        "libvpx"
+      ]
+    },
+    "w32threads": {
+      "description": "Windows thread support"
+    },
+    "webp": {
+      "description": "WebP encoding via libwebp",
+      "dependencies": [
+        "libwebp"
+      ]
+    },
+    "x264": {
+      "description": "H.264 encoding via x264",
+      "dependencies": [
+        "x264",
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "gpl"
+          ]
+        }
+      ]
+    },
+    "x265": {
+      "description": "HEVC encoding via x265",
+      "dependencies": [
+        "x265",
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "gpl"
+          ]
+        }
+      ]
+    },
+    "xml2": {
+      "description": "XML parsing using the C library libxml2, needed for dash demuxing support",
+      "dependencies": [
+        "libxml2"
+      ]
+    },
+    "zlib": {
+      "description": "zlib support",
+      "dependencies": [
+        "zlib"
+      ]
+    },
+    "zmq": {
+      "description": "Enable ZeroMQ support",
+      "dependencies": [
+        "zeromq"
+      ]
+    },
+    "all": {
+      "description": "all feature group",
+      "dependencies": [
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "all-lgpl"
+          ]
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "windows-hw"
+          ]
+        }
+      ]
+    },
+    "all-gpl": {
+      "description": "all-gpl feature group",
+      "dependencies": [
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "x264",
+            "x265"
+          ]
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "all-lgpl"
+          ]
+        }
+      ]
+    },
+    "all-lgpl": {
+      "description": "all-lgpl feature group",
+      "dependencies": [
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "amf",
+            "aom",
+            "ass",
+            "bzip2",
+            "dav1d",
+            "fontconfig",
+            "freetype",
+            "fribidi",
+            "gme",
+            "iconv",
+            "ilbc",
+            "lzma",
+            "modplug",
+            "mp3lame",
+            "mysofa",
+            "nvcodec",
+            "opencl",
+            "opengl",
+            "openh264",
+            "openjpeg",
+            "openmpt",
+            "openssl",
+            "opus",
+            "sdl2",
+            "snappy",
+            "soxr",
+            "speex",
+            "srt",
+            "ssh",
+            "theora",
+            "vorbis",
+            "vpx",
+            "webp",
+            "xml2",
+            "zlib",
+            "zmq"
+          ]
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "lensfun"
+          ],
+          "platform": "!arm"
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "tesseract"
+          ],
+          "platform": "!uwp"
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "bluray"
+          ],
+          "platform": "!uwp & !xbox"
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "svtav1"
+          ],
+          "platform": "!x86 & !arm32 & !uwp"
+        }
+      ]
+    },
+    "all-nonfree": {
+      "description": "all-nonfree feature group",
+      "dependencies": [
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "fdk-aac"
+          ]
+        },
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "all-gpl"
+          ]
+        }
+      ]
+    },
+    "windows-hw": {
+      "description": "windows-hw feature group",
+      "dependencies": [
+        {
+          "name": "ffmpeg-4-4-7-shared",
+          "features": [
+            "d3d11va",
+            "dxva2",
+            "mediafoundation",
+            "w32threads"
+          ]
+        }
+      ]
+    }
+  },
+  "default-features": [
+    "avcodec",
+    "avdevice",
+    "avfilter",
+    "avformat",
+    "swresample",
+    "swscale"
+  ]
+}

@@ -1,0 +1,15 @@
+diff --git a/src/meson.build b/src/meson.build
+index 255fbc4..e009442 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -71,6 +71,10 @@ if host_machine.system() == 'windows'
+         extra_dependencies += cc.find_library('gdi32')
+     endif
+ 
++    extra_dependencies += cc.find_library('advapi32')
++    extra_dependencies += cc.find_library('shell32')
++    extra_dependencies += cc.find_library('user32')
++
+ elif host_machine.system() == 'darwin'
+     libbluray_src += files(
+         'file/dir_posix.c',

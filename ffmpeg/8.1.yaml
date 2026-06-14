@@ -1,0 +1,31 @@
+extends: "8.0"
+
+source:
+  method: git
+  repo: ffmpeg/ffmpeg
+  ref: "n${VERSION}"
+  sha512: 1dee3967057619dd7f2f78c63de85bb97af16c974bd9225c2336d42c7c8765c04f77490aac36af2daf953bc52c7faa37750a09265e133708f6a1709028573834
+
+build:
+  debug:
+    options: "--disable-optimizations --enable-debug"
+    cflags: "-MTd"
+  release:
+    options: "--enable-optimizations"
+    cflags: "-MT"
+  host_deps:
+    - name: ffmpeg-bin2c
+      host: true
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
+
+features:
+  include:
+    - qsv
+  exclude:
+    - avresample
+    - mfx
+  defaults:
+    - "@all"

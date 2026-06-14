@@ -14,7 +14,7 @@ GET https://raw.githubusercontent.com/BtbN/ffmpeg-msvc-prebuilt/main/catalog.jso
 
 ### catalog.json 结构
 
-`catalog.json` 由 `scripts/generate_port.py` 生成，格式如下：
+`catalog.json` 由 `scripts/generate.py` 生成，格式如下：
 
 ```json
 {

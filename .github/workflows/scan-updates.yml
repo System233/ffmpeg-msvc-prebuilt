@@ -12,9 +12,16 @@ on:
   schedule:
     - cron: "0 6 * * *" # Daily at 06:00 UTC
   workflow_dispatch:
+  push:
+    paths:
+      - 'ports/ffmpeg-*/**'
+      - 'ffmpeg/**'
+      - 'patches/**'
+      - 'scripts/**'
 
 jobs:
   scan:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,11 +69,11 @@ jobs:
           # Generate port files and trigger build for each new version
           for ver in "${VERSIONS[@]}"; do
             # Generate port files
-            python scripts/generate_port.py --version "$ver"
+            python scripts/generate.py --version "$ver"
             # Commit and push new port files
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add ports/ scripts/ffmpeg/
+            git add ports/ ffmpeg/ patches/ scripts/
             git commit -m "Auto-generate port for FFmpeg $ver" || true
             git push || true
             # Trigger build
@@ -74,4 +81,66 @@ jobs:
             gh workflow run build-release.yml \
               --input ffmpeg_version="$ver" \
               --input port="$port_name"
+          done
+
+  # ── Detect changed ports (push) and rebuild latest per family ──────────
+  detect-and-build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect changed port versions
+        id: detect
+        run: |
+          python scripts/ci_detect_changes.py \
+            ${{ github.event.before }} \
+            ${{ github.event.after }} > versions.txt
+          cat versions.txt
+
+          # Parse output lines: "VERSION PORT_NAME"
+          VERSIONS=""
+          PORTS=""
+          while read -r ver port; do
+            if [ -n "$ver" ]; then
+              VERSIONS="$VERSIONS,$ver"
+              PORTS="$PORTS,$port"
+            fi
+          done < versions.txt
+
+          VERSIONS="${VERSIONS#,}"
+          PORTS="${PORTS#,}"
+
+          if [ -n "$VERSIONS" ]; then
+            echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
+            echo "ports=$PORTS" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Versions to build: $VERSIONS"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No port changes to rebuild."
+          fi
+
+      - name: Trigger build for each version
+        if: steps.detect.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IFS=',' read -ra VERSIONS <<< "${{ steps.detect.outputs.versions }}"
+          IFS=',' read -ra PORTS <<< "${{ steps.detect.outputs.ports }}"
+          for i in "${!VERSIONS[@]}"; do
+            ver="${VERSIONS[$i]}"
+            port="${PORTS[$i]}"
+            echo "Triggering build for $ver (port=$port)"
+            gh workflow run build-release.yml \
+              --ref "${{ github.ref }}" \
+              --input ffmpeg_version="$ver" \
+              --input port="$port"
           done

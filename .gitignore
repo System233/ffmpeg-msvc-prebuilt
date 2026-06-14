@@ -1,4 +1,5 @@
 # Build and extracted data
 _work/
+build/
 *.pyc
 __pycache__
