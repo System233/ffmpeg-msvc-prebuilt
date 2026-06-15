@@ -311,7 +311,8 @@ jobs:
     steps:
       - name: Dry run notice
         if: inputs.dry_run == true
-        run: echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
+        run: |
+          echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
 
       # Checkout main branch so we have access to scripts/
       - uses: actions/checkout@v4
