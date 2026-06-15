@@ -23,12 +23,12 @@ jobs:
 
     steps:
       # Checkout main branch so we have access to scripts/
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Checkout data branch (stores build metadata)
       - name: Checkout data branch
         id: checkout-data
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: data
           path: data-repo

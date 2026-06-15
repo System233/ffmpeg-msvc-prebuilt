@@ -79,7 +79,7 @@ jobs:
           - x86-windows
           - x64-windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -144,7 +144,7 @@ jobs:
     # the matrix still defines all 24 slots but jobs exit early when the
     # filter does not match.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -320,7 +320,7 @@ jobs:
           echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
 
       # Checkout main branch so we have access to scripts/
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           path: repo-main
           sparse-checkout: |
@@ -330,7 +330,7 @@ jobs:
       # Checkout data branch (or create it on first run)
       - name: Checkout data branch
         id: checkout-data
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: data
           path: data-repo

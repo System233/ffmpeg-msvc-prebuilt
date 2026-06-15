@@ -41,7 +41,7 @@ jobs:
 
       # ── Step 3: Checkout this repo + setup Python ─────────────────────────
       - name: Checkout ffmpeg-msvc-prebuilt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
