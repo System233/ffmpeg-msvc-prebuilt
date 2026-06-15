@@ -98,7 +98,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}
 
       - name: Restore vcpkg binary cache (dry_run)
         if: inputs.dry_run == true
@@ -127,19 +129,20 @@ jobs:
             }
           }
 
-      - name: Install ffmpeg-deps (parallel)
+      - name: Install ffmpeg-deps
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
         run: |
-          $FEATURES = (Get-Content ${{ github.workspace }}/ports/ffmpeg-deps/vcpkg.json `
-            | ConvertFrom-Json).features.PSObject.Properties.Name -join ','
-          python ${{ github.workspace }}/scripts/build-parallel.py build "ffmpeg-deps[$FEATURES]" `
-            --vcpkg "${{ runner.temp }}/vcpkg/vcpkg.exe" `
-            --triplet ${{ matrix.triplet }} `
-            --fetch-first `
-            -- `
-            --overlay-ports=${{ github.workspace }}/ports/ `
-            --overlay-triplets=${{ github.workspace }}/triplets/
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          if ($json.features) {
+            foreach ($f in $json.features.PSObject.Properties.Name) {
+              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
+                --triplet=${{ matrix.triplet }} `
+                --overlay-ports=ports/ `
+                --overlay-triplets=triplets/ `
+                --recurse
+            }
+          }
 
       - name: Upload binary cache artifact
         uses: actions/upload-artifact@v4
