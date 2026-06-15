@@ -390,47 +390,137 @@ def collect_deps(features: dict, dep_overrides: dict, host_deps: list):
 def generate_deps_port():
     """Generate the ffmpeg-deps virtual port from base.yaml.
 
-    Scans ALL features in base.yaml, collects every ``depends`` value,
-    deduplicates, and writes ``ports/ffmpeg-deps/vcpkg.json`` and
-    ``ports/ffmpeg-deps/portfile.cmake``.
+    Scans ALL features in base.yaml, inherits per-feature ``platform``
+    expressions, and writes ``ports/ffmpeg-deps/vcpkg.json``.
+
+    Output structure:
+
+    - Top-level ``dependencies`` is always ``[]``.
+    - ``features["all"]`` contains every non-conflicting dependency as a
+      meta-feature.  Platform filtering is applied on each dependency
+      entry (``{"name":…, "platform":…}``), so the triplet automatically
+      excludes unsupported packages.
+    - Package names that participate in any version YAML ``dep_overrides``
+      (e.g. ``ffnvcodec`` ⇔ ``ffnvcodec-11``) are split into separate
+      vcpkg features so they never appear in the same install tree.
+      Platform filtering lives on the dependency entry inside each
+      feature — the feature object itself has no ``platform`` / ``supports``
+      key.
     """
     base = load_yaml("base")
     features = base.get("features", {})
 
-    deps = []
-    seen = set()
-    for name, info in features.items():
-        raw_deps = info.get("depends", [])
-        if isinstance(raw_deps, str):
-            raw_deps = [raw_deps]
-        elif isinstance(raw_deps, dict):
-            raw_deps = [raw_deps]
-        if not raw_deps:
+    # ── 1. Scan all version YAMLs for dep_overrides → alternative dep names ─
+    alt_override_deps = {}   # feature_name → set of override dep names
+    for f in sorted(YAML_DIR.glob("*.yaml")):
+        if f.stem == "base":
             continue
-        for item in raw_deps:
+        doc = load_yaml(f.stem)
+        for key, val in doc.get("dep_overrides", {}).items():
+            alt_override_deps.setdefault(key, set()).add(val)
+
+    alt_base_deps = {}       # feature_name → set of base dep names
+    for key in alt_override_deps:
+        feat = features.get(key, {})
+        base_deps = set()
+        for d in feat.get("depends", []):
+            if isinstance(d, str) and not d.startswith("@"):
+                base_deps.add(d)
+            elif isinstance(d, dict) and not d.get("name", "").startswith("@"):
+                base_deps.add(d["name"])
+        alt_base_deps[key] = base_deps
+
+    alternative_dep_names = set()
+    for deps in alt_base_deps.values():
+        alternative_dep_names.update(deps)
+    for deps in alt_override_deps.values():
+        alternative_dep_names.update(deps)
+
+    # ── 2. Collect all dependency names + their platform conditions ────────
+    #    dep_platforms: name → set(platform_expr | None)
+    dep_platforms = {}
+
+    def _normalise(raw):
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, dict):
+            return [raw]
+        return list(raw) if raw else []
+
+    for name, info in features.items():
+        fp = info.get("platform")  # feature-level platform (may be None)
+        for item in _normalise(info.get("depends", [])):
+            dep_name = None
+            dep_plat = fp
             if isinstance(item, str):
                 if item.startswith("@"):
-                    continue  # skip feature references
-                entry = {"name": item}
-            elif isinstance(item, dict):
-                if item.get("name", "").startswith("@"):
                     continue
-                entry = {"name": item["name"]}
+                dep_name = item
+            elif isinstance(item, dict):
+                n = item.get("name", "")
+                if n.startswith("@"):
+                    continue
+                dep_name = n
                 if "platform" in item:
-                    entry["platform"] = item["platform"]
-            else:
-                continue
-            key = entry["name"]
-            if key not in seen:
-                seen.add(key)
-                deps.append(key if len(entry) == 1 else entry)
+                    dep_plat = item["platform"]
+            if dep_name:
+                dep_platforms.setdefault(dep_name, set()).add(dep_plat if dep_plat else None)
 
-    deps.sort(key=lambda d: d if isinstance(d,str) else d["name"])
+    # Also inject override dep names with the feature's platform
+    for key, override_vals in alt_override_deps.items():
+        feat = features.get(key, {})
+        fp = feat.get("platform")
+        for ov in override_vals:
+            dep_platforms.setdefault(ov, set()).add(fp if fp else None)
 
+    # ── 3. Build dependency entry helper ────────────────────────────────────
+    def _dep_entry(name, platforms):
+        """Return a vcpkg dependency JSON-serialisable value.
+
+        - ``None ∈ platforms`` → bare string (unrestricted)
+        - single platform       → ``{"name":…, "platform":…}``
+        - multiple platforms    → OR-combined ``{"name":…, "platform":"(p1)|(p2)"}``
+        """
+        if None in platforms:
+            return name
+        plist = sorted(p for p in platforms if p)
+        if len(plist) == 1:
+            return {"name": name, "platform": plist[0]}
+        combined = "(" + ") | (".join(plist) + ")"
+        return {"name": name, "platform": combined}
+
+    # ── 4. Build meta-features ─────────────────────────────────────────────
+    #    "all" feature: every non-conflict dependency (platform on dep entry)
+    #    Per-package feature: each alternative dep (platform on dep entry,
+    #    NOT on the feature object — vcpkg rejects platform on features.)
+
+    all_entries = []
+    feature_entries = {}  # dep_name → [dep_entry]
+
+    for dep_name in sorted(dep_platforms):
+        platforms = dep_platforms[dep_name]
+        entry = _dep_entry(dep_name, platforms)
+        if dep_name in alternative_dep_names:
+            feature_entries[dep_name] = [entry]
+        else:
+            all_entries.append(entry)
+
+    feat_defs = {}
+    if all_entries:
+        feat_defs["all"] = {
+            "description": "All non-conflicting FFmpeg dependencies",
+            "dependencies": all_entries,
+        }
+    for dep_name in sorted(feature_entries):
+        feat_defs[dep_name] = {
+            "description": f"External dependency: {dep_name}",
+            "dependencies": feature_entries[dep_name],
+        }
+
+    # ── 5. Write output ─────────────────────────────────────────────────────
     port_dir = PORTS_DIR / "ffmpeg-deps"
     port_dir.mkdir(parents=True, exist_ok=True)
 
-    # vcpkg.json
     json_data = {
         "name": "ffmpeg-deps",
         "version": "1.0.0",
@@ -439,8 +529,11 @@ def generate_deps_port():
             "Auto-generated virtual port — union of all FFmpeg feature dependencies.",
             "Generated by scripts/generate.py --generate-deps",
         ],
-        "dependencies": deps,
+        "dependencies": [],
     }
+    if feat_defs:
+        json_data["features"] = feat_defs
+
     (port_dir / "vcpkg.json").write_text(
         json.dumps(json_data, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -465,7 +558,8 @@ def generate_deps_port():
         encoding="utf-8",
     )
 
-    print(f"Generated ffmpeg-deps/ with {len(deps)} dependencies")
+    print(f"Generated ffmpeg-deps/ with {len(all_entries)} deps in 'all' feature"
+          + (f", {len(feature_entries)} conflict features" if feature_entries else ""))
 
 
 # ---------------------------------------------------------------------------

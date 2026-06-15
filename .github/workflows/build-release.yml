@@ -100,11 +100,16 @@ jobs:
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
         run: |
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install ffmpeg-deps `
-            --triplet=${{ matrix.triplet }} `
-            --overlay-ports=ports/ `
-            --overlay-triplets=triplets/ `
-            --binarysource=clear
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          if ($json.features) {
+            foreach ($f in $json.features.PSObject.Properties.Name) {
+              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
+                --triplet=${{ matrix.triplet }} `
+                --overlay-ports=ports/ `
+                --overlay-triplets=triplets/ `
+                --binarysource=clear
+            }
+          }
 
       - name: Upload binary cache artifact
         uses: actions/upload-artifact@v4
