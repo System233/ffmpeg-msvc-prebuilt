@@ -27,7 +27,7 @@ from typing import List, Optional, Tuple
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PORTS_DIR = REPO_ROOT / "ports"
 YAML_DIR = REPO_ROOT / "ffmpeg"
 
@@ -307,9 +307,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         # Warning already printed by fetch_upstream_tags
         sys.exit(1)
 
-    print(f"Upstream releases ({len(upstream)}):")
-    print(f"  {format_version_list(upstream)}")
-    print()
+    if not args.json:
+        print(f"Upstream releases ({len(upstream)}):")
+        print(f"  {format_version_list(upstream)}")
+        print()
 
     # ---- Step 5: Diff ----
     new_versions = diff_versions(upstream, local_set)
