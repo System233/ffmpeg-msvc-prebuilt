@@ -93,6 +93,15 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
           git -C ${{ runner.temp }}/vcpkg checkout ${{ env.VCPKG_COMMIT }}
 
+      - name: Restore vcpkg binary cache (dry_run)
+        if: inputs.dry_run == true
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-
+
       - name: Bootstrap vcpkg
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
@@ -122,7 +131,6 @@ jobs:
                 --triplet=${{ matrix.triplet }} `
                 --overlay-ports=ports/ `
                 --overlay-triplets=triplets/ `
-                --binarysource=clear  `
                 --recurse
             }
           }
