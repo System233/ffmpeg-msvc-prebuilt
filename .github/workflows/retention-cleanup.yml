@@ -55,7 +55,7 @@ jobs:
       # and DELETE_TAG: lines for each version that should be removed.
       - name: Run retention policy
         run: |
-          python scripts/retention_policy.py data-repo/data > cleanup_output.txt
+          python scripts/ci/retention_policy.py data-repo/data > cleanup_output.txt
           echo "=== Cleanup output ==="
           cat cleanup_output.txt
         shell: bash

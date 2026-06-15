@@ -33,7 +33,7 @@ jobs:
       - name: Scan for new upstream releases
         id: scan
         run: |
-          python scripts/scan_updates.py 2>&1 | tee scan_output.txt
+          python scripts/ci/scan_updates.py 2>&1 | tee scan_output.txt
 
           # Try JSON output first (future-proof for scan_updates.py upgrade)
           if python -c "
@@ -79,77 +79,11 @@ jobs:
               continue
             fi
 
-            # ── b. Find closest existing YAML (inline bash logic) ──────
-            major="${version%%.*}"
-            CLOSEST=""
+            # ── b. Find closest existing YAML ──────────────────────────
+            CLOSEST=$(python scripts/find_closest_yaml.py --version "$version")
 
-            # First pass: same major version
-            for f in ffmpeg/*.yaml; do
-              stem=$(basename "$f" .yaml)
-              [ "$stem" = "base" ] && continue
-              first_part="${stem%%.*}"
-              if [ "$first_part" = "$major" ]; then
-                if [ -z "$CLOSEST" ] || [ "$stem" \> "$CLOSEST" ]; then
-                  CLOSEST="$stem"
-                fi
-              fi
-            done
-
-            # Second pass: no same-major YAML — use global latest
-            if [ -z "$CLOSEST" ]; then
-              for f in ffmpeg/*.yaml; do
-                stem=$(basename "$f" .yaml)
-                [ "$stem" = "base" ] && continue
-                if [ -z "$CLOSEST" ] || [ "$stem" \> "$CLOSEST" ]; then
-                  CLOSEST="$stem"
-                fi
-              done
-            fi
-
-            if [ -z "$CLOSEST" ]; then
-              echo "  ERROR: no existing YAML found to use as template — skipping"
-              continue
-            fi
-            echo "  Closest YAML: ${CLOSEST}.yaml"
-
-            # ── c. Copy YAML and set revision: 0 ────────────────────────
-            cp "ffmpeg/${CLOSEST}.yaml" "ffmpeg/${version}.yaml"
-            if grep -q '^revision:' "ffmpeg/${version}.yaml"; then
-              sed -i 's/^revision:.*/revision: 0/' "ffmpeg/${version}.yaml"
-            else
-              # Add revision: 0 after the extends line
-              sed -i '/^extends:/arevision: 0' "ffmpeg/${version}.yaml"
-            fi
-            echo "  YAML copied with revision: 0"
-
-            # ── d. Generate port files ──────────────────────────────────
-            python scripts/generate.py --version "$version" --force
-            echo "  Port files generated"
-
-            # ── e. Create PR branch name ────────────────────────────────
-            BRANCH="ci/ffmpeg-${version}"
-
-            # ── f. Check if branch already exists on remote ────────────
-            if git ls-remote --heads origin "$BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
-              echo "  SKIP: branch ${BRANCH} already exists on remote"
-              continue
-            fi
-
-            # ── g. Commit, push, and create PR ─────────────────────────
-            PORT_NAME="ffmpeg-$(echo "$version" | tr '.' '-')"
-            git checkout -b "$BRANCH"
-            git add "ffmpeg/${version}.yaml" "ports/${PORT_NAME}/"
-            git commit -m "feat: add ffmpeg ${version}"
-
-            git push origin "$BRANCH"
-            gh pr create \
-              --base main \
-              --head "$BRANCH" \
-              --title "ffmpeg ${version}" \
-              --body "Auto-generated port for FFmpeg ${version}. Please review and merge."
-
-            # Return to main for next iteration
-            git checkout main
+            # ── c. Create PR for version ────────────────────────────────
+            python scripts/ci/create_version_pr.py --version "$version" --closest-yaml "$CLOSEST"
 
           done < new_versions.txt
 

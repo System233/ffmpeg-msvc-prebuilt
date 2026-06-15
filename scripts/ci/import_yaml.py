@@ -8,7 +8,7 @@ them into version YAML files under a ``data/`` hierarchy.
 
 Usage
 -----
-    python scripts/import_yaml.py --artifacts-dir ./artifacts
+    python scripts/ci/import_yaml.py --artifacts-dir ./artifacts
 
 Output
 ------

@@ -7,15 +7,20 @@ git commits. Family YAMLs (e.g. 8.1.yaml) trigger rebuild of all child patch
 versions. Outputs VERSION REVISION pairs for downstream dispatch.
 
 Usage:
-    python scripts/ci_detect_changes.py <before_sha> <after_sha>
+    python scripts/ci/ci_detect_changes.py <before_sha> <after_sha>
+    python scripts/ci/ci_detect_changes.py --json <before_sha> <after_sha>
 
-Output:
+Output (default):
     Prints "VERSION REVISION" lines, one per version to build.
     Example:
         8.1.1 2
         7.1.2 1
+
+Output (--json):
+    JSON object with 'changed' array and 'found' boolean.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -126,24 +131,45 @@ def get_changed_versions(before: str, after: str):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print('Usage: ci_detect_changes.py <before_sha> <after_sha>', file=sys.stderr)
+    argv = sys.argv[1:]
+    use_json = False
+
+    if argv and argv[0] == '--json':
+        use_json = True
+        argv = argv[1:]
+
+    if len(argv) != 2:
+        print('Usage: ci_detect_changes.py [--json] <before_sha> <after_sha>', file=sys.stderr)
         sys.exit(1)
 
-    before, after = sys.argv[1], sys.argv[2]
+    before, after = argv[0], argv[1]
 
     # Skip if this is the first push (before is all zeros)
     if before == '0000000000000000000000000000000000000000':
-        print('No previous commit to diff against (initial push)')
+        if use_json:
+            json.dump({"changed": [], "found": False}, sys.stdout)
+            print()
+        else:
+            print('No previous commit to diff against (initial push)')
         return
 
     versions = get_changed_versions(before, after)
     if not versions:
-        print('No YAML revision changes detected.')
+        if use_json:
+            json.dump({"changed": [], "found": False}, sys.stdout)
+            print()
+        else:
+            print('No YAML revision changes detected.')
         return
 
-    for ver, rev in sorted(versions.items(), key=lambda x: version_key(x[0])):
-        print(f'{ver} {rev}')
+    if use_json:
+        changed = [{"version": ver, "revision": rev}
+                   for ver, rev in sorted(versions.items(), key=lambda x: version_key(x[0]))]
+        json.dump({"changed": changed, "found": True}, sys.stdout)
+        print()
+    else:
+        for ver, rev in sorted(versions.items(), key=lambda x: version_key(x[0])):
+            print(f'{ver} {rev}')
 
 
 if __name__ == '__main__':

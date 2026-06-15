@@ -33,6 +33,10 @@ on:
         description: "Limit license type (e.g. gpl)"
         required: false
         type: string
+      dry_run:
+        description: 'Skip release creation and data branch push'
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -51,6 +55,10 @@ on:
       target_license:
         type: string
         required: false
+      dry_run:
+        type: boolean
+        required: false
+        default: false
 
 # ─── Global environment ──────────────────────────────────────────────────────
 env:
@@ -111,8 +119,8 @@ jobs:
     needs: seed
     runs-on: windows-latest
     permissions: {}
-    fail-fast: false
     strategy:
+      fail-fast: false
       matrix:
         triplet:
           - arm-windows
@@ -301,6 +309,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Dry run notice
+        if: inputs.dry_run == true
+        run: echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
+
       # Checkout main branch so we have access to scripts/
       - uses: actions/checkout@v4
         with:
@@ -356,18 +368,14 @@ jobs:
 
       - name: Import variant YAMLs into data branch
         run: |
-          python ${{ github.workspace }}/repo-main/scripts/import_yaml.py \
+          python ${{ github.workspace }}/repo-main/scripts/ci/import_yaml.py \
             --artifacts-dir ${{ github.workspace }}/artifacts/
         working-directory: ${{ github.workspace }}/data-repo
         shell: bash
         continue-on-error: true
-        # NOTE: import_yaml.py does not exist yet (Phase 4 implementation).
-        # Once created, it will read all `.var.yaml` files from the artifacts
-        # directory, group by version+revision, merge into
-        # `data/{major}.x/ffmpeg-{ver}-r{rev}.yaml`, and update
-        # `data/{major}.x/build-index.yaml`.
 
       - name: Commit and push data branch
+        if: inputs.dry_run != true
         run: |
           cd ${{ github.workspace }}/data-repo
           git config user.name "github-actions[bot]"
@@ -394,6 +402,7 @@ jobs:
 
       # ── Create or append GitHub Release ───────────────────────────────────
       - name: Create or append GitHub Release
+        if: inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -426,6 +435,7 @@ jobs:
 
       # ── Push release tag ──────────────────────────────────────────────────
       - name: Push release tag
+        if: inputs.dry_run != true
         run: |
           TAG="${{ steps.release_tag.outputs.tag }}"
           cd ${{ github.workspace }}/data-repo

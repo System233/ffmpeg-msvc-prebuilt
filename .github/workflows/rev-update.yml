@@ -6,7 +6,7 @@
 #   - Pull request merged (closed + merged) with changes to ffmpeg/*.yaml
 #
 # Runs ci_detect_changes.py to diff before/after SHAs across ffmpeg/*.yaml
-# files, parses output lines formatted as "VERSION REVISION" (e.g. "8.1.1 2"),
+# files, parses JSON output from ci_detect_changes.py --json flag,
 # and dispatches build-release.yml for each detected version.
 #
 # SPEC: ci/SPEC.md §7.3
@@ -67,37 +67,29 @@ jobs:
           echo "Before SHA: ${BEFORE}"
           echo "After SHA:  ${AFTER}"
 
-          # ── Run detection script ──────────────────────────────────────
-          python scripts/ci_detect_changes.py "$BEFORE" "$AFTER" > changes.txt
-          cat changes.txt
+          # ── Run detection script with JSON output ─────────────────────
+          python scripts/ci/ci_detect_changes.py \
+            "$BEFORE" "$AFTER" \
+            --json > changes.json
+          cat changes.json
 
-          # ── Parse "VERSION REVISION" output lines ─────────────────────
-          # Each non-informational line is expected to be:
-          #   <version> <revision>
-          # e.g. "8.1.1 2"
-          # Skip lines that don't start with a version number.
-          VERSIONS=""
-          REVISIONS=""
-          while read -r ver rev; do
-            if echo "$ver" | grep -qE '^[0-9]+\.[0-9]+'; then
-              VERSIONS="${VERSIONS},${ver}"
-              REVISIONS="${REVISIONS},${rev}"
-            fi
-          done < changes.txt
+          # ── Parse JSON and set outputs ────────────────────────────────
+          FOUND=$(python -c "import json; d=json.load(open('changes.json')); print(str(d['found']).lower())")
+          echo "found=$FOUND" >> "$GITHUB_OUTPUT"
 
-          # Strip leading commas
-          VERSIONS="${VERSIONS#,}"
-          REVISIONS="${REVISIONS#,}"
-
-          if [ -n "$VERSIONS" ]; then
-            echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
-            echo "revisions=${REVISIONS}" >> "$GITHUB_OUTPUT"
-            echo "found=true" >> "$GITHUB_OUTPUT"
+          if [ "$FOUND" = "true" ]; then
+            python -c "
+          import json
+          d = json.load(open('changes.json'))
+          versions = ','.join(c['version'] for c in d['changed'])
+          revisions = ','.join(str(c['revision']) for c in d['changed'])
+          print(f'versions={versions}')
+          print(f'revisions={revisions}')
+          " >> "$GITHUB_OUTPUT"
             echo ""
-            echo "▸ Versions to build: ${VERSIONS}"
-            echo "▸ Revisions:         ${REVISIONS}"
+            echo "▸ Versions to build: $(python -c "import json; d=json.load(open('changes.json')); print(','.join(c['version'] for c in d['changed']))")"
+            echo "▸ Revisions:         $(python -c "import json; d=json.load(open('changes.json')); print(','.join(str(c['revision']) for c in d['changed']))")"
           else
-            echo "found=false" >> "$GITHUB_OUTPUT"
             echo "No version changes detected — exiting."
           fi
 

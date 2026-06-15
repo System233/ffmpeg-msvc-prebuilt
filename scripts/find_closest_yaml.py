@@ -15,11 +15,13 @@ Usage
 -----
     python scripts/find_closest_yaml.py --version 6.5
     python scripts/find_closest_yaml.py --version 7.1.2
+    python scripts/find_closest_yaml.py --describe "n8.2-dev-1-gabc1234"
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +33,25 @@ from pathlib import Path
 def _parse_version(version: str) -> tuple[int, ...]:
     """Convert a dotted version string into a tuple of integers."""
     return tuple(int(x) for x in version.split("."))
+
+
+def parse_describe(describe_string: str) -> str | None:
+    """
+    Parse git describe output to extract version hint.
+
+    "n8.2-dev-1-gabc1234" -> "8.2"
+    "n8.1.1" -> "8.1.1"
+    Returns None if unparseable.
+    """
+    # Strip leading 'n' if present
+    s = describe_string.lstrip('n')
+    # Match X.Y[.Z]
+    match = re.match(r'(\d+\.\d+)(?:\.(\d+))?', s)
+    if match:
+        major_minor = match.group(1)  # "8.2"
+        patch = match.group(2)
+        return f"{major_minor}.{patch}" if patch else major_minor
+    return None
 
 
 def find_closest_yaml(version: str) -> str | None:
@@ -70,14 +91,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find the closest existing YAML for a target version."
     )
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "--version",
-        required=True,
         help="Target version string (e.g. 6.5 or 7.1.2).",
+    )
+    group.add_argument(
+        "--describe",
+        help="Git describe string (e.g. n8.2-dev-1-gabc1234).",
     )
     args = parser.parse_args()
 
-    result = find_closest_yaml(args.version)
+    if args.version:
+        version = args.version
+    else:
+        # Parse describe string to extract version hint
+        version = parse_describe(args.describe)
+        if version is None:
+            print(
+                "Warning: could not parse describe string, "
+                "falling back to global latest.",
+                file=sys.stderr,
+            )
+            # Empty string causes find_closest_yaml to fall through to global latest
+            version = ""
+
+    result = find_closest_yaml(version)
     if result is None:
         sys.exit(1)
 

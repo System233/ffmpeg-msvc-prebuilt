@@ -8,8 +8,8 @@ new upstream releases that do not yet have a corresponding port.
 
 Usage
 -----
-    python scripts/scan_updates.py
-    python scripts/scan_updates.py --check-vcpkg   # also compare against vcpkg registry
+    python scripts/ci/scan_updates.py
+    python scripts/ci/scan_updates.py --check-vcpkg   # also compare against vcpkg registry
 """
 
 from __future__ import annotations

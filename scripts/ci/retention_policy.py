@@ -4,7 +4,7 @@ retention_policy.py — Enforce retention policy on version YAML files.
 
 Usage
 -----
-    python scripts/retention_policy.py [data_dir]
+    python scripts/ci/retention_policy.py [data_dir]
 
 The script processes two categories independently:
   1. Non-master (data/{major}.x/):
