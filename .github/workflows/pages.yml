@@ -60,6 +60,7 @@ jobs:
         working-directory: web
         env:
             BASE_URL: /${{ github.event.repository.name }}/
+            VITE_GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: pnpm run build
 
       - name: Setup Pages
