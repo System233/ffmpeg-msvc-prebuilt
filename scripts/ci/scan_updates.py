@@ -29,11 +29,15 @@ from typing import List, Optional, Tuple
 # ---------------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PORTS_DIR = REPO_ROOT / "ports"
+YAML_DIR = REPO_ROOT / "ffmpeg"
 
 # Regex for port directory names.  Matches both:
 #   ffmpeg-7-0       (X.Y,  two digit groups)
 #   ffmpeg-8-1-1     (X.Y.Z, three digit groups)
 PORT_DIR_RE = re.compile(r"^ffmpeg-(\d+)-(\d+)(?:-(\d+))?$")
+
+# Regex for YAML version files in ffmpeg/ (e.g. 8.1.yaml, 8.1.1.yaml)
+YAML_FILE_RE = re.compile(r"^(\d+(?:\.\d+){1,2})\.yaml$")
 
 # Regex for FFmpeg upstream tags (e.g. n8.1.1, n7.0.2)
 TAG_RE = re.compile(r"^n(\d+)\.(\d+)\.(\d+)$")
@@ -152,6 +156,27 @@ def scan_local_ports() -> List[Tuple[int, int, int]]:
 
 
 # ---------------------------------------------------------------------------
+# Scan local YAML files
+# ---------------------------------------------------------------------------
+
+def scan_local_yamls() -> List[Tuple[int, int, int]]:
+    """Scan the ``ffmpeg/`` directory for version YAML files.
+
+    Returns a sorted list of (major, minor, patch) tuples, newest first.
+    """
+    versions: set[Tuple[int, int, int]] = set()
+    if not YAML_DIR.is_dir():
+        return []
+    for entry in YAML_DIR.iterdir():
+        if not entry.is_file():
+            continue
+        m = YAML_FILE_RE.match(entry.name)
+        if m:
+            versions.add(normalize_version(m.group(1)))
+    return sorted(versions, reverse=True)
+
+
+# ---------------------------------------------------------------------------
 # Vcpkg registry scan
 # ---------------------------------------------------------------------------
 
@@ -248,6 +273,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="Also compare against known versions in the local vcpkg registry",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON instead of human-readable text",
+    )
     return parser.parse_args(argv)
 
 
@@ -258,16 +288,20 @@ def main(argv: Optional[List[str]] = None) -> None:
     local = scan_local_ports()
     local_set = set(local)
 
-    # ---- Step 2 (optional): Scan vcpkg registry ----
+    # ---- Step 2: Scan local YAML files ----
+    yaml_versions = scan_local_yamls()
+    local_set |= set(yaml_versions)
+
+    # ---- Step 3 (optional): Scan vcpkg registry ----
     if args.check_vcpkg:
         vcpkg_versions = scan_vcpkg_registry()
         print(f"Vcpkg registry versions ({len(vcpkg_versions)}):")
         print(f"  {format_version_list(vcpkg_versions)}")
         print()
-        # Merge local and vcpkg into the "already supported" set
+        # Merge vcpkg into the "already supported" set
         local_set |= set(vcpkg_versions)
 
-    # ---- Step 3: Fetch upstream tags ----
+    # ---- Step 4: Fetch upstream tags ----
     upstream = fetch_upstream_tags()
     if not upstream:
         # Warning already printed by fetch_upstream_tags
@@ -277,12 +311,20 @@ def main(argv: Optional[List[str]] = None) -> None:
     print(f"  {format_version_list(upstream)}")
     print()
 
-    # ---- Step 4: Diff ----
+    # ---- Step 5: Diff ----
     new_versions = diff_versions(upstream, local_set)
 
-    # ---- Step 5: Print ----
-    print_results(local if not args.check_vcpkg else sorted(local_set, reverse=True),
-                  upstream, new_versions)
+    # ---- Step 6: Output ----
+    if args.json:
+        output = {
+            "supported_versions": [format_version(v) for v in sorted(local_set, reverse=True)],
+            "upstream_versions": [format_version(v) for v in upstream],
+            "new_versions": [format_version(v) for v in new_versions],
+        }
+        json.dump(output, sys.stdout, indent=2)
+        print()  # trailing newline
+    else:
+        print_results(sorted(local_set, reverse=True), upstream, new_versions)
 
 
 if __name__ == "__main__":

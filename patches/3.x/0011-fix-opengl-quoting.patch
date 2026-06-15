@@ -1,0 +1,25 @@
+From 67f31803b721caaf0c12372ef0eb49d3dcb181d4 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Mon, 15 Jun 2026 05:35:29 +0800
+Subject: [PATCH] Fix OpenGL check_lib quoting for MSVC flag splitting
+
+---
+ configure | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index 7550414..9b54e36 100644
+--- a/configure
++++ b/configure
+@@ -6074,7 +6074,7 @@ enabled opencl            && { check_lib opencl OpenCL/cl.h clEnqueueNDRangeKern
+                                check_cpp_condition "CL/cl.h" "defined(CL_VERSION_1_2)" ||
+                                die "ERROR: opencl must be installed and version must be 1.2 or compatible"; }
+ enabled opengl            && { check_lib opengl GL/glx.h glXGetProcAddress "-lGL" ||
+-                               check_lib opengl windows.h wglGetProcAddress "-lopengl32 -lgdi32" ||
++                               check_lib opengl windows.h wglGetProcAddress -lopengl32 -lgdi32 ||
+                                check_lib opengl OpenGL/gl3.h glGetError "-Wl,-framework,OpenGL" ||
+                                check_lib opengl ES2/gl.h glGetError "-isysroot=${sysroot} -Wl,-framework,OpenGLES" ||
+                                die "ERROR: opengl not found."
+-- 
+2.47.1.windows.2
+

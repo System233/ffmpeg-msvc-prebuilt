@@ -42,6 +42,9 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
+import yaml
+from datetime import datetime, timezone
+
 
 # ---------------------------------------------------------------------------
 # Constants – FFmpeg library names (without version suffix)
@@ -555,6 +558,22 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default="Release",
         help="Output directory for the zip archive (default: Release)",
     )
+    parser.add_argument(
+        "--revision",
+        type=int,
+        default=0,
+        help="Revision number (default: 0)",
+    )
+    parser.add_argument(
+        "--generate-var-yaml",
+        action="store_true",
+        help="Generate variant .var.yaml alongside the zip",
+    )
+    parser.add_argument(
+        "--ffmpeg-ref",
+        default=None,
+        help="FFmpeg git describe ref (for master builds)",
+    )
     return parser.parse_args(argv)
 
 
@@ -567,6 +586,11 @@ def main(argv: Optional[List[str]] = None) -> None:
     linkage = args.linkage
     vcpkg_root = Path(args.vcpkg_root)
     output_dir = Path(args.output_dir)
+    revision = args.revision
+    ffmpeg_ref = args.ffmpeg_ref
+    generate_var_yaml = args.generate_var_yaml
+
+    is_master = (revision == 0 and ffmpeg_ref is not None)
 
     # ---- Derived paths ----
     installed_dir = vcpkg_root / "installed" / triplet
@@ -598,7 +622,10 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # ---- Create zip ----
     pkg_dir = resolve_package_dir(packages_dir, triplet, port_name)
-    zip_name = f"ffmpeg-{version}-{triplet}-{linkage}-{license_variant}.zip"
+    if is_master:
+        zip_name = f"ffmpeg-{ffmpeg_ref}-{triplet}-{linkage}-{license_variant}.zip"
+    else:
+        zip_name = f"ffmpeg-{version}-{triplet}-{linkage}-{license_variant}.zip"
     zip_path = output_dir / zip_name
 
     print()
@@ -607,7 +634,8 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # ---- Report ----
     zip_size = zip_path.stat().st_size
-    zip_sha256 = sha256_file(zip_path)
+    zip_sha256_hex = sha256_file(zip_path)
+    zip_digest = f"sha256:{zip_sha256_hex}"
 
     # Count entries by category
     bin_count = sum(1 for _, a in collected if a.startswith("bin/"))
@@ -615,7 +643,60 @@ def main(argv: Optional[List[str]] = None) -> None:
     lib_count = sum(1 for _, a in collected if a.startswith("lib/") or a.startswith("debug/lib/"))
 
     print(f"Done! {bin_count} binary/{inc_count} header/{lib_count} library files in archive")
-    print(f"  {zip_path}  ({format_size(zip_size)}, SHA256: {zip_sha256})")
+    print(f"  {zip_path}  ({format_size(zip_size)}, {zip_digest})")
+
+    # ---- Variant YAML ----
+    if generate_var_yaml:
+        # Build variant_id
+        if is_master:
+            variant_id = f"ffmpeg-{ffmpeg_ref}-{triplet}-{linkage}-{license_variant}"
+        else:
+            variant_id = f"ffmpeg-{version}-r{revision}-{triplet}-{linkage}-{license_variant}"
+
+        # Derive arch from triplet
+        arch = triplet.split("-")[0]
+
+        # LTS heuristic: FFmpeg LTS tracks are major versions 7 and 8
+        major_ver = version.split(".")[0] if version.count(".") >= 1 else ""
+        lts = major_ver in ("7", "8")
+
+        # Build date
+        build_date = datetime.now(timezone.utc).isoformat()
+
+        # FFmpeg tag / commit
+        if is_master:
+            ffmpeg_tag = None
+            ffmpeg_commit = ffmpeg_ref
+        else:
+            ffmpeg_tag = f"n{version}"
+            ffmpeg_commit = None
+
+        var_data = {
+            "variant_id": variant_id,
+            "version": version,
+            "revision": revision,
+            "arch": arch,
+            "triplet": triplet,
+            "linkage": linkage,
+            "license": license_variant,
+            "lts": lts,
+            "ffmpeg_tag": ffmpeg_tag,
+            "ffmpeg_commit": ffmpeg_commit,
+            "build_date": build_date,
+            "asset_name": zip_name,
+            "file_size": zip_size,
+            "digest": zip_digest,
+            "features": [],
+            "dependencies": [],
+        }
+
+        var_yaml_path = output_dir / f"{variant_id}.var.yaml"
+        with open(var_yaml_path, "w", encoding="utf-8") as fh:
+            yaml.dump(var_data, fh, default_flow_style=False, sort_keys=False)
+        print(f"  Variant YAML: {var_yaml_path}")
+
+    # Always print digest to stdout for CI capture
+    print(zip_digest)
 
 
 if __name__ == "__main__":

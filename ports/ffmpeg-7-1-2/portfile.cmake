@@ -1,6 +1,8 @@
 set(FFMPEG_VERSION "7.1.2")
 set(FFMPEG_SHA512 8411c45f71d2d61184b11e2a786137044a80d9b979a7e2e8513efc5e716b3360bff4533a13875dd4bca492b97b97f0384f7fb4f3d796802e81981b0857d18a2b)
+set(FFMPEG_PORT_REVISION 1)
 set(FFMPEG_SHARED_DIR "${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg")
+set(FFMPEG_BUILDER_DIR "${CURRENT_INSTALLED_DIR}/share/ffmpeg-builder")
 set(FFMPEG_PATCHES_DIR "${CMAKE_CURRENT_LIST_DIR}/../../patches/7.x")
 set(FFMPEG_BASE_OPTIONS "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug")
 set(FFMPEG_OPTIONS_DEBUG "--disable-optimizations")
@@ -22,4 +24,4 @@ set(FFMPEG_PATCHES
     0051-lensfun-configure-fix-7.x.patch
 )
 set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-port-base.cmake")
+include("${FFMPEG_BUILDER_DIR}/ffmpeg-portfile.cmake")

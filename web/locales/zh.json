@@ -1,0 +1,115 @@
+{
+  "site": {
+    "title": "FFmpeg MSVC 预编译"
+  },
+  "hero": {
+    "title": "FFmpeg MSVC 预编译",
+    "subtitle": "适用于 Windows 的即用型 FFmpeg 二进制文件，使用 MSVC 编译。所有依赖已包含 — 下载、解压、运行。",
+    "noReleases": "暂无发布。CI 发布首个版本后数据将显示于此处。",
+    "viewAll": "查看所有发布",
+    "chooseLang": "选择语言",
+    "quickDownload": "快速下载 (x64 Windows)",
+    "github": "GitHub",
+    "featuresTitle": "项目特性",
+    "latestTitle": "最新构建",
+    "features": [
+      {
+        "icon": "fa6-solid:microchip",
+        "title": "现代架构支持",
+        "desc": "为 x64、x86 和 ARM64 Windows 平台提供原生构建，针对现代 CPU 进行了优化。"
+      },
+      {
+        "icon": "fa6-solid:box-archive",
+        "title": "自包含/便携",
+        "desc": "所有依赖项均已静态链接或随包分发。无 DLL 冲突问题，解压即用。"
+      },
+      {
+        "icon": "fa6-solid:bolt",
+        "title": "MSVC 性能优化",
+        "desc": "使用最新的 Microsoft Visual C++ 编译器编译，确保在 Windows 上的最佳性能。"
+      }
+    ]
+  },
+  "releases": {
+    "title": "发布列表",
+    "empty": "没有匹配筛选条件的发布。",
+    "cataloged": "个构建结果已入库",
+    "totalFound": "个发布版本",
+    "action": "操作",
+    "details": "详情",
+    "reset": "重置筛选"
+  },
+  "release": {
+    "title": "发布详情",
+    "latestLabel": "最新版本",
+    "version": "版本",
+    "revision": "修订号",
+    "lts": "长期支持",
+    "master": "开发版",
+    "releaseTag": "GitHub 标签",
+    "buildDate": "构建日期",
+    "updatedDate": "更新日期",
+    "variants": "构建版本",
+    "complete": "已完成",
+    "incomplete": "构建中",
+    "releasedOn": "发布日期",
+    "backToList": "所有发布",
+    "notFound": "未找到发布版本",
+    "selectHint": "下表提供直接下载链接。",
+    "architectures": "架构",
+    "licenses": "许可协议",
+    "linkages": "链接方式",
+    "viewOnGitHub": "在 GitHub 查看",
+    "fullDetails": "完整详情",
+    "ffmpegCommit": "FFmpeg 提交",
+    "status": "状态",
+    "progress": "构建进度",
+    "metadata": "完整构建元数据",
+    "available": "个变体可用",
+    "variantDetails": "变体详情",
+    "copyHash": "复制",
+    "noFeatures": "未列出具体功能。",
+    "noDeps": "无外部依赖。",
+    "howToUse": "如何使用",
+    "howToUseDesc": "下载压缩包，解压到文件夹，并将 bin/ 目录添加到系统 PATH 环境变量。MSVC 构建版本需要安装最新的 Visual C++ 运行库。",
+    "selectBuild": "选择一个构建版本开始",
+    "selectBuildDesc": "使用左侧筛选器缩小选择范围，点击一个构建版本查看其详细元数据。",
+    "loading": "正在加载元数据...",
+    "backToCatalog": "返回列表",
+    "errorDesc": "您寻找的发布版本不存在或已被移除。",
+    "tooltips": {
+      "x64": "64位 Intel/AMD 架构 (x86_64)",
+      "x86": "32位 Intel/AMD 架构 (i686)",
+      "arm64": "64位 ARM 架构 (AArch64)",
+      "arm32": "32位 ARM 架构 (ARMv7)",
+      "shared": "动态链接库 (.dll)。运行环境需包含 DLL 文件。",
+      "static": "自包含二进制文件。无需外部 DLL 即可运行。",
+      "gpl": "通用公共许可证。包含完整功能。",
+      "lgpl": "宽通用公共许可证。协议更宽松。",
+      "nonfree": "包含非自由组件 (如 fdk-aac)。"
+    }
+  },
+  "variant": {
+    "size": "大小",
+    "sha256": "SHA256",
+    "features": "功能",
+    "dependencies": "依赖库",
+    "download": "下载",
+    "noVariant": "不可用"
+  },
+  "filter": {
+    "search": "搜索版本...",
+    "allMajors": "所有版本",
+    "ltsOnly": "仅长期支持",
+    "completeOnly": "仅完成版本"
+  },
+  "footer": {
+    "message": "FFmpeg Windows MSVC 预编译二进制文件",
+    "copy": "© 2026 FFmpeg MSVC 预编译版。基于 MIT 协议开源。",
+    "links": {
+      "github": "源代码",
+      "issues": "报告问题",
+      "releases": "所有发布"
+    }
+  }
+}

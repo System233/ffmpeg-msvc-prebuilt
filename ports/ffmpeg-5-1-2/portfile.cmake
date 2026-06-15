@@ -1,6 +1,8 @@
 set(FFMPEG_VERSION "5.1.2")
 set(FFMPEG_SHA512 1b90c38b13149f2de7618ad419adc277afd5e65bbf52b849a7245aec0f92f73189c8547599dba8408b8828a767c1120f132727b57cd6231cd8b81de2471a4b8b)
+set(FFMPEG_PORT_REVISION 1)
 set(FFMPEG_SHARED_DIR "${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg")
+set(FFMPEG_BUILDER_DIR "${CURRENT_INSTALLED_DIR}/share/ffmpeg-builder")
 set(FFMPEG_PATCHES_DIR "${CMAKE_CURRENT_LIST_DIR}/../../patches/5.x")
 set(FFMPEG_BASE_OPTIONS "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug")
 set(FFMPEG_OPTIONS_DEBUG "--debug --disable-optimizations")
@@ -25,4 +27,4 @@ set(FFMPEG_PATCHES
     0052-svtav1-3.x-compat.patch
 )
 set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-port-base.cmake")
+include("${FFMPEG_BUILDER_DIR}/ffmpeg-portfile.cmake")

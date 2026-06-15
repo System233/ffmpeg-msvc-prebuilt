@@ -1,0 +1,116 @@
+# ---------------------------------------------------------------------------
+# rev-update.yml — Detect YAML revision changes and trigger builds
+#
+# Triggered by:
+#   - Push to main with changes to ffmpeg/*.yaml
+#   - Pull request merged (closed + merged) with changes to ffmpeg/*.yaml
+#
+# Runs ci_detect_changes.py to diff before/after SHAs across ffmpeg/*.yaml
+# files, parses output lines formatted as "VERSION REVISION" (e.g. "8.1.1 2"),
+# and dispatches build-release.yml for each detected version.
+#
+# SPEC: ci/SPEC.md §7.3
+# ---------------------------------------------------------------------------
+
+name: Detect YAML revision changes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ffmpeg/*.yaml'
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - 'ffmpeg/*.yaml'
+
+jobs:
+  detect:
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Detect changed versions
+        id: detect
+        run: |
+          # ── Determine before/after SHAs based on event type ────────────
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.event.after }}"
+          else
+            # pull_request closed + merged
+            BEFORE="${{ github.event.pull_request.base.sha }}"
+            AFTER="${{ github.event.pull_request.head.sha }}"
+          fi
+
+          echo "Before SHA: ${BEFORE}"
+          echo "After SHA:  ${AFTER}"
+
+          # ── Run detection script ──────────────────────────────────────
+          python scripts/ci_detect_changes.py "$BEFORE" "$AFTER" > changes.txt
+          cat changes.txt
+
+          # ── Parse "VERSION REVISION" output lines ─────────────────────
+          # Each non-informational line is expected to be:
+          #   <version> <revision>
+          # e.g. "8.1.1 2"
+          # Skip lines that don't start with a version number.
+          VERSIONS=""
+          REVISIONS=""
+          while read -r ver rev; do
+            if echo "$ver" | grep -qE '^[0-9]+\.[0-9]+'; then
+              VERSIONS="${VERSIONS},${ver}"
+              REVISIONS="${REVISIONS},${rev}"
+            fi
+          done < changes.txt
+
+          # Strip leading commas
+          VERSIONS="${VERSIONS#,}"
+          REVISIONS="${REVISIONS#,}"
+
+          if [ -n "$VERSIONS" ]; then
+            echo "versions=${VERSIONS}" >> "$GITHUB_OUTPUT"
+            echo "revisions=${REVISIONS}" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo ""
+            echo "▸ Versions to build: ${VERSIONS}"
+            echo "▸ Revisions:         ${REVISIONS}"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No version changes detected — exiting."
+          fi
+
+      - name: Dispatch build-release for each version
+        if: steps.detect.outputs.found == 'true'
+        run: |
+          IFS=',' read -ra VERSIONS <<< "${{ steps.detect.outputs.versions }}"
+          IFS=',' read -ra REVISIONS <<< "${{ steps.detect.outputs.revisions }}"
+          for i in "${!VERSIONS[@]}"; do
+            ver="${VERSIONS[$i]}"
+            rev="${REVISIONS[$i]}"
+            echo "━━━ Dispatching build: version=${ver}, revision=${rev} ━━━"
+            gh workflow run build-release.yml \
+              -f version="${ver}" \
+              -f revision="${rev}"
+          done

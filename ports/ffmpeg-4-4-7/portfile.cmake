@@ -1,6 +1,8 @@
 set(FFMPEG_VERSION "4.4.7")
 set(FFMPEG_SHA512 ccd79de9a570d6168ff2ee28061c3637a39963512a3e44b438a4a14a92865d5e91ed7d2f98a360826ac389e96d0ff3eb9f27b88164e6846d35efa0a817c0ff7b)
+set(FFMPEG_PORT_REVISION 1)
 set(FFMPEG_SHARED_DIR "${CMAKE_CURRENT_LIST_DIR}/../../scripts/ffmpeg")
+set(FFMPEG_BUILDER_DIR "${CURRENT_INSTALLED_DIR}/share/ffmpeg-builder")
 set(FFMPEG_PATCHES_DIR "${CMAKE_CURRENT_LIST_DIR}/../../patches/4.x")
 set(FFMPEG_BASE_OPTIONS "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug")
 set(FFMPEG_OPTIONS_DEBUG "--debug --disable-optimizations")
@@ -25,6 +27,7 @@ set(FFMPEG_PATCHES
     0023-fix-qsv-init.patch
     0050-lensfun-0.3.4-compat-4.4.7.patch
     0052-svtav1-3.x-compat-4.4.7.patch
+    0001-fix-iconv-link.patch
 )
 set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")
-include("${CMAKE_CURRENT_LIST_DIR}/../../scripts/cmake/ffmpeg-port-base.cmake")
+include("${FFMPEG_BUILDER_DIR}/ffmpeg-portfile.cmake")

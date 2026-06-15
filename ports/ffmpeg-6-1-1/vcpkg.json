@@ -1,7 +1,7 @@
 {
   "name": "ffmpeg-6-1-1",
   "version": "6.1.1",
-  "port-version": 0,
+  "port-version": 1,
   "description": [
     "FFmpeg 6.1.1 build for MSVC (use 'static' feature for static libraries)."
   ],
@@ -14,6 +14,10 @@
     },
     {
       "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    },
+    {
+      "name": "ffmpeg-builder",
       "host": true
     }
   ],

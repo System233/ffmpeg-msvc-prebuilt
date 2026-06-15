@@ -1,0 +1,26 @@
+From c250069939d4ce98af6016df2a50e72e6d968097 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Mon, 15 Jun 2026 06:09:28 +0800
+Subject: [PATCH] Guard unistd.h include with HAVE_UNISTD_H
+
+---
+ libavdevice/opengl_enc.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libavdevice/opengl_enc.c b/libavdevice/opengl_enc.c
+index bb6787c..0e49ecf 100644
+--- a/libavdevice/opengl_enc.c
++++ b/libavdevice/opengl_enc.c
+@@ -25,7 +25,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#if HAVE_UNISTD_H
+ #include <unistd.h>
++#endif
+ #include <stddef.h>
+ 
+ #include "config.h"
+-- 
+2.47.1.windows.2
+

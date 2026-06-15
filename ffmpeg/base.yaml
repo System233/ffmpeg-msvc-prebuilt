@@ -35,6 +35,7 @@ features:
     flag: "--enable-postproc"
     pkgconfig: libpostproc
     description: "Build the postproc library"
+    version: "<8.0"
   license-gpl:
     flag: "--enable-gpl --enable-version3"
     description: "Allow use of GPL code, the resulting libs and binaries will be under GPL"
@@ -159,6 +160,7 @@ features:
     flag: "--enable-libopenjpeg"
     depends: ["openjpeg"]
     description: "JPEG 2000 de/encoding via OpenJPEG"
+    version: ">=4.0"
   snappy:
     flag: "--enable-libsnappy"
     depends: ["snappy"]
@@ -260,7 +262,7 @@ features:
     flag: "--enable-vulkan"
     depends: ["vulkan"]
     platform: "!uwp & !xbox"
-    version: ">=4.3 <5.0,>=7.0"
+    version: ">=7.0" # hwcontext_vulkan.c INTERNAL COMPILER ERROR @4.x 5.x
     description: "H.264, HEVC and AV1 de/encoding via Vulkan"
   opencl:
     flag: "--enable-opencl"
@@ -328,6 +330,7 @@ features:
     flag: "--enable-libfdk-aac"
     depends: ["fdk-aac", "@license-nonfree"]
     description: "AAC de/encoding via libfdk-aac"
+    version: ">=4.0"
 
   # Linkage
   static:

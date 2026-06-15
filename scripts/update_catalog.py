@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEPRECATED: Replaced by VitePress SSG site. See web/ directory.
 """
 update_catalog.py - Update the repository catalog.json manifest.
 

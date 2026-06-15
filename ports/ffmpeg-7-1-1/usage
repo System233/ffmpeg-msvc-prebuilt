@@ -1,0 +1,20 @@
+ffmpeg provides CMake targets:
+
+    # Modern imported targets (recommended)
+    find_package(FFMPEG REQUIRED)
+    target_link_libraries(main PRIVATE FFMPEG::ffmpeg)
+
+    # Or link individual modules
+    target_link_libraries(main PRIVATE
+        FFMPEG::avcodec
+        FFMPEG::avformat
+        FFMPEG::avutil
+        FFMPEG::avfilter
+        FFMPEG::avdevice
+        FFMPEG::swresample
+        FFMPEG::swscale
+    )
+
+    # Legacy variable-based usage
+    target_include_directories(main PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_libraries(main PRIVATE ${FFMPEG_LIBRARIES})

@@ -12,7 +12,7 @@ dep_overrides:
 build:
   base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
   debug:
-    options: "--debug --disable-optimizations"
+    options: "--disable-optimizations"
   release:
     options: "--enable-optimizations"
   host_deps:
@@ -24,3 +24,7 @@ build:
 features:
   nvcodec:
     flag: "--enable-cuda --enable-nvenc"
+  openssl:
+    flag: "--enable-openssl"
+    depends: ["openssl", "@license-nonfree"]
+    description: "Use OpenSSL for TLS support"

@@ -1,0 +1,157 @@
+# ---------------------------------------------------------------------------
+# master-build.yml — Weekly FFmpeg master branch build
+#
+# Runs every Friday at 20:00 UTC+8 (12:00 UTC) and may be triggered
+# manually via workflow_dispatch.
+#
+# Clones the upstream ffmpeg/ffmpeg master, determines the closest
+# existing version family YAML, then dispatches build-release.yml with
+# version=master and the git describe string as ffmpeg_ref.
+#
+# SPEC: ci/SPEC.md §7.4
+# ---------------------------------------------------------------------------
+
+name: Build FFmpeg Master
+
+on:
+  schedule:
+    - cron: '0 12 * * 5'   # Friday 20:00 UTC+8 = 12:00 UTC
+  workflow_dispatch:
+
+jobs:
+  build-master:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      # ── Step 1: Shallow-clone upstream FFmpeg master ──────────────────────
+      - name: Clone FFmpeg master
+        id: ffmpeg
+        run: |
+          git clone --depth 100 https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+
+      # ── Step 2: Get describe string ───────────────────────────────────────
+      - name: Get git describe
+        id: describe
+        run: |
+          DESCRIBE=$(git -C ffmpeg-src describe --tags --abbrev=7)
+          echo "describe=$DESCRIBE" >> "$GITHUB_OUTPUT"
+          echo "Resolved describe: $DESCRIBE"
+
+      # ── Step 3: Checkout this repo + setup Python ─────────────────────────
+      - name: Checkout ffmpeg-msvc-prebuilt
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── Step 4: Find closest existing version family YAML ─────────────────
+      # find_closest_yaml.py does not exist yet, so we use inline logic:
+      #   - Parse the describe string to extract major.minor hint
+      #     (e.g. "n8.2-dev-1-gabc1234" → hint "8.2")
+      #   - If a matching ffmpeg/<major>.<minor>*.yaml exists, use that family
+      #   - Otherwise fall back to the latest family YAML
+      - name: Find closest YAML family
+        id: closest
+        run: |
+          DESCRIBE="${{ steps.describe.outputs.describe }}"
+          echo "Describe string: $DESCRIBE"
+
+          # Extract version hint from describe tag.
+          # Expected format: n<major>.<minor>[-<suffix>]
+          # Examples: n8.2-dev-1-gabc1234 → "8.2", n7.1 → "7.1"
+          HINT=$(echo "$DESCRIBE" | sed -n 's/^n\([0-9]\+\.[0-9]\+\).*/\1/p')
+          if [ -z "$HINT" ]; then
+            echo "Warning: Could not parse version hint from describe, will use latest YAML"
+            HINT=""
+          fi
+          echo "Version hint: ${HINT:-"(none)"}"
+
+          # List available family YAMLs (ffmpeg/<major>.<minor>*.yaml)
+          # Only match leaf families, not patch versions (those are ffmpeg/X.Y.Z.yaml)
+          FAMILY_YAMLS=()
+          for f in ffmpeg/*.yaml; do
+            base=$(basename "$f" .yaml)
+            # base.yaml is the special root, skip it
+            [ "$base" = "base" ] && continue
+            # Must match major.minor with optional trailing content (e.g. "8.2", "8.2.1")
+            # but we only want family-level YAMLs (no third segment)
+            if echo "$base" | grep -qE '^[0-9]+\.[0-9]+$'; then
+              FAMILY_YAMLS+=("$base")
+            fi
+          done
+
+          if [ ${#FAMILY_YAMLS[@]} -eq 0 ]; then
+            echo "Error: No family YAML files found in ffmpeg/"
+            exit 1
+          fi
+
+          # Sort family YAMLs by version (descending)
+          SORTED=$(printf '%s\n' "${FAMILY_YAMLS[@]}" | sort -t. -k1,1rn -k2,2rn)
+          echo "Available families:"
+          echo "$SORTED"
+
+          CLOSEST=""
+          if [ -n "$HINT" ]; then
+            # Try to match major.minor exactly, or same major with highest minor
+            MAJOR=$(echo "$HINT" | cut -d. -f1)
+            MINOR=$(echo "$HINT" | cut -d. -f2)
+            # First try exact match
+            for fam in $SORTED; do
+              if [ "$fam" = "$HINT" ]; then
+                CLOSEST="$fam"
+                break
+              fi
+            done
+            # Fall back to same major, highest minor <= hint major.minor
+            if [ -z "$CLOSEST" ]; then
+              BEST_MINOR=""
+              for fam in $SORTED; do
+                fam_major=$(echo "$fam" | cut -d. -f1)
+                fam_minor=$(echo "$fam" | cut -d. -f2)
+                if [ "$fam_major" = "$MAJOR" ] && [ "$fam_minor" -le "$MINOR" ] 2>/dev/null; then
+                  BEST_MINOR="$fam"
+                fi
+              done
+              if [ -n "$BEST_MINOR" ]; then
+                CLOSEST="$BEST_MINOR"
+              fi
+            fi
+            # Fall back to same major, any minor
+            if [ -z "$CLOSEST" ]; then
+              for fam in $SORTED; do
+                fam_major=$(echo "$fam" | cut -d. -f1)
+                if [ "$fam_major" = "$MAJOR" ]; then
+                  CLOSEST="$fam"
+                  break
+                fi
+              done
+            fi
+          fi
+
+          # If still nothing found, use the latest (top of sorted list)
+          if [ -z "$CLOSEST" ]; then
+            CLOSEST=$(echo "$SORTED" | head -1)
+            echo "No matching family found — falling back to latest: $CLOSEST"
+          else
+            echo "Closest family: $CLOSEST"
+          fi
+
+          echo "family=$CLOSEST" >> "$GITHUB_OUTPUT"
+
+      # ── Step 5: Dispatch build-release.yml ────────────────────────────────
+      # Master builds do NOT commit any YAML files to main.
+      - name: Dispatch build-release
+        run: |
+          DESCRIBE="${{ steps.describe.outputs.describe }}"
+          FAMILY="${{ steps.closest.outputs.family }}"
+          echo "Dispatching build-release.yml"
+          echo "  version=master"
+          echo "  ffmpeg_ref=$DESCRIBE"
+          echo "  closest_family=$FAMILY"
+          gh workflow run build-release.yml \
+            -f version=master \
+            -f ffmpeg_ref="$DESCRIBE"

@@ -13,7 +13,8 @@ index f164e15..761c0d7 100644
 +++ b/configure
 @@ -3998,6 +3998,13 @@ msvc_common_flags(){
              -march=*)             ;;
-             -lz)                  echo zlib.lib ;;
+-            -lz)                  echo zlib.lib ;;
++            -lz)                  echo zs.lib ;;
              -lx264)               echo libx264.lib ;;
 +            -lx265)               echo libx265.lib ;;
 +            -lxml2)               echo libxml2.lib ;;

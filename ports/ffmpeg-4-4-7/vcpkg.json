@@ -1,7 +1,7 @@
 {
   "name": "ffmpeg-4-4-7",
   "version": "4.4.7",
-  "port-version": 0,
+  "port-version": 1,
   "description": [
     "FFmpeg 4.4.7 build for MSVC (use 'static' feature for static libraries)."
   ],
@@ -14,6 +14,10 @@
     },
     {
       "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    },
+    {
+      "name": "ffmpeg-builder",
       "host": true
     }
   ],
@@ -297,12 +301,6 @@
         "libvpx"
       ]
     },
-    "vulkan": {
-      "description": "H.264, HEVC and AV1 de/encoding via Vulkan",
-      "dependencies": [
-        "vulkan"
-      ]
-    },
     "w32threads": {
       "description": "Windows thread support"
     },
@@ -513,7 +511,6 @@
             "opengl",
             "srt",
             "ssh",
-            "vulkan",
             "zmq"
           ],
           "platform": "!uwp & !xbox"

@@ -1,3 +1,4 @@
+# DEPRECATED: Replaced by VitePress SSG deployment. See pages.yml.
 # ---------------------------------------------------------------------------
 # update-catalog.yml — Update catalog.json when a GitHub Release is published
 #

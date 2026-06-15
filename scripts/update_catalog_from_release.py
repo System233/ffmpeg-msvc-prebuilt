@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEPRECATED: Replaced by VitePress SSG site. See web/ directory.
 """
 update_catalog_from_release.py - Parse a GitHub release event and update catalog.json.
 

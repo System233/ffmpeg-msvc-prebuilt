@@ -81,6 +81,19 @@ def resolve_chain(version: str) -> tuple[list[dict], str]:
     return docs, family
 
 
+def get_revision(docs: list[dict]) -> int:
+    """Get the revision from the YAML chain.
+
+    Iterates docs in reverse order (except base which never has revision)
+    and returns the first ``revision`` value found. Defaults to 0.
+    """
+    for doc in reversed(docs[1:]):
+        rev = doc.get("revision")
+        if rev is not None:
+            return int(rev)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Feature resolution
 # ---------------------------------------------------------------------------
@@ -489,7 +502,8 @@ def generate_features_cmake(feat_registry: dict | None = None) -> str:
 
 
 def generate_portfile(version: str, family: str, patches: list[str],
-                      base_options: str, debug_options: str, sha512: str) -> str:
+                      base_options: str, debug_options: str, sha512: str,
+                      revision: int = 0) -> str:
     """Generate the portfile.cmake content."""
     major = family.split(".")[0]
     major_x = f"{major}.x"
@@ -497,6 +511,7 @@ def generate_portfile(version: str, family: str, patches: list[str],
     lines = []
     lines.append(f'set(FFMPEG_VERSION "{version}")')
     lines.append(f"set(FFMPEG_SHA512 {sha512})")
+    lines.append(f"set(FFMPEG_PORT_REVISION {revision})")
     lines.append(
         'set(FFMPEG_SHARED_DIR '
         f'"${{CMAKE_CURRENT_LIST_DIR}}/../../scripts/ffmpeg")'
@@ -529,7 +544,8 @@ def generate_portfile(version: str, family: str, patches: list[str],
 def generate_vcpkg_json(version: str, port_name: str, features: dict,
                         defaults: list, feature_deps: dict, feature_refs: dict,
                         host_deps: list, base_registry: dict,
-                        default_aliases: list, defines: dict) -> str:
+                        default_aliases: list, defines: dict,
+                        revision: int = 0) -> str:
     """Generate the vcpkg.json content."""
     feat_defs = {}
     for name, info in features.items():
@@ -620,7 +636,7 @@ def generate_vcpkg_json(version: str, port_name: str, features: dict,
     json_data = {
         "name": port_name,
         "version": version,
-        "port-version": 0,
+        "port-version": revision,
         "description": [
             f"FFmpeg {version} build for MSVC (use 'static' feature for static libraries).",
         ],
@@ -768,6 +784,10 @@ def generate(version_str: str, force: bool = False):
     # Resolve YAML chain
     docs, family = resolve_chain(version_str)
 
+    # Get revision from YAML chain
+    revision = get_revision(docs)
+    print(f"  Revision: {revision}")
+
     # Merge features
     feats = merge_features(docs, version_str)
     print(f"  Features: {len(feats['features'])} resolved")
@@ -822,7 +842,8 @@ def generate(version_str: str, force: bool = False):
 
     # portfile.cmake
     (port_dir / "portfile.cmake").write_text(
-        generate_portfile(version_str, family, patches, base_opts, debug_opts, sha512),
+        generate_portfile(version_str, family, patches, base_opts, debug_opts,
+                          sha512, revision=revision),
         encoding="utf-8")
 
     # vcpkg.json
@@ -830,7 +851,8 @@ def generate(version_str: str, force: bool = False):
         generate_vcpkg_json(version_str, port_name, feats["features"],
                             feats["defaults"], feature_deps, feature_refs,
                             host_deps, docs[0]["features"],
-                            feats["default_aliases"], docs[0].get("define", {})),
+                            feats["default_aliases"], docs[0].get("define", {}),
+                            revision=revision),
         encoding="utf-8")
 
     # features.cmake  (use overridden registry so version YAML flag changes apply)
@@ -838,12 +860,12 @@ def generate(version_str: str, force: bool = False):
         generate_features_cmake(feat_registry=docs[0]["features"]),
         encoding="utf-8")
 
-    # --- README ---
-    readme_content = generate_readme(
-        version_str, port_name, feats["features"],
-        docs[0].get("define", {}), feats["default_aliases"],
-        docs[0]["features"])
-    (port_dir / "README.md").write_text(readme_content, encoding="utf-8")
+    # # --- README ---
+    # readme_content = generate_readme(
+    #     version_str, port_name, feats["features"],
+    #     docs[0].get("define", {}), feats["default_aliases"],
+    #     docs[0]["features"])
+    # (port_dir / "README.md").write_text(readme_content, encoding="utf-8")
 
     # --- Usage ---
     usage_content = generate_usage()
@@ -865,9 +887,29 @@ def list_families():
         print("(no version YAML files found)", file=sys.stderr)
 
 
+def get_leaf_versions() -> list[str]:
+    """Return all leaf version strings (YAMLs not extended by any other YAML)."""
+    all_yamls = sorted(YAML_DIR.glob("*.yaml"))
+    non_base = [f for f in all_yamls if f.stem != "base"]
+
+    # Build set of all extends targets (stems that are parents)
+    parents: set[str] = set()
+    for f in non_base:
+        with open(f, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        if doc and "extends" in doc:
+            parents.add(doc["extends"])
+
+    # Leaf = non-base YAML not used as a parent
+    leaves = [f.stem for f in non_base if f.stem not in parents]
+    return leaves
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate vcpkg ports from YAML")
     parser.add_argument("--version", help="FFmpeg version (e.g. 8.1.1)")
+    parser.add_argument("--all", action="store_true",
+                        help="Generate ports for all leaf versions")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite existing port directories")
     parser.add_argument("--list-families", action="store_true",
@@ -885,6 +927,15 @@ def main():
         return
     if args.version:
         generate(args.version, args.force)
+    elif args.all:
+        leaves = get_leaf_versions()
+        if not leaves:
+            print("No leaf versions found.", file=sys.stderr)
+            return
+        print(f"Generating ports for {len(leaves)} leaf versions: {', '.join(leaves)}")
+        for leaf in leaves:
+            print(f"\n--- {leaf} ---")
+            generate(leaf, args.force)
     else:
         parser.print_help()
 

@@ -3,3 +3,8 @@ _work/
 build/
 *.pyc
 __pycache__
+node_modules
+web/node_modules/
+catalog.json
+cache
+dist

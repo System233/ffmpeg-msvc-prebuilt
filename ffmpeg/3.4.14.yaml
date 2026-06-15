@@ -1,4 +1,5 @@
 extends: "3.4"
+revision: 1
 
 source:
   sha512: e249fa1eb9e8c3bef813da6da190c55a6b23279a5f268416e33e598e5ca06ed7b1606b91a68cf3914f22d16d88ff880423f3dbcd74d1528edaa15af30d259224
@@ -13,3 +14,6 @@ patches:
   - 0008-fix-sdl2-version.patch
   - 0009-fix-openjpeg-lib-name.patch
   - 0010-fix-opencl.patch
+  - 0011-fix-opengl-quoting.patch
+  - 0012-fix-opengl-unistd.patch
+  - 0013-fix-x264-imports.patch

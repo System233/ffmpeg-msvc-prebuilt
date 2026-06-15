@@ -1,7 +1,7 @@
 {
   "name": "ffmpeg-8-1-1",
   "version": "8.1.1",
-  "port-version": 0,
+  "port-version": 1,
   "description": [
     "FFmpeg 8.1.1 build for MSVC (use 'static' feature for static libraries)."
   ],
@@ -18,6 +18,10 @@
     },
     {
       "name": "vcpkg-pkgconfig-get-modules",
+      "host": true
+    },
+    {
+      "name": "ffmpeg-builder",
       "host": true
     }
   ],
@@ -250,9 +254,6 @@
         "opus"
       ]
     },
-    "postproc": {
-      "description": "Build the postproc library"
-    },
     "pthreads": {
       "description": "POSIX threads support"
     },
@@ -420,12 +421,6 @@
     "all-gpl": {
       "description": "all-gpl feature group",
       "dependencies": [
-        {
-          "name": "ffmpeg-8-1-1",
-          "features": [
-            "postproc"
-          ]
-        },
         {
           "name": "ffmpeg-8-1-1",
           "features": [

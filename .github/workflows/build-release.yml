@@ -4,6 +4,8 @@
 # Triggered manually (workflow_dispatch) or called from another workflow
 # (workflow_call).  Builds FFmpeg across a matrix of triplets, licenses,
 # and linkage types, then publishes all artifacts as a GitHub Release.
+#
+# SPEC: ci/SPEC.md §7.1
 # ---------------------------------------------------------------------------
 
 name: Build FFmpeg Release
@@ -11,23 +13,48 @@ name: Build FFmpeg Release
 on:
   workflow_dispatch:
     inputs:
-      ffmpeg_version:
-        description: "FFmpeg version (e.g. 8.1.1)"
+      version:
+        description: "Version number (e.g. '8.1.1' or 'master')"
         required: true
         type: string
-      port:
-        description: "Port name (e.g. ffmpeg-8-1-1)"
-        required: true
+      revision:
+        description: "Revision value from YAML (required for release builds)"
+        required: false
+        type: number
+      ffmpeg_ref:
+        description: "git describe --tags --abbrev=7 output (required for master)"
+        required: false
+        type: string
+      target_arch:
+        description: "Limit build architecture (e.g. x64-windows)"
+        required: false
+        type: string
+      target_license:
+        description: "Limit license type (e.g. gpl)"
+        required: false
         type: string
 
   workflow_call:
     inputs:
-      ffmpeg_version:
+      version:
         type: string
         required: true
-      port:
+      revision:
+        type: number
+        required: false
+      ffmpeg_ref:
         type: string
-        required: true
+        required: false
+      target_arch:
+        type: string
+        required: false
+      target_license:
+        type: string
+        required: false
+
+# ─── Global environment ──────────────────────────────────────────────────────
+env:
+  VCPKG_COMMIT: 37df7cfd557e1b74fc12f9ded5bff37ca35336ef
 
 # ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +62,7 @@ jobs:
   # ── Seed: build base dependencies once per triplet ─────────────────────────
   seed:
     runs-on: windows-latest
+    permissions: {}
     strategy:
       matrix:
         triplet:
@@ -51,15 +79,16 @@ jobs:
           msystem: MINGW64
           install: make pkg-config diffutils nasm
 
-      - name: Clone vcpkg
+      - name: Clone vcpkg at pinned commit
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+          git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+          git -C ${{ runner.temp }}/vcpkg checkout ${{ env.VCPKG_COMMIT }}
 
       - name: Bootstrap vcpkg
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
-      - name: Install vcpkg base deps
+      - name: Install ffmpeg-deps
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
         run: |
@@ -75,11 +104,14 @@ jobs:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
           compression-level: 1
+          retention-days: 1
 
   # ── Build: compile FFmpeg for every triplet × license × linkage ───────────
   build:
     needs: seed
     runs-on: windows-latest
+    permissions: {}
+    fail-fast: false
     strategy:
       matrix:
         triplet:
@@ -94,15 +126,12 @@ jobs:
         static:
           - ""
           - static
-      # 4 × 3 × 2 = 24 parallel jobs
+    # Runtime exclusion: if target_arch or target_license is set, skip
+    # mismatched matrix entries.  These are evaluated at job-init time so
+    # the matrix still defines all 24 slots but jobs exit early when the
+    # filter does not match.
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set linkage name
-        id: linkage
-        run: |
-          $linkage = if ("${{ matrix.static }}" -eq "static") { "static" } else { "shared" }
-          echo "name=$linkage" >> $env:GITHUB_OUTPUT
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -110,9 +139,10 @@ jobs:
           msystem: MINGW64
           install: make pkg-config diffutils nasm
 
-      - name: Clone vcpkg
+      - name: Clone vcpkg at pinned commit
         run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+          git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+          git -C ${{ runner.temp }}/vcpkg checkout ${{ env.VCPKG_COMMIT }}
 
       - name: Bootstrap vcpkg
         run: |
@@ -124,65 +154,281 @@ jobs:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
 
-      - name: Build FFmpeg
+      # ── Step 1: Resolve linkage name and variant identifiers ──────────────
+      # Also performs runtime filtering by target_arch / target_license.
+      - name: Step 1 - Resolve variant metadata
+        id: vars
+        run: |
+          $ver = "${{ inputs.version }}"
+          $rev = "${{ inputs.revision }}"
+          $ffmpeg_ref = "${{ inputs.ffmpeg_ref }}"
+          $triplet = "${{ matrix.triplet }}"
+          $license = "${{ matrix.license }}"
+          $static = "${{ matrix.static }}"
+
+          # ── Runtime filtering ────────────────────────────────────────────
+          $target_arch = "${{ inputs.target_arch }}"
+          $target_license = "${{ inputs.target_license }}"
+          $skip = $false
+
+          if ($target_arch -and $triplet -ne $target_arch) {
+            Write-Output "FILTER: triplet '${triplet}' != target_arch '${target_arch}' — skipping"
+            $skip = $true
+          }
+          if ($target_license -and $license -ne $target_license) {
+            Write-Output "FILTER: license '${license}' != target_license '${target_license}' — skipping"
+            $skip = $true
+          }
+
+          # ── Linkage name ─────────────────────────────────────────────────
+          $linkage = if ($static -eq "static") { "static" } else { "shared" }
+
+          # ── Variant ID and port name ─────────────────────────────────────
+          if ($ver -eq "master") {
+            $variant_id = "ffmpeg-${ffmpeg_ref}-${triplet}-${linkage}-${license}"
+            $port_name = "ffmpeg-master"
+            $major = "master"
+          } else {
+            $dashed = $ver -replace '\.', '-'
+            $port_name = "ffmpeg-${dashed}"
+            $variant_id = "ffmpeg-${ver}-r${rev}-${triplet}-${linkage}-${license}"
+            $parts = $ver.Split('.')
+            $major = "$($parts[0]).x"
+          }
+
+          echo "linkage_name=$linkage" >> $env:GITHUB_OUTPUT
+          echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
+          echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
+          echo "major=$major" >> $env:GITHUB_OUTPUT
+          echo "filter_skip=$skip" >> $env:GITHUB_OUTPUT
+
+      # ── Step 2: Check build-index from data branch (skip if already built) ─
+      # Only runs when filter_skip is false.
+      - name: Step 2 - Check build-index
+        id: check
+        if: steps.vars.outputs.filter_skip != 'true'
+        run: |
+          $variant_id = "${{ steps.vars.outputs.variant_id }}"
+          $major = "${{ steps.vars.outputs.major }}"
+
+          $skip = $false
+
+          # Fetch data branch (may not exist on first run)
+          git fetch origin data 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "Data branch does not exist yet — will build from scratch"
+          } else {
+            $build_index_path = "data/${major}/build-index.yaml"
+            $content = git show "origin/data:${build_index_path}" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              # Simple YAML variant_id check — look for the variant_id as a
+              # bullet item in the variants array
+              if ($content -match "\- ${variant_id}") {
+                $skip = $true
+                Write-Output "Variant ${variant_id} found in build-index — SKIPPING"
+              } else {
+                Write-Output "Variant ${variant_id} not in build-index — will build"
+              }
+            } else {
+              Write-Output "Build index not found at ${build_index_path} — will build from scratch"
+            }
+          }
+
+          echo "skip=$skip" >> $env:GITHUB_OUTPUT
+
+      # ── Step 3: Generate vcpkg port files ─────────────────────────────────
+      - name: Step 3 - Generate port files
+        if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
+        run: |
+          python scripts/generate.py --version ${{ inputs.version }}
+
+      # ── Step 4: Build FFmpeg via vcpkg ────────────────────────────────────
+      - name: Step 4 - Build FFmpeg
+        if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
         run: |
+          $port = "${{ steps.vars.outputs.port_name }}"
           $features = "${{ matrix.license }}"
-          if ("${{ matrix.static }}" -ne "") { $features = "$features,${{ matrix.static }}" }
-          $portName = "ffmpeg-${{ inputs.ffmpeg_version }}".Replace('.', '-')
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${portName}[${features}]" `
+          if ("${{ matrix.static }}" -ne "") {
+            $features = "$features,${{ matrix.static }}"
+          }
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `
             --overlay-triplets=triplets/
 
-      - name: Package release archive
+      # ── Step 5: Package release archive + generate variant YAML ───────────
+      - name: Step 5 - Package release archive
+        if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
         run: |
-          $ver = "${{ inputs.ffmpeg_version }}"
+          $ver = "${{ inputs.version }}"
+          $rev = "${{ inputs.revision }}"
+          $triplet = "${{ matrix.triplet }}"
+          $linkage = "${{ steps.vars.outputs.linkage_name }}"
+          $license = "${{ matrix.license }}"
+          $variant_id = "${{ steps.vars.outputs.variant_id }}"
+
           python scripts/package_release.py `
             --version $ver `
-            --triplet ${{ matrix.triplet }} `
-            --license ${{ matrix.license }} `
-            --linkage ${{ steps.linkage.outputs.name }}
+            --revision $rev `
+            --triplet $triplet `
+            --linkage $linkage `
+            --license $license `
+            --output-dir Release `
+            --generate-var-yaml `
+            --variant-id $variant_id
 
-      - name: Upload build artifact
+      # ── Step 6: Upload artifacts ──────────────────────────────────────────
+      # Each variant uploads a single artifact named by its variant_id,
+      # containing both the .zip archive and the .var.yaml metadata file.
+      - name: Step 6 - Upload artifacts
+        if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-${{ inputs.ffmpeg_version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ steps.linkage.outputs.name }}
-          path: Release/*.zip
-          compression-level: 0  # already compressed
+          name: ${{ steps.vars.outputs.variant_id }}
+          path: |
+            Release/*.zip
+            Release/*.var.yaml
+          compression-level: 0
+          retention-days: 5
 
-  # ── Release: create a GitHub Release with all archives ─────────────────────
-  release:
+  # ── Finalize: merge variants into data branch, create/update release ──────
+  finalize:
     needs: build
+    if: success() || failure()
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # Checkout main branch so we have access to scripts/
+      - uses: actions/checkout@v4
+        with:
+          path: repo-main
+          sparse-checkout: |
+            scripts/
+            ci/
+
+      # Checkout data branch (or create it on first run)
+      - name: Checkout data branch
+        id: checkout-data
+        uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data-repo
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Create data branch if it does not exist
+        if: steps.checkout-data.outcome == 'failure'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          rm -rf data-repo
+          mkdir -p data-repo
+          cd data-repo
+          git init
+          git remote add origin "https://github.com/${{ github.repository }}"
+          git checkout --orphan data
+          mkdir -p data/8.x data/7.x data/6.x data/5.x data/4.x data/3.x data/master
+          # Create placeholder files so git tracks the directories
+          for d in data/*/; do touch "$d/.gitkeep"; done
+          git add .
+          git commit -m "Initialize data branch"
+        shell: bash
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: ffmpeg-${{ inputs.ffmpeg_version }}-*
-          path: artifacts/
+          pattern: ffmpeg-*
+          path: ${{ github.workspace }}/artifacts/
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -lh artifacts/
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Artifacts ==="
+          ls -la ${{ github.workspace }}/artifacts/ 2>/dev/null || echo "(empty)"
+          echo "=== Var YAMLs ==="
+          ls ${{ github.workspace }}/artifacts/*.var.yaml 2>/dev/null || echo "(none)"
+          echo "=== Zips ==="
+          ls ${{ github.workspace }}/artifacts/*.zip 2>/dev/null || echo "(none)"
+        shell: bash
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ffmpeg-${{ inputs.ffmpeg_version }}
-          name: "FFmpeg ${{ inputs.ffmpeg_version }} (MSVC Prebuilt)"
-          body: |
-            Automated build of FFmpeg ${{ inputs.ffmpeg_version }} using MSVC via vcpkg.
+      - name: Import variant YAMLs into data branch
+        run: |
+          python ${{ github.workspace }}/repo-main/scripts/import_yaml.py \
+            --artifacts-dir ${{ github.workspace }}/artifacts/
+        working-directory: ${{ github.workspace }}/data-repo
+        shell: bash
+        continue-on-error: true
+        # NOTE: import_yaml.py does not exist yet (Phase 4 implementation).
+        # Once created, it will read all `.var.yaml` files from the artifacts
+        # directory, group by version+revision, merge into
+        # `data/{major}.x/ffmpeg-{ver}-r{rev}.yaml`, and update
+        # `data/{major}.x/build-index.yaml`.
 
-            ## Archives
+      - name: Commit and push data branch
+        run: |
+          cd ${{ github.workspace }}/data-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit on data branch"
+          else
+            git commit -m "Build artifacts for ${{ inputs.version }}"
+            git push origin data
+          fi
+        shell: bash
 
-            Each `.zip` file follows the naming convention:
-            `ffmpeg-<version>-<triplet>-<linkage>-<license>.zip`
+      # ── Release tag ──────────────────────────────────────────────────────
+      - name: Determine release tag
+        id: release_tag
+        run: |
+          if [ "${{ inputs.version }}" = "master" ]; then
+            echo "tag=ffmpeg-${{ inputs.ffmpeg_ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=ffmpeg-${{ inputs.version }}-r${{ inputs.revision }}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
 
-            - **Triplet**: architecture/ABI (x64, x86, arm64, arm)
-            - **Linkage**: `shared` (DLLs) or `static` (static libs)
-            - **License**: `lgpl`, `gpl`, or `nonfree`
-          files: artifacts/*.zip
+      # ── Create or append GitHub Release ───────────────────────────────────
+      - name: Create or append GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          ARTIFACTS_DIR="${{ github.workspace }}/artifacts"
+
+          # Count zip assets
+          ZIPS=("$ARTIFACTS_DIR"/*.zip)
+          if [ ${#ZIPS[@]} -eq 0 ]; then
+            echo "No zip artifacts found — skipping release step"
+            exit 0
+          fi
+
+          if gh release view "$TAG" --json id &>/dev/null; then
+            echo "Release $TAG already exists — uploading additional assets"
+            gh release upload "$TAG" "$ARTIFACTS_DIR"/*.zip --clobber
+          else
+            echo "Creating release $TAG"
+            if [ "${{ inputs.version }}" = "master" ]; then
+              TITLE="FFmpeg ${{ inputs.ffmpeg_ref }} (MSVC Prebuilt, Master)"
+            else
+              TITLE="FFmpeg ${{ inputs.version }} (MSVC Prebuilt)"
+            fi
+            gh release create "$TAG" \
+              "$ARTIFACTS_DIR"/*.zip \
+              --title "$TITLE" \
+              --notes "Automated build of FFmpeg ${{ inputs.version }} using MSVC via vcpkg."
+          fi
+        shell: bash
+
+      # ── Push release tag ──────────────────────────────────────────────────
+      - name: Push release tag
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          cd ${{ github.workspace }}/data-repo
+          git tag "$TAG"
+          git push origin "$TAG"
+        shell: bash

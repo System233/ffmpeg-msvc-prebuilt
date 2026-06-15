@@ -1,27 +1,22 @@
 # ---------------------------------------------------------------------------
-# scan-updates.yml — Scan for new FFmpeg upstream releases
+# scan-updates.yml — Scan for new FFmpeg upstream releases and create PRs
 #
-# Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API and compares
-# against the local ports/ directory.  If a new version is found, this
-# workflow can be extended to automatically trigger a build.
+# Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API, detects new
+# versions, creates YAML configs from the closest existing version, generates
+# port files, and opens a PR on a ci/ffmpeg-{version} branch.
+#
+# See ci/SPEC.md §7.2 for the full specification.
 # ---------------------------------------------------------------------------
 
 name: Scan for new FFmpeg releases
 
 on:
   schedule:
-    - cron: "0 6 * * *" # Daily at 06:00 UTC
-  workflow_dispatch:
-  push:
-    paths:
-      - 'ports/ffmpeg-*/**'
-      - 'ffmpeg/**'
-      - 'patches/**'
-      - 'scripts/**'
+    - cron: "0 6 * * *"          # Daily at 06:00 UTC
+  workflow_dispatch:              # Manual trigger
 
 jobs:
   scan:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,116 +26,141 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # ── Detect new upstream versions ──────────────────────────────────
       - name: Scan for new upstream releases
         id: scan
         run: |
-          python scripts/scan_updates.py > scan_output.txt 2>&1
-          cat scan_output.txt
+          python scripts/scan_updates.py 2>&1 | tee scan_output.txt
 
-          # Extract "new —" lines containing version numbers
-          NEW_VERSIONS=$(grep 'new —' scan_output.txt \
-            | sed 's/.*\([0-9]\+\.[0-9]\+\(\.[0-9]\+\)*\).*/\1/' \
-            | tr '\n' ',' | sed 's/,$//')
-
-          if [ -n "$NEW_VERSIONS" ]; then
-            echo "new_versions=$NEW_VERSIONS" >> "$GITHUB_OUTPUT"
-            echo "found=true" >> "$GITHUB_OUTPUT"
+          # Try JSON output first (future-proof for scan_updates.py upgrade)
+          if python -c "
+          import json, sys
+          with open('scan_output.txt') as f:
+              data = json.load(f)
+          versions = data.get('new_versions', [])
+          for v in versions:
+              print(v)
+          " 2>/dev/null; then
+            : # JSON parsing succeeded
           else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "No new upstream releases detected."
-          fi
+            # Fallback: grep for [NEW] lines and extract version
+            grep '\[NEW\]' scan_output.txt \
+              | sed 's/.*[[:space:]]\([0-9]\+\.[0-9]\+\(\.[0-9]\+\)*\)[[:space:]].*/\1/'
+          fi > new_versions.txt
 
-      - name: Trigger build for new versions
-        if: steps.scan.outputs.found == 'true'
+          count=$(wc -l < new_versions.txt)
+          echo "Detected ${count} new version(s)"
+          cat new_versions.txt
+
+      # ── Create PRs for each new version ──────────────────────────────
+      - name: Create PRs for new versions
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "New FFmpeg version(s) detected: ${{ steps.scan.outputs.new_versions }}"
-          echo ""
-          echo "To trigger a build for a specific version, run:"
-          echo ""
-          IFS=',' read -ra VERSIONS <<< "${{ steps.scan.outputs.new_versions }}"
-          for ver in "${VERSIONS[@]}"; do
-            port_name="ffmpeg-${ver//./-}"
-            echo "  gh workflow run build-release.yml \\"
-            echo "    --input ffmpeg_version=$ver \\"
-            echo "    --input port=$port_name"
-          done
-          # Generate port files and trigger build for each new version
-          for ver in "${VERSIONS[@]}"; do
-            # Generate port files
-            python scripts/generate.py --version "$ver"
-            # Commit and push new port files
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add ports/ ffmpeg/ patches/ scripts/
-            git commit -m "Auto-generate port for FFmpeg $ver" || true
-            git push || true
-            # Trigger build
-            port_name="ffmpeg-${ver//./-}"
-            gh workflow run build-release.yml \
-              --input ffmpeg_version="$ver" \
-              --input port="$port_name"
-          done
+          if [ ! -s new_versions.txt ]; then
+            echo "No new versions to process."
+            exit 0
+          fi
 
-  # ── Detect changed ports (push) and rebuild latest per family ──────────
-  detect-and-build:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+          while IFS= read -r version; do
+            [ -z "$version" ] && continue
+            echo ""
+            echo "=== Processing version: ${version} ==="
 
-      - name: Detect changed port versions
-        id: detect
-        run: |
-          python scripts/ci_detect_changes.py \
-            ${{ github.event.before }} \
-            ${{ github.event.after }} > versions.txt
-          cat versions.txt
-
-          # Parse output lines: "VERSION PORT_NAME"
-          VERSIONS=""
-          PORTS=""
-          while read -r ver port; do
-            if [ -n "$ver" ]; then
-              VERSIONS="$VERSIONS,$ver"
-              PORTS="$PORTS,$port"
+            # ── a. Check if YAML already exists ────────────────────────
+            if [ -f "ffmpeg/${version}.yaml" ]; then
+              echo "  SKIP: ffmpeg/${version}.yaml already exists"
+              continue
             fi
-          done < versions.txt
 
-          VERSIONS="${VERSIONS#,}"
-          PORTS="${PORTS#,}"
+            # ── b. Find closest existing YAML (inline bash logic) ──────
+            major="${version%%.*}"
+            CLOSEST=""
 
-          if [ -n "$VERSIONS" ]; then
-            echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
-            echo "ports=$PORTS" >> "$GITHUB_OUTPUT"
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Versions to build: $VERSIONS"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "No port changes to rebuild."
-          fi
+            # First pass: same major version
+            for f in ffmpeg/*.yaml; do
+              stem=$(basename "$f" .yaml)
+              [ "$stem" = "base" ] && continue
+              first_part="${stem%%.*}"
+              if [ "$first_part" = "$major" ]; then
+                if [ -z "$CLOSEST" ] || [ "$stem" \> "$CLOSEST" ]; then
+                  CLOSEST="$stem"
+                fi
+              fi
+            done
 
-      - name: Trigger build for each version
-        if: steps.detect.outputs.found == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+            # Second pass: no same-major YAML — use global latest
+            if [ -z "$CLOSEST" ]; then
+              for f in ffmpeg/*.yaml; do
+                stem=$(basename "$f" .yaml)
+                [ "$stem" = "base" ] && continue
+                if [ -z "$CLOSEST" ] || [ "$stem" \> "$CLOSEST" ]; then
+                  CLOSEST="$stem"
+                fi
+              done
+            fi
+
+            if [ -z "$CLOSEST" ]; then
+              echo "  ERROR: no existing YAML found to use as template — skipping"
+              continue
+            fi
+            echo "  Closest YAML: ${CLOSEST}.yaml"
+
+            # ── c. Copy YAML and set revision: 0 ────────────────────────
+            cp "ffmpeg/${CLOSEST}.yaml" "ffmpeg/${version}.yaml"
+            if grep -q '^revision:' "ffmpeg/${version}.yaml"; then
+              sed -i 's/^revision:.*/revision: 0/' "ffmpeg/${version}.yaml"
+            else
+              # Add revision: 0 after the extends line
+              sed -i '/^extends:/arevision: 0' "ffmpeg/${version}.yaml"
+            fi
+            echo "  YAML copied with revision: 0"
+
+            # ── d. Generate port files ──────────────────────────────────
+            python scripts/generate.py --version "$version" --force
+            echo "  Port files generated"
+
+            # ── e. Create PR branch name ────────────────────────────────
+            BRANCH="ci/ffmpeg-${version}"
+
+            # ── f. Check if branch already exists on remote ────────────
+            if git ls-remote --heads origin "$BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
+              echo "  SKIP: branch ${BRANCH} already exists on remote"
+              continue
+            fi
+
+            # ── g. Commit, push, and create PR ─────────────────────────
+            PORT_NAME="ffmpeg-$(echo "$version" | tr '.' '-')"
+            git checkout -b "$BRANCH"
+            git add "ffmpeg/${version}.yaml" "ports/${PORT_NAME}/"
+            git commit -m "feat: add ffmpeg ${version}"
+
+            git push origin "$BRANCH"
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "ffmpeg ${version}" \
+              --body "Auto-generated port for FFmpeg ${version}. Please review and merge."
+
+            # Return to main for next iteration
+            git checkout main
+
+          done < new_versions.txt
+
+      # ── Summary (always runs) ────────────────────────────────────────
+      - name: Summary
+        if: always()
         run: |
-          IFS=',' read -ra VERSIONS <<< "${{ steps.detect.outputs.versions }}"
-          IFS=',' read -ra PORTS <<< "${{ steps.detect.outputs.ports }}"
-          for i in "${!VERSIONS[@]}"; do
-            ver="${VERSIONS[$i]}"
-            port="${PORTS[$i]}"
-            echo "Triggering build for $ver (port=$port)"
-            gh workflow run build-release.yml \
-              --ref "${{ github.ref }}" \
-              --input ffmpeg_version="$ver" \
-              --input port="$port"
-          done
+          echo "=== Scan Updates Summary ==="
+          if [ -f new_versions.txt ] && [ -s new_versions.txt ]; then
+            echo "New versions detected:"
+            cat new_versions.txt
+          else
+            echo "No new versions detected."
+          fi

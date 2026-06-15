@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------------------
-# pages.yml — Deploy the FFmpeg prebuilt SPA to GitHub Pages
+# pages.yml — Deploy the Vitepress SSG site to GitHub Pages
 #
-# Triggered on pushes to main that touch the web/ directory.
-# Builds the SPA with Node 20 and publishes to the gh-pages branch.
+# Triggered on pushes to the web or data branches, or via workflow_dispatch.
+# Checks out both branches, builds the Vitepress site with Node 20, and
+# publishes to GitHub Pages.
 # ---------------------------------------------------------------------------
 
 name: Deploy GitHub Pages
@@ -10,15 +11,19 @@ name: Deploy GitHub Pages
 on:
   push:
     branches:
-      - main
-    paths:
-      - "web/**"
+      - web
+      - data
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -26,22 +31,35 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: web
+          path: web
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: web/data
+        continue-on-error: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Install dependencies
         working-directory: web
-        run: npm ci
-        # NOTE: This workflow requires the React SPA to be implemented in web/src/ first.
-        # Currently only SPEC.md and package.json exist.
-        # If the SPA is not yet implemented, this step will fail safely.
+        run: pnpm install --frozen-lockfile
 
-      - name: Build SPA
+      - name: Build Vitepress site
         working-directory: web
-        run: npm run build
+        env:
+            BASE_URL: /${{ github.event.repository.name }}/
+        run: pnpm run build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -49,7 +67,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/dist   # Vite default output; adjust if vite.config.ts changes this
+          path: web/.vitepress/dist
 
       - name: Deploy to GitHub Pages
         id: deployment

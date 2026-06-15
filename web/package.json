@@ -1,28 +1,28 @@
 {
-  "name": "ffmpeg-msvc-prebuilt-web",
-  "version": "0.1.0",
+  "name": "ffmpeg-msvc-prebuilt-site",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "generate": "tsx scripts/generate-content.ts",
+    "render": "tsx scripts/render-locales.ts",
+    "build": "npm run generate && npm run render && vitepress build",
+    "dev": "npm run generate && npm run render && vitepress dev",
+    "preview": "vitepress preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@tanstack/react-router": "^1.0.0",
-    "@tanstack/react-query": "^5.0.0"
+    "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "typescript": "^5.5.0",
-    "vite": "^5.4.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
-    "autoprefixer": "^10.4.0",
-    "shadcn-ui": "latest"
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "js-yaml": "^4.2.0",
+    "mustache": "^4.2.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitepress": "^1.6.0",
+    "vue-i18n": "^10.0.0",
+    "@iconify/vue": "^4.2.0",
+    "@iconify-json/fa6-solid": "^1.2.0"
   }
 }

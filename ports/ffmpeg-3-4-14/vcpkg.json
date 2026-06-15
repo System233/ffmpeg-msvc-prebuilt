@@ -1,7 +1,7 @@
 {
   "name": "ffmpeg-3-4-14",
   "version": "3.4.14",
-  "port-version": 0,
+  "port-version": 1,
   "description": [
     "FFmpeg 3.4.14 build for MSVC (use 'static' feature for static libraries)."
   ],
@@ -60,18 +60,6 @@
     },
     "dxva2": {
       "description": "DXVA2 hardware decoding"
-    },
-    "fdk-aac": {
-      "description": "AAC de/encoding via libfdk-aac",
-      "dependencies": [
-        "fdk-aac",
-        {
-          "name": "ffmpeg-3-4-14",
-          "features": [
-            "license-nonfree"
-          ]
-        }
-      ]
     },
     "fontconfig": {
       "description": "Useful for drawtext filter",
@@ -169,12 +157,6 @@
         "openh264"
       ]
     },
-    "openjpeg": {
-      "description": "JPEG 2000 de/encoding via OpenJPEG",
-      "dependencies": [
-        "openjpeg"
-      ]
-    },
     "openmpt": {
       "description": "Decoding tracked files via libopenmpt",
       "dependencies": [
@@ -184,7 +166,13 @@
     "openssl": {
       "description": "Use OpenSSL for TLS support",
       "dependencies": [
-        "openssl"
+        "openssl",
+        {
+          "name": "ffmpeg-3-4-14",
+          "features": [
+            "license-nonfree"
+          ]
+        }
       ]
     },
     "opus": {
@@ -421,7 +409,6 @@
             "mp3lame",
             "mysofa",
             "openh264",
-            "openjpeg",
             "openmpt",
             "openssl",
             "opus",
@@ -464,17 +451,6 @@
             "zmq"
           ],
           "platform": "!uwp & !xbox"
-        }
-      ]
-    },
-    "nonfree": {
-      "description": "nonfree feature group",
-      "dependencies": [
-        {
-          "name": "ffmpeg-3-4-14",
-          "features": [
-            "fdk-aac"
-          ]
         }
       ]
     },
