@@ -1,3 +1,5 @@
+/* @layer vitepress-base, tw-theme, utilities; */
+/* @import "./vp-styles/index.css" layer(vitepress-base); */
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -141,4 +143,11 @@ td a {
 .vp-doc table {
   display: table;
   margin: 0;
+}
+svg.iconify {
+  display: inline;
+}
+
+.VPDoc {
+  padding-bottom: 0 !important;
 }

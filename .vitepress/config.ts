@@ -44,6 +44,9 @@ export default defineConfig({
       label: 'On this page'
     },
     aside: false,
+    socialLinks: [
+      { icon: 'github', link: process.env.VITE_GITHUB_REPO_URL || '' }
+    ],
   },
 
   vite: {
