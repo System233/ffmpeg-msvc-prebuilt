@@ -72,6 +72,7 @@ jobs:
     runs-on: windows-2022
     permissions: {}
     strategy:
+      fail-fast: false
       matrix:
         triplet:
           - arm-windows
@@ -96,6 +97,20 @@ jobs:
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
+      - name: Patch vcvarsall.bat for ARM Windows SDK
+        if: matrix.triplet == 'arm-windows'
+        run: |
+          $vsPaths = & vswhere -all -legacy -property installationPath
+          foreach ($vsPath in $vsPaths) {
+            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+            if (Test-Path $vcvarsall) {
+              Write-Output "Patching $vcvarsall"
+              $content = Get-Content $vcvarsall -Raw -Encoding Ascii
+              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.19041.0'
+              Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
+            }
+          }
+
       - name: Install ffmpeg-deps
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
@@ -107,7 +122,8 @@ jobs:
                 --triplet=${{ matrix.triplet }} `
                 --overlay-ports=ports/ `
                 --overlay-triplets=triplets/ `
-                --binarysource=clear
+                --binarysource=clear  `
+                --recurse
             }
           }
 
@@ -122,7 +138,7 @@ jobs:
   # ── Build: compile FFmpeg for every triplet × license × linkage ───────────
   build:
     needs: seed
-    runs-on: windows-latest
+    runs-on: windows-2022
     permissions: {}
     strategy:
       fail-fast: false
@@ -160,6 +176,20 @@ jobs:
       - name: Bootstrap vcpkg
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Patch vcvarsall.bat for ARM Windows SDK
+        if: matrix.triplet == 'arm-windows'
+        run: |
+          $vsPaths = & vswhere -all -legacy -property installationPath
+          foreach ($vsPath in $vsPaths) {
+            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+            if (Test-Path $vcvarsall) {
+              Write-Output "Patching $vcvarsall"
+              $content = Get-Content $vcvarsall -Raw -Encoding Ascii
+              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.19041.0'
+              Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
+            }
+          }
 
       - name: Restore binary cache from seed
         uses: actions/download-artifact@v4
