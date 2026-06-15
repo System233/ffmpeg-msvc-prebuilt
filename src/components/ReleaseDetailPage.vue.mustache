@@ -131,7 +131,7 @@ function copyText(text: string) {
   <!-- Header -->
   <header class="space-y-6">
     <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500">
-      <a href="../" class="hover:text-blue-600 transition-colors no-underline">[[release.backToList]]</a>
+      <a href="./" class="hover:text-blue-600 transition-colors no-underline">[[release.backToList]]</a>
       <Icon icon="fa6-solid:chevron-right" class="text-[8px]" />
       <span class="text-gray-900 dark:text-white font-bold">{{ release.version }}</span>
     </div>
@@ -340,7 +340,7 @@ function copyText(text: string) {
 <div v-else-if="error" class="text-center py-32 space-y-4">
   <Icon icon="fa6-solid:triangle-exclamation" class="text-3xl text-gray-200 mx-auto" />
   <h3 class="text-lg font-bold text-gray-900 dark:text-white m-0">[[release.notFound]]</h3>
-  <a href="../" class="btn-primary">[[release.backToCatalog]]</a>
+  <a href="./" class="btn-primary">[[release.backToCatalog]]</a>
 </div>
 
 <div v-else class="py-32 flex flex-col items-center justify-center space-y-2">
