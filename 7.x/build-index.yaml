@@ -1,0 +1,16 @@
+last_updated: "2026-06-10T09:00:00Z"
+variants:
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-shared-gpl
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-shared-lgpl
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-shared-nonfree
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-static-gpl
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-static-lgpl
+  - ffmpeg-7.1.2-r2-x64-windows-mixed-static-nonfree
+  - ffmpeg-7.1.2-r2-arm64-windows-shared-gpl
+  - ffmpeg-7.1.2-r2-arm64-windows-shared-lgpl
+  - ffmpeg-7.1.2-r2-arm64-windows-static-gpl
+  - ffmpeg-7.1.2-r2-arm64-windows-static-lgpl
+  - ffmpeg-7.1.2-r2-x86-windows-shared-gpl
+  - ffmpeg-7.1.2-r2-x86-windows-shared-lgpl
+  - ffmpeg-7.1.2-r2-x86-windows-static-gpl
+  - ffmpeg-7.1.2-r2-x86-windows-static-lgpl
