@@ -69,7 +69,7 @@ env:
 jobs:
   # ── Seed: build base dependencies once per triplet ─────────────────────────
   seed:
-    runs-on: windows-latest
+    runs-on: windows-2022
     permissions: {}
     strategy:
       matrix:
