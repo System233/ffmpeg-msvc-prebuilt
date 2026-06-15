@@ -9,11 +9,12 @@
 name: Deploy GitHub Pages
 
 on:
+  workflow_call:
+  workflow_dispatch:
   push:
     branches:
       - web
       - data
-  workflow_dispatch:
 
 concurrency:
   group: pages

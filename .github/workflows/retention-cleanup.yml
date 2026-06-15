@@ -110,3 +110,9 @@ jobs:
           fi
         shell: bash
         working-directory: data-repo
+
+  # ── Trigger pages rebuild ─────────────────────────────────────────────────
+  trigger-pages:
+    needs: cleanup
+    if: success()
+    uses: ./.github/workflows/pages.yml

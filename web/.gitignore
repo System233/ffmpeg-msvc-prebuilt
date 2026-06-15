@@ -4,4 +4,4 @@ node_modules/
 .vitepress/generated/
 en/
 zh/
-pnpm-lock.yaml
+# pnpm-lock.yaml (committed for CI reproducibility)

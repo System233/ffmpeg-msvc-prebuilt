@@ -442,3 +442,9 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
         shell: bash
+
+  # ── Trigger pages rebuild ─────────────────────────────────────────────────
+  trigger-pages:
+    needs: finalize
+    if: inputs.dry_run != true
+    uses: ./.github/workflows/pages.yml
