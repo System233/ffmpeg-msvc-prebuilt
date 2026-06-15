@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# pages.yml — Deploy the Vitepress SSG site to GitHub Pages
+#
+# Triggered on pushes to the web or data branches, or via workflow_dispatch.
+# Checks out both branches, builds the Vitepress site with Node 20, and
+# publishes to GitHub Pages.
+# ---------------------------------------------------------------------------
+
+name: Deploy GitHub Pages
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      - web
+      - data
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: web
+          path: web
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: web/data
+        continue-on-error: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Vitepress site
+        working-directory: web
+        env:
+            BASE_URL: /${{ github.event.repository.name }}/
+        run: pnpm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/.vitepress/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

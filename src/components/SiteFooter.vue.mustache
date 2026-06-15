@@ -1,0 +1,39 @@
+<script setup lang="ts">
+import { Icon } from '@iconify/vue'
+</script>
+
+<template>
+<footer class="mt-30 border-t border-gray-100 dark:border-gray-800">
+  <div class="flex flex-col md:flex-row justify-between items-start gap-10">
+    <div class="space-y-4 max-w-sm">
+      <h4 class="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+        <Icon icon="fa6-solid:clapperboard" class="text-blue-600" />
+        [[site.title]]
+      </h4>
+      <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+        [[footer.message]]
+      </p>
+      <div class="text-[10px] text-gray-400 font-medium">
+        [[footer.copy]]
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-12 sm:gap-20">
+      <div class="space-y-4">
+        <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Resources</h4>
+        <ul class="list-none p-0 m-0 space-y-2">
+          <li><a href="./releases" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.releases]]</a></li>
+          <li><a href="https://github.com/m-ab-s/ffmpeg-msvc-prebuilt" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.github]]</a></li>
+        </ul>
+      </div>
+      <div class="space-y-4">
+        <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Support</h4>
+        <ul class="list-none p-0 m-0 space-y-2">
+          <li><a href="https://github.com/m-ab-s/ffmpeg-msvc-prebuilt/issues" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.issues]]</a></li>
+          <li><a href="https://ffmpeg.org/documentation.html" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">FFmpeg Help</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+</template>

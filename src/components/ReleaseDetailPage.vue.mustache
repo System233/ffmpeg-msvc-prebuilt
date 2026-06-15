@@ -1,0 +1,349 @@
+<script setup lang="ts">
+import { useData } from 'vitepress'
+import { ref, watchEffect, computed } from 'vue'
+import { Icon } from '@iconify/vue'
+import SiteFooter from './SiteFooter.vue'
+
+const { params } = useData()
+
+const release = ref<any>(null)
+const error = ref(false)
+
+// Filters for metadata section (Single-select with toggle)
+const selectedArch = ref<string | null>(null)
+const selectedLinkage = ref<string | null>(null)
+const selectedLicense = ref<string | null>(null)
+
+// Tooltip data from localization
+const tooltipMap: Record<string, string> = {
+  x64: "[[release.tooltips.x64]]",
+  x86: "[[release.tooltips.x86]]",
+  arm64: "[[release.tooltips.arm64]]",
+  arm32: "[[release.tooltips.arm32]]",
+  shared: "[[release.tooltips.shared]]",
+  static: "[[release.tooltips.static]]",
+  gpl: "[[release.tooltips.gpl]]",
+  lgpl: "[[release.tooltips.lgpl]]",
+  nonfree: "[[release.tooltips.nonfree]]"
+}
+
+// Use dynamic import to load data based on params.id
+watchEffect(async () => {
+  const id = params.value?.id
+  if (!id) return
+
+  try {
+    const modules: any = import.meta.glob('../../.vitepress/generated/releases/*.ts')
+    const path = `../../.vitepress/generated/releases/${id}.ts`
+    const loader = modules[path]
+    
+    if (loader) {
+      const mod = await loader()
+      release.value = mod.default
+      error.value = false
+    } else {
+      error.value = true
+    }
+  } catch (err) {
+    console.error('Failed to load release data:', err)
+    error.value = true
+  }
+})
+
+const filteredVariants = computed(() => {
+  if (!release.value?.variants) return []
+  return release.value.variants.filter((v: any) => {
+    if (selectedArch.value && v.arch !== selectedArch.value) return false
+    if (selectedLinkage.value && v.linkage !== selectedLinkage.value) return false
+    if (selectedLicense.value && v.license !== selectedLicense.value) return false
+    return true
+  })
+})
+
+const availableArchs = computed(() => {
+  const a = [...new Set(release.value?.variants?.map((v: any) => v.arch) || [])] as string[]
+  return a.sort()
+})
+const linkages = computed(() => {
+  const l = [...new Set(release.value?.variants?.map((v: any) => v.linkage) || [])] as string[]
+  return l.sort()
+})
+const licenses = computed(() => {
+  const lic = [...new Set(release.value?.variants?.map((v: any) => v.license) || [])] as string[]
+  return lic.sort()
+})
+
+function toggleArch(val: string) { selectedArch.value = selectedArch.value === val ? null : val }
+function toggleLinkage(val: string) { selectedLinkage.value = selectedLinkage.value === val ? null : val }
+function toggleLicense(val: string) { selectedLicense.value = selectedLicense.value === val ? null : val }
+
+function fmtSize(b: number): string {
+  if (!b) return '—'
+  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB'
+  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB'
+  return (b / 1024).toFixed(1) + ' KB'
+}
+
+function fmtDate(iso: string): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+const archLabel: Record<string, string> = { x64: 'x64', x86: 'x86', arm64: 'ARM64', arm32: 'ARM32' }
+const allCombos = ['shared-gpl', 'shared-lgpl', 'shared-nonfree', 'static-gpl', 'static-lgpl', 'static-nonfree']
+
+function getCombos() {
+  if (!release.value?.variants) return []
+  return allCombos.filter(c => {
+    const [link, lic] = c.split('-')
+    return release.value.variants.some((v: any) => v.linkage === link && v.license === lic)
+  })
+}
+
+function getV(arch: string, linkage: string, license: string): any {
+  return release.value?.variants?.find((v: any) =>
+    v.arch === arch && v.linkage === linkage && v.license === license
+  )
+}
+
+function colLabel(c: string): string {
+  const [link, lic] = c.split('-')
+  return (link === 'shared' ? 'Shared' : 'Static') + ' ' + lic.toUpperCase()
+}
+
+function getComboTooltip(c: string): string {
+  const [link, lic] = c.split('-')
+  return `${tooltipMap[link]} • ${tooltipMap[lic]}`
+}
+
+function copyText(text: string) {
+  navigator.clipboard.writeText(text)
+}
+</script>
+
+<template>
+<div v-if="release" class="space-y-12 pb-20 pt-6">
+  <!-- Header -->
+  <header class="space-y-6">
+    <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500">
+      <a href="../" class="hover:text-blue-600 transition-colors no-underline">[[release.backToList]]</a>
+      <Icon icon="fa6-solid:chevron-right" class="text-[8px]" />
+      <span class="text-gray-900 dark:text-white font-bold">{{ release.version }}</span>
+    </div>
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div class="flex flex-wrap items-center gap-4">
+        <h1 class="text-3xl font-bold tracking-tight m-0 text-gray-900 dark:text-white">FFmpeg {{ release.version }}</h1>
+        <div class="flex items-center gap-2">
+          <span v-if="release.lts" class="badge badge-green">[[release.lts]]</span>
+          <span v-if="release.major === 'master'" class="badge badge-blue">[[release.master]]</span>
+          <span class="badge badge-outline">r{{ release.revision }}</span>
+        </div>
+      </div>
+      <a v-if="release.release_url" :href="release.release_url" target="_blank" class="btn-secondary h-8 px-3 text-xs gap-2 font-bold">
+        <Icon icon="fa6-brands:github" />
+        [[release.viewOnGitHub]]
+      </a>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+      <div class="space-y-1">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.releasedOn]]</span>
+        <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">{{ fmtDate(release.created) }}</div>
+      </div>
+      <div class="space-y-1">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.ffmpegCommit]]</span>
+        <div class="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
+          <a v-if="release.ffmpeg_commit" :href="'https://github.com/FFmpeg/FFmpeg/commit/' + release.ffmpeg_commit" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+            {{ release.ffmpeg_commit?.slice(0, 8) }}
+            <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-[8px] inline-block ml-0.5" />
+          </a>
+          <span v-else>—</span>
+        </div>
+      </div>
+      <div class="space-y-1">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.progress]]</span>
+        <div class="text-xs font-bold text-gray-700 dark:text-gray-300">
+          <span :class="release.complete ? 'text-green-600' : 'text-amber-600'">{{ release.variant_count }} / {{ release.total_variants }}</span>
+        </div>
+      </div>
+      <div class="space-y-1">
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.releaseTag]]</span>
+        <div class="text-xs text-gray-600 dark:text-gray-400 truncate">
+          <a :href="'https://github.com/m-ab-s/ffmpeg-msvc-prebuilt/releases/tag/' + release.release_tag" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+            {{ release.release_tag }}
+            <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-[8px] inline-block ml-0.5" />
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Download Matrix -->
+  <section class="space-y-4">
+    <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">[[variant.download]]</h2>
+    <div class="overflow-x-auto">
+      <table class="border-none">
+        <thead class="bg-gray-50/50 dark:bg-gray-800/30">
+          <tr>
+            <th class="w-32 py-2">[[release.architectures]]</th>
+            <th v-for="c in getCombos()" :key="c" class="text-center! py-2">
+              <div class="inline-flex items-center gap-1.5 cursor-help" :title="getComboTooltip(c)">
+                {{ colLabel(c) }}
+                <Icon icon="fa6-solid:circle-info" class="text-gray-400" />
+              </div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="arch in availableArchs" :key="arch">
+            <td class="font-bold text-gray-900 dark:text-white uppercase text-[10px] py-3 whitespace-nowrap">
+              <div class="flex items-center gap-2 cursor-help" :title="tooltipMap[arch]">
+                <Icon icon="fa6-solid:microchip" class="text-gray-300" />
+                {{ archLabel[arch] || arch }}
+                <Icon icon="fa6-solid:circle-info" class="text-gray-400" />
+              </div>
+            </td>
+            <td v-for="c in getCombos()" :key="c" class="text-center! py-3">
+              <template v-if="getV(arch, c.split('-')[0], c.split('-')[1])">
+                <a :href="getV(arch, c.split('-')[0], c.split('-')[1]).download_url" class="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs whitespace-nowrap">
+                  {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).file_size) }}
+                </a>
+              </template>
+              <span v-else class="text-gray-200 dark:text-gray-800">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Detailed Metadata -->
+  <section class="space-y-6">
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-gray-100 dark:border-gray-800 pb-4">
+      <div class="space-y-1">
+        <h2 class="text-xl font-bold tracking-tight m-0 text-gray-900 dark:text-white">[[release.metadata]]</h2>
+        <span class="text-[10px] font-medium uppercase tracking-widest text-gray-400">{{ filteredVariants.length }} / {{ release.variants?.length }} [[release.available]]</span>
+      </div>
+      
+      <!-- Metadata Filters (Single-select Toggle via Peer-checked Labels) -->
+      <div class="flex flex-wrap items-center gap-4">
+        <!-- Arch Filter -->
+        <div class="flex flex-wrap gap-1.5">
+          <label v-for="a in availableArchs" :key="a" class="cursor-pointer" :title="tooltipMap[a]">
+            <input type="checkbox" :checked="selectedArch === a" @change="toggleArch(a)" class="sr-only peer" />
+            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase block
+              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+              peer-checked:bg-purple-600 peer-checked:text-white peer-checked:border-purple-600
+              peer-hover:border-purple-400 dark:peer-hover:border-purple-400">
+              {{ a }}
+            </span>
+          </label>
+        </div>
+        <div class="h-4 w-px bg-gray-100 dark:bg-gray-800 hidden sm:block"></div>
+        <!-- Linkage Filter -->
+        <div class="flex flex-wrap gap-1.5">
+          <label v-for="l in linkages" :key="l" class="cursor-pointer" :title="tooltipMap[l]">
+            <input type="checkbox" :checked="selectedLinkage === l" @change="toggleLinkage(l)" class="sr-only peer" />
+            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all lowercase block
+              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+              peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600
+              peer-hover:border-blue-400 dark:peer-hover:border-blue-400">
+              {{ l }}
+            </span>
+          </label>
+        </div>
+        <div class="h-4 w-px bg-gray-100 dark:bg-gray-800 hidden sm:block"></div>
+        <!-- License Filter -->
+        <div class="flex flex-wrap gap-1.5">
+          <label v-for="l in licenses" :key="l" class="cursor-pointer" :title="tooltipMap[l]">
+            <input type="checkbox" :checked="selectedLicense === l" @change="toggleLicense(l)" class="sr-only peer" />
+            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase block
+              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+              peer-checked:bg-amber-600 peer-checked:text-white peer-checked:border-amber-600
+              peer-hover:border-amber-400 dark:peer-hover:border-amber-400">
+              {{ l }}
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+    
+    <div class="space-y-6">
+      <div v-for="v in filteredVariants" :key="v.asset_name" class="card p-5 space-y-5">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div class="space-y-2">
+            <h3 class="text-sm font-bold m-0 text-gray-900 dark:text-white leading-tight">{{ v.asset_name }}</h3>
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              <span class="badge badge-purple" :title="tooltipMap[v.arch]">{{ v.arch }}</span>
+              <span class="badge badge-outline lowercase" :title="tooltipMap[v.linkage]">{{ v.linkage }}</span>
+              <span class="badge badge-outline lowercase" :title="tooltipMap[v.license]">{{ v.license }}</span>
+              <span class="badge badge-outline font-mono text-[8px]">{{ v.triplet }}</span>
+            </div>
+          </div>
+          <a :href="v.download_url" class="btn-primary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
+            <Icon icon="fa6-solid:download" class="text-[10px]" />
+            [[variant.download]] ({{ fmtSize(v.file_size) }})
+          </a>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <!-- Features -->
+          <div class="lg:col-span-6 space-y-3">
+            <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
+              <Icon icon="fa6-solid:wand-magic-sparkles" class="text-indigo-500" />
+              [[variant.features]]
+            </h4>
+            <div v-if="v.features?.length" class="flex flex-wrap gap-1 pt-1">
+              <span v-for="f in v.features" :key="f" class="px-1.5 py-0.5 text-[9px] font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded uppercase">
+                {{ f }}
+              </span>
+            </div>
+            <div v-else class="text-[10px] text-gray-400 italic font-medium">[[release.noFeatures]]</div>
+          </div>
+
+          <!-- Dependencies -->
+          <div class="lg:col-span-6 space-y-3">
+            <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
+              <Icon icon="fa6-solid:link" class="text-amber-500" />
+              [[variant.dependencies]]
+            </h4>
+            <div v-if="v.dependencies?.length" class="flex flex-wrap gap-1 pt-1">
+              <span v-for="d in v.dependencies" :key="d" class="px-1.5 py-0.5 text-[9px] font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded uppercase">
+                {{ d }}
+              </span>
+            </div>
+            <div v-else class="text-[10px] text-gray-400 italic font-medium">[[release.noDeps]]</div>
+          </div>
+        </div>
+
+        <!-- SHA256 -->
+        <div class="pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3">
+          <Icon icon="fa6-solid:fingerprint" class="text-gray-300 text-xs shrink-0" />
+          <code class="flex-1 text-[10px] font-mono text-gray-400 truncate" :title="v.digest">
+            {{ v.digest }}
+          </code>
+          <button @click="copyText(v.digest)" class="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase shrink-0">[[release.copyHash]]</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <SiteFooter />
+</div>
+
+<div v-else-if="error" class="text-center py-32 space-y-4">
+  <Icon icon="fa6-solid:triangle-exclamation" class="text-3xl text-gray-200 mx-auto" />
+  <h3 class="text-lg font-bold text-gray-900 dark:text-white m-0">[[release.notFound]]</h3>
+  <a href="../" class="btn-primary">[[release.backToCatalog]]</a>
+</div>
+
+<div v-else class="py-32 flex flex-col items-center justify-center space-y-2">
+  <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+  <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.loading]]</span>
+</div>
+</template>

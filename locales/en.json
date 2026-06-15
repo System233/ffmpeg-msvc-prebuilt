@@ -1,0 +1,113 @@
+{
+  "site": { "title": "FFmpeg MSVC Prebuilt" },
+  "hero": {
+    "title": "FFmpeg MSVC Prebuilt",
+    "subtitle": "Ready-to-use FFmpeg binaries for Windows, compiled with Microsoft Visual C++. All dependencies included — download, extract, and run.",
+    "noReleases": "No releases found. Build data will appear after CI publishes the first release.",
+    "viewAll": "View All Releases",
+    "chooseLang": "Choose your language",
+    "quickDownload": "Quick Download (x64 Windows)",
+    "github": "GitHub",
+    "featuresTitle": "Project Highlights",
+    "latestTitle": "Latest Artifact",
+    "features": [
+      {
+        "icon": "fa6-solid:microchip",
+        "title": "Modern Architectures",
+        "desc": "Native builds for x64, x86, and ARM64 Windows platforms optimized for modern CPUs."
+      },
+      {
+        "icon": "fa6-solid:box-archive",
+        "title": "Self-Contained",
+        "desc": "All dependencies are statically linked or bundled. No DLL hell, just extract and run."
+      },
+      {
+        "icon": "fa6-solid:bolt",
+        "title": "MSVC Optimized",
+        "desc": "Compiled with the latest Microsoft Visual C++ compiler for maximum Windows performance."
+      }
+    ]
+  },
+  "releases": { 
+    "title": "Releases", 
+    "empty": "No releases match your filters.",
+    "cataloged": "artifacts cataloged",
+    "totalFound": "total releases found",
+    "action": "Action",
+    "details": "Details",
+    "reset": "Reset filters"
+  },
+  "release": {
+    "title": "Release Details",
+    "latestLabel": "Latest Release",
+    "version": "Version",
+    "revision": "Revision",
+    "lts": "LTS",
+    "master": "Master",
+    "releaseTag": "GitHub Tag",
+    "buildDate": "Build Date",
+    "updatedDate": "Updated",
+    "variants": "Builds",
+    "complete": "Complete",
+    "incomplete": "Incomplete",
+    "releasedOn": "Released On",
+    "backToList": "All Releases",
+    "notFound": "Release not found.",
+    "selectHint": "Direct download links are provided in the grid below.",
+    "architectures": "Architecture",
+    "licenses": "License",
+    "linkages": "Linkage",
+    "viewOnGitHub": "View on GitHub",
+    "fullDetails": "Full Details",
+    "ffmpegCommit": "FFmpeg Commit",
+    "status": "Status",
+    "progress": "Build Progress",
+    "metadata": "Full Artifact Metadata",
+    "available": "variants available",
+    "variantDetails": "Variant Details",
+    "copyHash": "Copy Hash",
+    "noFeatures": "No specific features listed.",
+    "noDeps": "No external dependencies.",
+    "howToUse": "How to use",
+    "howToUseDesc": "Download the zip, extract it to a folder, and add the bin/ folder to your system PATH. MSVC builds require the latest Visual C++ Redistributable.",
+    "selectBuild": "Select a build to start",
+    "selectBuildDesc": "Use the filters to narrow down selection, then click on a build to view metadata.",
+    "loading": "Loading Metadata...",
+    "backToCatalog": "Back to Catalog",
+    "errorDesc": "The release you are looking for does not exist or has been removed.",
+    "tooltips": {
+      "x64": "64-bit Intel/AMD (x86_64)",
+      "x86": "32-bit Intel/AMD (i686)",
+      "arm64": "64-bit ARM (AArch64)",
+      "arm32": "32-bit ARM (ARMv7)",
+      "shared": "Dynamic link libraries (.dll). Requires bundling DLLs.",
+      "static": "Self-contained binaries. No external DLLs required.",
+      "gpl": "General Public License. Full features.",
+      "lgpl": "Lesser General Public License. Permissive.",
+      "nonfree": "Includes non-free components (e.g. fdk-aac)."
+    }
+  },
+  "variant": {
+    "size": "Size",
+    "sha256": "SHA256",
+    "features": "Features",
+    "dependencies": "Dependencies",
+    "download": "Download",
+    "noVariant": "Not available"
+  },
+  "filter": {
+    "search": "Search versions...",
+    "allMajors": "All Versions",
+    "ltsOnly": "LTS Only",
+    "completeOnly": "Complete Only"
+  },
+  "footer": { 
+    "message": "FFmpeg Prebuilt Binaries for Windows MSVC",
+    "copy": "© 2026 FFmpeg MSVC Prebuilt. MIT Licensed.",
+    "links": {
+      "github": "Source Code",
+      "issues": "Report Issue",
+      "releases": "All Releases"
+    }
+  }
+}
