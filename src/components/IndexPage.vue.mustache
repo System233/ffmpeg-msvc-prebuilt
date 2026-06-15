@@ -4,6 +4,8 @@ import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
 
+const GITHUB_REPO_URL = import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/System233/ffmpeg-msvc-prebuilt'
+
 function fmtDate(iso: string): string {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString(undefined, {
@@ -59,7 +61,7 @@ const localizedFeatures = [
       <a href="./releases" class="btn-primary px-8 h-12 text-base font-bold">
         [[hero.viewAll]]
       </a>
-      <a href="https://github.com/m-ab-s/ffmpeg-msvc-prebuilt" target="_blank" class="btn-secondary px-8 h-12 text-base font-bold">
+      <a :href="GITHUB_REPO_URL" target="_blank" class="btn-secondary px-8 h-12 text-base font-bold">
         <Icon icon="fa6-brands:github" class="mr-2" />
         [[hero.github]]
       </a>

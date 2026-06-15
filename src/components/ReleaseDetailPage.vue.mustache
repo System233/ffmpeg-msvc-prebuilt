@@ -4,6 +4,8 @@ import { ref, watchEffect, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
 
+const GITHUB_REPO_URL = import.meta.env.VITE_GITHUB_REPO_URL || 'https://github.com/System233/ffmpeg-msvc-prebuilt'
+
 const { params } = useData()
 
 const release = ref<any>(null)
@@ -174,7 +176,7 @@ function copyText(text: string) {
       <div class="space-y-1">
         <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.releaseTag]]</span>
         <div class="text-xs text-gray-600 dark:text-gray-400 truncate">
-          <a :href="'https://github.com/m-ab-s/ffmpeg-msvc-prebuilt/releases/tag/' + release.release_tag" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+          <a :href="GITHUB_REPO_URL + '/releases/tag/' + release.release_tag" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
             {{ release.release_tag }}
             <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-[8px] inline-block ml-0.5" />
           </a>
