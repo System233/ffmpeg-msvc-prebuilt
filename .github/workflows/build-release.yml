@@ -93,6 +93,13 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
           git -C ${{ runner.temp }}/vcpkg checkout ${{ env.VCPKG_COMMIT }}
 
+      - name: Restore vcpkg downloads cache
+        if: inputs.dry_run == true
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+
       - name: Restore vcpkg binary cache (dry_run)
         if: inputs.dry_run == true
         uses: actions/cache@v4
@@ -120,20 +127,19 @@ jobs:
             }
           }
 
-      - name: Install ffmpeg-deps
+      - name: Install ffmpeg-deps (parallel)
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
         run: |
-          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
-          if ($json.features) {
-            foreach ($f in $json.features.PSObject.Properties.Name) {
-              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
-                --triplet=${{ matrix.triplet }} `
-                --overlay-ports=ports/ `
-                --overlay-triplets=triplets/ `
-                --recurse
-            }
-          }
+          $FEATURES = (Get-Content ${{ github.workspace }}/ports/ffmpeg-deps/vcpkg.json `
+            | ConvertFrom-Json).features.PSObject.Properties.Name -join ','
+          python ${{ github.workspace }}/scripts/build-parallel.py build "ffmpeg-deps[$FEATURES]" `
+            --vcpkg "${{ runner.temp }}/vcpkg/vcpkg.exe" `
+            --triplet ${{ matrix.triplet }} `
+            --fetch-first `
+            -- `
+            --overlay-ports=${{ github.workspace }}/ports/ `
+            --overlay-triplets=${{ github.workspace }}/triplets/
 
       - name: Upload binary cache artifact
         uses: actions/upload-artifact@v4
@@ -269,7 +275,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             Write-Output "Data branch does not exist yet — will build from scratch"
           } else {
-            $build_index_path = "data/${major}/build-index.yaml"
+            $build_index_path = "${major}/build-index.yaml"
             $content = git show "origin/data:${build_index_path}" 2>$null
             if ($LASTEXITCODE -eq 0) {
               # Simple YAML variant_id check — look for the variant_id as a
