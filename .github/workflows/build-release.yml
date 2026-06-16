@@ -93,23 +93,39 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
           git -C ${{ runner.temp }}/vcpkg checkout ${{ env.VCPKG_COMMIT }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Compute port hash
+        id: porthash
+        run: |
+          python scripts/generate.py --generate-deps
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
       - name: Restore vcpkg downloads cache
-        if: inputs.dry_run == true
         uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ steps.porthash.outputs.port_hash }}
           restore-keys: |
-            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-
 
       - name: Restore vcpkg binary cache (dry_run)
-        if: inputs.dry_run == true
         uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ steps.porthash.outputs.port_hash }}
           restore-keys: |
             vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-
+            vcpkg-seed-${{ env.VCPKG_COMMIT }}-
 
       - name: Bootstrap vcpkg
         run: |
@@ -207,6 +223,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Compute port hash
+        id: porthash
+        run: |
+          python scripts/generate.py --generate-deps
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
       - name: Clone vcpkg at pinned commit
         run: |
           git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
@@ -217,20 +239,24 @@ jobs:
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
       - name: Restore vcpkg downloads cache
-        if: inputs.dry_run == true
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ steps.porthash.outputs.port_hash }}
           fail-on-cache-miss: true
+          restore-keys: |
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-
 
       - name: Restore vcpkg binary cache (dry_run)
-        if: inputs.dry_run == true
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ steps.porthash.outputs.port_hash }}
           fail-on-cache-miss: true
+          restore-keys: |
+            vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-
+            vcpkg-seed-${{ env.VCPKG_COMMIT }}-
             
       - name: Restore binary cache from seed
         uses: actions/download-artifact@v8
