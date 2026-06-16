@@ -45,11 +45,7 @@ TAG_RE = re.compile(r"^n(\d+)\.(\d+)\.(\d+)$")
 # GitHub API endpoint
 FFMPEG_API_TAGS = "https://api.github.com/repos/ffmpeg/ffmpeg/tags?per_page=50"
 
-# Default proxy (used if HTTPS_PROXY env var is not set)
-DEFAULT_PROXY = "http://127.0.0.1:5808"
-
-# vcpkg registry path (only used with --check-vcpkg)
-VCPKG_FFMPEG_JSON = Path(r"D:\Repos\vcpkg\versions\f-\ffmpeg.json")
+# vcpkg registry path (only used with --check-vcpkg, overridden by --vcpkg-json)
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +82,11 @@ def format_version(triple: Tuple[int, int, int]) -> str:
 
 def build_opener() -> urllib.request.OpenerDirector:
     """Return a URL opener configured with an HTTPS proxy if available."""
-    proxy_url = os.environ.get("HTTPS_PROXY") or DEFAULT_PROXY
-    proxy_handler = urllib.request.ProxyHandler({"https": proxy_url, "http": proxy_url})
-    return urllib.request.build_opener(proxy_handler)
+    proxy_url = os.environ.get("HTTPS_PROXY")
+    if proxy_url:
+        proxy_handler = urllib.request.ProxyHandler({"https": proxy_url, "http": proxy_url})
+        return urllib.request.build_opener(proxy_handler)
+    return urllib.request.build_opener()
 
 
 # ---------------------------------------------------------------------------
@@ -180,19 +178,19 @@ def scan_local_yamls() -> List[Tuple[int, int, int]]:
 # Vcpkg registry scan
 # ---------------------------------------------------------------------------
 
-def scan_vcpkg_registry() -> List[Tuple[int, int, int]]:
+def scan_vcpkg_registry(vcpkg_json: Path) -> List[Tuple[int, int, int]]:
     """Parse vcpkg's ffmpeg.json registry for known versions.
 
     Returns a sorted list of (major, minor, patch) tuples, newest first.
     Returns an empty list if the file cannot be read.
     """
-    if not VCPKG_FFMPEG_JSON.is_file():
-        print(f"WARNING: vcpkg registry not found at {VCPKG_FFMPEG_JSON}",
+    if not vcpkg_json.is_file():
+        print(f"WARNING: vcpkg registry not found at {vcpkg_json}",
               file=sys.stderr)
         return []
 
     try:
-        with open(VCPKG_FFMPEG_JSON, encoding="utf-8") as fh:
+        with open(vcpkg_json, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"WARNING: Failed to read vcpkg registry: {exc}",
@@ -274,6 +272,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Also compare against known versions in the local vcpkg registry",
     )
     parser.add_argument(
+        "--vcpkg-json",
+        default=None,
+        help="Path to vcpkg's ffmpeg.json (default: $VCPKG_ROOT/versions/f-/ffmpeg.json)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Output results as JSON instead of human-readable text",
@@ -294,7 +297,12 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # ---- Step 3 (optional): Scan vcpkg registry ----
     if args.check_vcpkg:
-        vcpkg_versions = scan_vcpkg_registry()
+        vcpkg_json = args.vcpkg_json
+        if not vcpkg_json:
+            vcpkg_root = os.environ.get("VCPKG_ROOT")
+            if vcpkg_root:
+                vcpkg_json = str(Path(vcpkg_root) / "versions" / "f-" / "ffmpeg.json")
+        vcpkg_versions = scan_vcpkg_registry(Path(vcpkg_json)) if vcpkg_json else []
         print(f"Vcpkg registry versions ({len(vcpkg_versions)}):")
         print(f"  {format_version_list(vcpkg_versions)}")
         print()

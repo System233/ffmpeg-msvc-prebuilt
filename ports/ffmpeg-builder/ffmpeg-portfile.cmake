@@ -114,7 +114,7 @@ endif()
 
 # ========== 3. Initial OPTIONS + Platform detection ==========
 
-set(OPTIONS "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect")
+set(OPTIONS "--enable-version3 --enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect")
 
 if(DEFINED FFMPEG_BASE_OPTIONS)
     string(APPEND OPTIONS " ${FFMPEG_BASE_OPTIONS}")

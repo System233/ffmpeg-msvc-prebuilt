@@ -550,8 +550,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--vcpkg-root",
-        default=r"D:\Repos\vcpkg",
-        help="Vcpkg repository root (default: D:/Repos/vcpkg)",
+        required=True,
+        help="Vcpkg repository root",
     )
     parser.add_argument(
         "--output-dir",
@@ -574,6 +574,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="FFmpeg git describe ref (for master builds)",
     )
+    parser.add_argument(
+        "--variant-id",
+        default=None,
+        help="Variant identifier (overrides auto-generated value)",
+    )
     return parser.parse_args(argv)
 
 
@@ -588,6 +593,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     output_dir = Path(args.output_dir)
     revision = args.revision
     ffmpeg_ref = args.ffmpeg_ref
+    variant_id_arg = args.variant_id
     generate_var_yaml = args.generate_var_yaml
 
     is_master = (revision == 0 and ffmpeg_ref is not None)
@@ -647,8 +653,10 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # ---- Variant YAML ----
     if generate_var_yaml:
-        # Build variant_id
-        if is_master:
+        # Build variant_id (use override from --variant-id if provided)
+        if variant_id_arg:
+            variant_id = variant_id_arg
+        elif is_master:
             variant_id = f"ffmpeg-{ffmpeg_ref}-{triplet}-{linkage}-{license_variant}"
         else:
             variant_id = f"ffmpeg-{version}-r{revision}-{triplet}-{linkage}-{license_variant}"

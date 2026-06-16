@@ -612,7 +612,7 @@ def generate_portfile(version: str, family: str, patches: list[str],
     )
     lines.append(
         'set(FFMPEG_BUILDER_DIR '
-        f'"${{CURRENT_INSTALLED_DIR}}/share/ffmpeg-builder")'
+        f'"${{CURRENT_HOST_INSTALLED_DIR}}/share/ffmpeg-builder")'
     )
     lines.append(
         'set(FFMPEG_PATCHES_DIR '

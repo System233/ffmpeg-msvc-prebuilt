@@ -95,7 +95,7 @@ jobs:
 
       - name: Restore vcpkg downloads cache
         if: inputs.dry_run == true
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
           key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
@@ -104,7 +104,7 @@ jobs:
 
       - name: Restore vcpkg binary cache (dry_run)
         if: inputs.dry_run == true
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg-cache
           key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
@@ -124,7 +124,7 @@ jobs:
             if (Test-Path $vcvarsall) {
               Write-Output "Patching $vcvarsall"
               $content = Get-Content $vcvarsall -Raw -Encoding Ascii
-              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.19041.0'
+              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
               Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
             }
           }
@@ -151,6 +151,17 @@ jobs:
           path: ${{ runner.temp }}/vcpkg-cache
           compression-level: 1
           retention-days: 1
+
+      - name: Upload build logs (seed)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-seed-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+          compression-level: 9
+          retention-days: 7
 
   # ── Build: compile FFmpeg for every triplet × license × linkage ───────────
   build:
@@ -186,7 +197,7 @@ jobs:
       #     install: make pkg-config diffutils nasm
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -206,7 +217,7 @@ jobs:
 
       - name: Restore vcpkg downloads cache
         if: inputs.dry_run == true
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
           key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
@@ -222,13 +233,13 @@ jobs:
             if (Test-Path $vcvarsall) {
               Write-Output "Patching $vcvarsall"
               $content = Get-Content $vcvarsall -Raw -Encoding Ascii
-              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.19041.0'
+              $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
               Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
             }
           }
 
       - name: Restore binary cache from seed
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
@@ -319,7 +330,7 @@ jobs:
       - name: Step 3 - Generate port files
         if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
         run: |
-          python scripts/generate.py --version ${{ inputs.version }}
+          python scripts/generate.py --version ${{ inputs.version }} --force
 
       # ── Step 4: Build FFmpeg via vcpkg ────────────────────────────────────
       - name: Step 4 - Build FFmpeg
@@ -332,7 +343,7 @@ jobs:
           if ("${{ matrix.static }}" -ne "") {
             $features = "$features,${{ matrix.static }}"
           }
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" `
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[all,${features}]" `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `
             --overlay-triplets=triplets/
@@ -343,6 +354,9 @@ jobs:
         run: |
           $ver = "${{ inputs.version }}"
           $rev = "${{ inputs.revision }}"
+          if (-not $rev) { $rev = "0" }
+          $ffmpeg_ref = "${{ inputs.ffmpeg_ref }}"
+          $vcpkg_root = "${{ runner.temp }}/vcpkg"
           $triplet = "${{ matrix.triplet }}"
           $linkage = "${{ steps.vars.outputs.linkage_name }}"
           $license = "${{ matrix.license }}"
@@ -354,8 +368,10 @@ jobs:
             --triplet $triplet `
             --linkage $linkage `
             --license $license `
+            --vcpkg-root $vcpkg_root `
             --output-dir Release `
             --generate-var-yaml `
+            --ffmpeg-ref $ffmpeg_ref `
             --variant-id $variant_id
 
       # ── Step 6: Upload artifacts ──────────────────────────────────────────
@@ -371,6 +387,19 @@ jobs:
             Release/*.var.yaml
           compression-level: 0
           retention-days: 5
+
+      # ── Step 7: Upload build logs for debugging ──────────────────────────
+      # Always runs, even if Step 4 fails, so logs are available for triage.
+      - name: Step 7 - Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.static || 'shared' }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+          compression-level: 9
+          retention-days: 7
 
   # ── Finalize: merge variants into data branch, create/update release ──────
   finalize:
@@ -422,7 +451,7 @@ jobs:
         shell: bash
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: ffmpeg-*
           path: ${{ github.workspace }}/artifacts/

@@ -19,6 +19,7 @@ Requirements
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -31,8 +32,6 @@ from typing import Dict, List, Optional, Tuple
 # Paths – tweak these if your layout differs
 # ---------------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VCPKG_DIR = Path(r"D:\Repos\vcpkg")
-VERSIONS_JSON = VCPKG_DIR / "versions" / "f-" / "ffmpeg.json"
 EXTRACT_DIR = REPO_ROOT / "_work" / "extracted"
 GITIGNORE = REPO_ROOT / ".gitignore"
 
@@ -41,18 +40,18 @@ GITIGNORE = REPO_ROOT / ".gitignore"
 # Environment checks
 # ---------------------------------------------------------------------------
 
-def check_environment() -> None:
+def check_environment(vcpkg_dir: Path, versions_json: Path) -> None:
     """Verify that all prerequisites are met; exit with a message on failure."""
-    if not VCPKG_DIR.is_dir():
-        print(f"ERROR: vcpkg repository not found at {VCPKG_DIR}", file=sys.stderr)
+    if not vcpkg_dir.is_dir():
+        print(f"ERROR: vcpkg repository not found at {vcpkg_dir}", file=sys.stderr)
         sys.exit(1)
 
-    if not (VCPKG_DIR / ".git").is_dir():
-        print(f"ERROR: {VCPKG_DIR} is not a git repository", file=sys.stderr)
+    if not (vcpkg_dir / ".git").is_dir():
+        print(f"ERROR: {vcpkg_dir} is not a git repository", file=sys.stderr)
         sys.exit(1)
 
-    if not VERSIONS_JSON.is_file():
-        print(f"ERROR: versions database not found at {VERSIONS_JSON}", file=sys.stderr)
+    if not versions_json.is_file():
+        print(f"ERROR: versions database not found at {versions_json}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -84,14 +83,14 @@ def ensure_gitignore() -> None:
 # Version loading
 # ---------------------------------------------------------------------------
 
-def load_versions() -> Dict[str, dict]:
+def load_versions(versions_json: Path) -> Dict[str, dict]:
     """Parse ``ffmpeg.json`` and return unique versions with their best entry.
 
     For each unique version string (handling both ``version`` and
     ``version-string`` keys) the entry with the highest ``port-version``
     is selected.
     """
-    with open(VERSIONS_JSON, encoding="utf-8") as fh:
+    with open(versions_json, encoding="utf-8") as fh:
         data = json.load(fh)
 
     by_version: Dict[str, list] = defaultdict(list)
@@ -116,7 +115,7 @@ def load_versions() -> Dict[str, dict]:
 # Extraction
 # ---------------------------------------------------------------------------
 
-def extract_version(version: str, entry: dict) -> bool:
+def extract_version(version: str, entry: dict, vcpkg_dir: Path) -> bool:
     """Use ``git archive`` to extract port files for *version*.
 
     The tree SHA stored in the vcpkg versions database is passed directly
@@ -137,7 +136,7 @@ def extract_version(version: str, entry: dict) -> bool:
     # git archive from the vcpkg repository using the tree SHA
     try:
         subprocess.run(
-            ["git", "-C", str(VCPKG_DIR), "archive", tree_sha,
+            ["git", "-C", str(vcpkg_dir), "archive", tree_sha,
              "--output", str(tar_path)],
             capture_output=True,
             text=True,
@@ -205,13 +204,34 @@ def print_summary(results: List[Tuple[str, int, str, str, bool]]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    check_environment()
+def parse_args(argv: List[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Extract FFmpeg port files from vcpkg git history.",
+    )
+    parser.add_argument(
+        "--vcpkg-dir",
+        default=None,
+        help="Vcpkg repository root (default: $VCPKG_ROOT env var)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    args = parse_args(argv or sys.argv[1:])
+
+    vcpkg_dir_s = args.vcpkg_dir or os.environ.get("VCPKG_ROOT")
+    if not vcpkg_dir_s:
+        print("ERROR: --vcpkg-dir is required or set $VCPKG_ROOT", file=sys.stderr)
+        sys.exit(1)
+    vcpkg_dir = Path(vcpkg_dir_s)
+    versions_json = vcpkg_dir / "versions" / "f-" / "ffmpeg.json"
+
     ensure_gitignore()
+    check_environment(vcpkg_dir, versions_json)
 
     EXTRACT_DIR.mkdir(parents=True, exist_ok=True)
 
-    versions = load_versions()
+    versions = load_versions(versions_json)
     if not versions:
         print("No versions found in the versions database.")
         return
@@ -239,7 +259,7 @@ def main() -> None:
         print(f"[{idx}/{total}] Extracting ffmpeg {version} "
               f"(tree: {tree_sha[:8]}...)...", end=" ", flush=True)
 
-        ok = extract_version(version, entry)
+        ok = extract_version(version, entry, vcpkg_dir)
         if ok:
             print("OK")
             extracted_count += 1

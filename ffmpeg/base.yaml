@@ -36,8 +36,9 @@ features:
     pkgconfig: libpostproc
     description: "Build the postproc library"
     version: "<8.0"
+    depends: ["@license-gpl"]
   license-gpl:
-    flag: "--enable-gpl --enable-version3"
+    flag: "--enable-gpl"
     description: "Allow use of GPL code, the resulting libs and binaries will be under GPL"
   license-nonfree:
     flag: "--enable-nonfree"
@@ -351,7 +352,8 @@ define:
     - mediafoundation
     - w32threads
   all:
-    - "@all-lgpl"
+    - "@lgpl"
+    - "@windows-hw"
   lgpl:
     - zlib
     - bzip2
@@ -400,20 +402,22 @@ define:
     - nvcodec
     - amf
   all-lgpl:
+    - "@all"
     - "@lgpl"
-    - "@windows-hw"
   gpl:
     - "@all-lgpl"
     - dvdnav
     - dvdread
     - x264
     - x265
+    - postproc
   all-gpl:
     - "@all"
     - "@gpl"
-    - postproc
   nonfree:
     - fdk-aac
   all-nonfree:
-    - "@all-gpl"
+    - "@all"
+    - "@gpl"
+    - "@lgpl"
     - "@nonfree"

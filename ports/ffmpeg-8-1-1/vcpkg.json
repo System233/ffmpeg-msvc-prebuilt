@@ -413,7 +413,13 @@
         {
           "name": "ffmpeg-8-1-1",
           "features": [
-            "all-lgpl"
+            "lgpl"
+          ]
+        },
+        {
+          "name": "ffmpeg-8-1-1",
+          "features": [
+            "windows-hw"
           ]
         }
       ]
@@ -441,13 +447,13 @@
         {
           "name": "ffmpeg-8-1-1",
           "features": [
-            "lgpl"
+            "all"
           ]
         },
         {
           "name": "ffmpeg-8-1-1",
           "features": [
-            "windows-hw"
+            "lgpl"
           ]
         }
       ]
@@ -458,7 +464,19 @@
         {
           "name": "ffmpeg-8-1-1",
           "features": [
-            "all-gpl"
+            "all"
+          ]
+        },
+        {
+          "name": "ffmpeg-8-1-1",
+          "features": [
+            "gpl"
+          ]
+        },
+        {
+          "name": "ffmpeg-8-1-1",
+          "features": [
+            "lgpl"
           ]
         },
         {
