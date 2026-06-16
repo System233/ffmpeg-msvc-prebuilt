@@ -145,7 +145,7 @@ jobs:
           }
 
       - name: Upload binary cache artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
@@ -228,7 +228,7 @@ jobs:
           }
 
       - name: Restore binary cache from seed
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
@@ -363,7 +363,7 @@ jobs:
       # containing both the .zip archive and the .var.yaml metadata file.
       - name: Step 6 - Upload artifacts
         if: steps.vars.outputs.filter_skip != 'true' && steps.check.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.vars.outputs.variant_id }}
           path: |
@@ -422,7 +422,7 @@ jobs:
         shell: bash
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: ffmpeg-*
           path: ${{ github.workspace }}/artifacts/
