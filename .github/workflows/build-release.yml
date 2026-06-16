@@ -82,11 +82,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          install: make pkg-config diffutils nasm
+      # - name: Setup MSYS2
+      #   uses: msys2/setup-msys2@v2
+      #   with:
+      #     msystem: MINGW64
+      #     install: make pkg-config diffutils nasm
 
       - name: Clone vcpkg at pinned commit
         run: |
@@ -179,11 +179,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+      # - name: Setup MSYS2
+      #   uses: msys2/setup-msys2@v2
+      #   with:
+      #     msystem: MINGW64
+      #     install: make pkg-config diffutils nasm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          msystem: MINGW64
-          install: make pkg-config diffutils nasm
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
 
       - name: Clone vcpkg at pinned commit
         run: |
@@ -194,6 +204,15 @@ jobs:
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
+      - name: Restore vcpkg downloads cache
+        if: inputs.dry_run == true
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}
+            
       - name: Patch vcvarsall.bat for ARM Windows SDK
         if: matrix.triplet == 'arm-windows'
         run: |
