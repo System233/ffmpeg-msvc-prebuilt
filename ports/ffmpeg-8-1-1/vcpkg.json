@@ -504,12 +504,6 @@
             "x265"
           ],
           "platform": "!uwp & !xbox"
-        },
-        {
-          "name": "ffmpeg-8-1-1",
-          "features": [
-            "all-lgpl"
-          ]
         }
       ]
     },

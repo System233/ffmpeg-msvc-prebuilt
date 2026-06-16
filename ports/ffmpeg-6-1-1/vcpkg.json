@@ -230,7 +230,15 @@
       ]
     },
     "postproc": {
-      "description": "Build the postproc library"
+      "description": "Build the postproc library",
+      "dependencies": [
+        {
+          "name": "ffmpeg-6-1-1",
+          "features": [
+            "license-gpl"
+          ]
+        }
+      ]
     },
     "pthreads": {
       "description": "POSIX threads support"
@@ -379,7 +387,13 @@
         {
           "name": "ffmpeg-6-1-1",
           "features": [
-            "all-lgpl"
+            "lgpl"
+          ]
+        },
+        {
+          "name": "ffmpeg-6-1-1",
+          "features": [
+            "windows-hw"
           ]
         }
       ]
@@ -387,12 +401,6 @@
     "all-gpl": {
       "description": "all-gpl feature group",
       "dependencies": [
-        {
-          "name": "ffmpeg-6-1-1",
-          "features": [
-            "postproc"
-          ]
-        },
         {
           "name": "ffmpeg-6-1-1",
           "features": [
@@ -413,13 +421,13 @@
         {
           "name": "ffmpeg-6-1-1",
           "features": [
-            "lgpl"
+            "all"
           ]
         },
         {
           "name": "ffmpeg-6-1-1",
           "features": [
-            "windows-hw"
+            "lgpl"
           ]
         }
       ]
@@ -430,7 +438,19 @@
         {
           "name": "ffmpeg-6-1-1",
           "features": [
-            "all-gpl"
+            "all"
+          ]
+        },
+        {
+          "name": "ffmpeg-6-1-1",
+          "features": [
+            "gpl"
+          ]
+        },
+        {
+          "name": "ffmpeg-6-1-1",
+          "features": [
+            "lgpl"
           ]
         },
         {
@@ -447,6 +467,7 @@
         {
           "name": "ffmpeg-6-1-1",
           "features": [
+            "postproc",
             "x264"
           ]
         },
@@ -456,12 +477,6 @@
             "x265"
           ],
           "platform": "!uwp & !xbox"
-        },
-        {
-          "name": "ffmpeg-6-1-1",
-          "features": [
-            "all-lgpl"
-          ]
         }
       ]
     },
