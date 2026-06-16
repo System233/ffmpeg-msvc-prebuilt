@@ -380,11 +380,11 @@ jobs:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
         run: |
           $port = "${{ steps.vars.outputs.port_name }}"
-          $features = "${{ matrix.license }}"
+          $features = "all-${{ matrix.license }}"
           if ("${{ matrix.static }}" -ne "") {
             $features = "$features,${{ matrix.static }}"
           }
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[all,${features}]" `
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" `
             --triplet=${{ matrix.triplet }} `
             --overlay-ports=ports/ `
             --overlay-triplets=triplets/

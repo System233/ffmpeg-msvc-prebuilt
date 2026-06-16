@@ -405,7 +405,6 @@ define:
     - "@all"
     - "@lgpl"
   gpl:
-    - "@all-lgpl"
     - dvdnav
     - dvdread
     - x264
