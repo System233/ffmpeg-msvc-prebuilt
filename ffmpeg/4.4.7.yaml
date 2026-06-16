@@ -5,24 +5,24 @@ source:
   sha512: ccd79de9a570d6168ff2ee28061c3637a39963512a3e44b438a4a14a92865d5e91ed7d2f98a360826ac389e96d0ff3eb9f27b88164e6846d35efa0a817c0ff7b
 
 patches:
-  - 0001-create-lib-libraries.patch
-  - 0003-fix-windowsinclude.patch
-  - 0004-fix-debug-build.patch
-  - 0006-fix-StaticFeatures.patch
-  - 0007-fix-lib-naming.patch
-  - 0009-Fix-fdk-detection.patch
-  - 0010-Fix-x264-detection.patch
-  - 0011-Fix-x265-detection.patch
-  - 0012-Fix-ssl-110-detection-4.4.7.patch
-  - 0013-define-WINVER.patch
-  - 0014-avfilter-dependency-fix.patch
-  - 0015-Fix-xml2-detection.patch
-  - 0017-Patch-for-ticket-9019-CUDA-Compile-Broken-Using-MSVC.patch
-  - 0018-libaom-Dont-use-aom_codec_av1_dx_algo.patch
-  - 0019-libx264-Do-not-explicitly-set-X264_API_IMPORTS.patch
-  - 0020-fix-aarch64-libswscale-4.4.7.patch
-  - 0022-fix-m1-hardware-decode-nal-bits.patch
-  - 0023-fix-qsv-init.patch
-  - 0050-lensfun-0.3.4-compat-4.4.7.patch
-  - 0052-svtav1-3.x-compat-4.4.7.patch
-  - 0001-fix-iconv-link.patch
+  - 4.x/0001-create-lib-libraries.patch
+  - 4.x/0003-fix-windowsinclude.patch
+  - 4.x/0004-fix-debug-build.patch
+  - 4.x/0006-fix-StaticFeatures.patch
+  - 4.x/0007-fix-lib-naming.patch
+  - 4.x/0009-Fix-fdk-detection.patch
+  - 4.x/0010-Fix-x264-detection.patch
+  - 4.x/0011-Fix-x265-detection.patch
+  - 4.x/0012-Fix-ssl-110-detection-4.4.7.patch
+  - 4.x/0013-define-WINVER.patch
+  - 4.x/0014-avfilter-dependency-fix.patch
+  - 4.x/0015-Fix-xml2-detection.patch
+  - 4.x/0017-Patch-for-ticket-9019-CUDA-Compile-Broken-Using-MSVC.patch
+  - 4.x/0018-libaom-Dont-use-aom_codec_av1_dx_algo.patch
+  - 4.x/0019-libx264-Do-not-explicitly-set-X264_API_IMPORTS.patch
+  - 4.x/0020-fix-aarch64-libswscale-4.4.7.patch
+  - 4.x/0022-fix-m1-hardware-decode-nal-bits.patch
+  - 4.x/0023-fix-qsv-init.patch
+  - 4.x/0050-lensfun-0.3.4-compat-4.4.7.patch
+  - 4.x/0052-svtav1-3.x-compat-4.4.7.patch
+  - 4.x/0001-fix-iconv-link.patch

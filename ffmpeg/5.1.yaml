@@ -22,4 +22,4 @@ build:
 
 
 patches:
-  - 0050-lensfun-0.3.4-compat.patch
+  - 5.x/0050-lensfun-0.3.4-compat.patch

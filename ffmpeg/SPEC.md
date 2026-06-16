@@ -26,41 +26,41 @@ scripts/
 ## YAML 字段参考
 
 ### base.yaml
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| features | map | feature 注册表，key=feature名 |
-| features.\<name\>.flag | string | FFmpeg configure --enable-* 标志 |
-| features.\<name\>.description | string | 功能描述 |
-| features.\<name\>.pkgconfig | string | (核心库) pkg-config 模块名 |
-| features.\<name\>.license | string | 许可证约束: gpl / nonfree |
-| define | map | 别名定义，value 为 feature 名列表 |
+| 字段                          | 类型   | 说明                                                  |
+| ----------------------------- | ------ | ----------------------------------------------------- |
+| features                      | map    | feature 注册表，key=feature名                         |
+| features.\<name\>.flag        | string | FFmpeg configure --enable-* 标志                      |
+| features.\<name\>.description | string | 功能描述                                              |
+| features.\<name\>.depends     | string | (核心库) pkg-config 模块名,@前缀引用别名或其他feature |
+| define                        | map    | 别名定义，value 为 feature 名列表                     |
 
 ### 族 YAML (X.Y.yaml)
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| extends | string | 继承目标 (base 或 X.Y) |
-| source | map | 下载源 |
-| source.method | string | git / url |
-| source.repo | string | GitHub repo (method=git 时) |
-| source.ref | string | 版本引用, `${VERSION}` 占位 |
-| build | map | 构建参数 |
-| build.base_options | string | 基础 configure 选项 |
-| build.debug | map | debug 模式 |
-| build.debug.options | string | debug configure 选项 |
-| build.release | map | release 模式 |
-| build.release.options | string | release configure 选项 |
-| build.host_deps | list | host 依赖 (name, host:true) |
-| features | map | feature 选择 |
-| features.include | list | 启用的 feature |
-| features.exclude | list | 禁用的 feature (支持 fnmatch 通配符) |
-| features.defaults | list | 默认启用的 feature |
+| 字段                  | 类型   | 说明                                         |
+| --------------------- | ------ | -------------------------------------------- |
+| extends               | string | 继承目标 (base 或 X.Y)                       |
+| source                | map    | 下载源                                       |
+| source.method         | string | git / url                                    |
+| source.repo           | string | GitHub repo (method=git 时)                  |
+| source.ref            | string | 版本引用, `${VERSION}` 占位                  |
+| build                 | map    | 构建参数                                     |
+| build.base_options    | string | 基础 configure 选项                          |
+| build.debug           | map    | debug 模式                                   |
+| build.debug.options   | string | debug configure 选项                         |
+| build.release         | map    | release 模式                                 |
+| build.release.options | string | release configure 选项                       |
+| build.host_deps       | list   | host 依赖 (name, host:true)                  |
+| features              | map    | feature 选择                                 |
+| define.[name]         | list   | features组别名，不出现再vcpkg.json中（展开） |
+| define.include        | list   | 启用的 feature                               |
+| define.exclude        | list   | 禁用的 feature (支持 fnmatch 通配符)         |
+| define.defaults       | list   | 默认启用的 feature                           |
 
 ### 版本 YAML (X.Y.Z.yaml)
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| extends | string | 继承目标族 YAML |
+| 字段          | 类型   | 说明                  |
+| ------------- | ------ | --------------------- |
+| extends       | string | 继承目标族 YAML       |
 | source.sha512 | string | 源码 SHA512 (128 hex) |
-| patches | list | 补丁文件名列表 |
+| patches       | list   | 补丁文件名列表        |
 
 ## 继承解析
 1. 从 base.yaml 开始，沿 extends 链加载

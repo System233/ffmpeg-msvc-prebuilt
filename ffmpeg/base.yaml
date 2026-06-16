@@ -336,87 +336,128 @@ features:
   # Linkage
   static:
     description: "Build FFmpeg as static libraries instead of shared"
+  ffplay:
+    flag: "--enable-ffplay"
+    depends: ["@base"]
+    description: "Build the ffplay application"
+  ffmpeg:
+    flag: "--enable-ffmpeg"
+    depends: ["@base"]
+    description: "Build the ffmpeg application"
+  ffprobe:
+    flag: "--enable-ffprobe"
+    depends: ["@base"]
+    description: "Build the ffprobe application"
+  base:
+    depends:
+      - "@avcodec"
+      - "@avdevice"
+      - "@avformat"
+      - "@avfilter"
+      - "@swresample"
+      - "@swscale"
 
+    description: "Build all libraries"
+  app:
+    depends:
+      - "@ffmpeg"
+      - "@ffplay"
+      - "@ffprobe"
+    description: "Build all applications"
+
+  # ---- Meta-features (migrated from define: for vcpkg feature generation) ----
+
+  windows-hw:
+    description: "Windows hardware acceleration features"
+    depends:
+      - "@d3d11va"
+      - "@d3d12va"
+      - "@dxva2"
+      - "@mediafoundation"
+      - "@w32threads"
+  all:
+    description: "All LGPL features plus Windows hardware acceleration"
+    depends:
+      - "@lgpl"
+      - "@windows-hw"
+  lgpl:
+    description: "All LGPL-licensed optional features"
+    depends:
+      - "@zlib"
+      - "@bzip2"
+      - "@lzma"
+      - "@iconv"
+      - "@freetype"
+      - "@fribidi"
+      - "@fontconfig"
+      - "@harfbuzz"
+      - "@ass"
+      - "@bluray"
+      - "@opus"
+      - "@vorbis"
+      - "@theora"
+      - "@speex"
+      - "@mp3lame"
+      - "@soxr"
+      - "@openmpt"
+      - "@ilbc"
+      - "@modplug"
+      - "@gme"
+      - "@mysofa"
+      - "@tesseract"
+      - "@dav1d"
+      - "@aom"
+      - "@vpx"
+      - "@webp"
+      - "@openjpeg"
+      - "@snappy"
+      - "@openh264"
+      - "@jxl"
+      - "@lensfun"
+      - "@shaderc"
+      - "@svtav1"
+      - "@vvenc"
+      - "@sdl2"
+      - "@xml2"
+      - "@vulkan"
+      - "@opencl"
+      - "@opengl"
+      - "@srt"
+      - "@ssh"
+      - "@openssl"
+      - "@zmq"
+      - "@nvcodec"
+      - "@amf"
+  all-lgpl:
+    description: "Meta-feature: all + lgpl"
+    depends:
+      - "@all"
+      - "@lgpl"
+  gpl:
+    description: "All GPL-licensed features"
+    depends:
+      - "@dvdnav"
+      - "@dvdread"
+      - "@x264"
+      - "@x265"
+      - "@postproc"
+  all-gpl:
+    description: "Meta-feature: all + gpl"
+    depends:
+      - "@all"
+      - "@gpl"
+  nonfree:
+    description: "All non-free features"
+    depends:
+      - "@fdk-aac"
+  all-nonfree:
+    description: "Meta-feature: all features including non-free"
+    depends:
+      - "@all"
+      - "@gpl"
+      - "@lgpl"
+      - "@nonfree"
 define:
   defaults:
-    - avcodec
-    - avdevice
-    - avformat
-    - avfilter
-    - swresample
-    - swscale
-  windows-hw:
-    - d3d11va
-    - d3d12va
-    - dxva2
-    - mediafoundation
-    - w32threads
-  all:
-    - "@lgpl"
-    - "@windows-hw"
-  lgpl:
-    - zlib
-    - bzip2
-    - lzma
-    - iconv
-    - freetype
-    - fribidi
-    - fontconfig
-    - harfbuzz
-    - ass
-    - bluray
-    - opus
-    - vorbis
-    - theora
-    - speex
-    - mp3lame
-    - soxr
-    - openmpt
-    - ilbc
-    - modplug
-    - gme
-    - mysofa
-    - tesseract
-    # - tensorflow
-    - dav1d
-    - aom
-    - vpx
-    - webp
-    - openjpeg
-    - snappy
-    - openh264
-    - jxl
-    - lensfun
-    - shaderc
-    - svtav1
-    - vvenc
-    - sdl2
-    - xml2
-    - vulkan
-    - opencl
-    - opengl
-    - srt
-    - ssh
-    - openssl
-    - zmq
-    - nvcodec
-    - amf
-  all-lgpl:
-    - "@all"
-    - "@lgpl"
-  gpl:
-    - dvdnav
-    - dvdread
-    - x264
-    - x265
-    - postproc
-  all-gpl:
-    - "@all"
-    - "@gpl"
-  nonfree:
-    - fdk-aac
-  all-nonfree:
-    - "@all"
-    - "@gpl"
-    - "@lgpl"
-    - "@nonfree"
+    - "@app"
+    - "@base"

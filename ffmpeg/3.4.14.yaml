@@ -5,15 +5,15 @@ source:
   sha512: e249fa1eb9e8c3bef813da6da190c55a6b23279a5f268416e33e598e5ca06ed7b1606b91a68cf3914f22d16d88ff880423f3dbcd74d1528edaa15af30d259224
 
 patches:
-  - configure_opencv-3.4.14.patch
-  - create-lib-libraries.patch
-  - detect-openssl-3.4.14.patch
-  - windres-configure-fix-3.4.14.patch
-  - 0006-fix-libmp3lame-static.patch
-  - 0007-fix-msvc-lib-naming.patch
-  - 0008-fix-sdl2-version.patch
-  - 0009-fix-openjpeg-lib-name.patch
-  - 0010-fix-opencl.patch
-  - 0011-fix-opengl-quoting.patch
-  - 0012-fix-opengl-unistd.patch
-  - 0013-fix-x264-imports.patch
+  - 3.x/configure_opencv-3.4.14.patch
+  - 3.x/create-lib-libraries.patch
+  - 3.x/detect-openssl-3.4.14.patch
+  - 3.x/windres-configure-fix-3.4.14.patch
+  - 3.x/0006-fix-libmp3lame-static.patch
+  - 3.x/0007-fix-msvc-lib-naming.patch
+  - 3.x/0008-fix-sdl2-version.patch
+  - 3.x/0009-fix-openjpeg-lib-name.patch
+  - 3.x/0010-fix-opencl.patch
+  - 3.x/0011-fix-opengl-quoting.patch
+  - 3.x/0012-fix-opengl-unistd.patch
+  - 3.x/0013-fix-x264-imports.patch

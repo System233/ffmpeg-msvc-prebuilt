@@ -5,9 +5,9 @@
 #   - Push to main with changes to ffmpeg/*.yaml
 #   - Pull request merged (closed + merged) with changes to ffmpeg/*.yaml
 #
-# Runs ci_detect_changes.py to diff before/after SHAs across ffmpeg/*.yaml
-# files, parses JSON output from ci_detect_changes.py --json flag,
-# and dispatches build-release.yml for each detected version.
+# Runs ci_detect_changes.py to diff before/after SHAs, outputs a JSON
+# matrix, and dispatches build-release.yml for each changed version
+# via strategy.matrix + uses.
 #
 # SPEC: ci/SPEC.md §7.3
 # ---------------------------------------------------------------------------
@@ -34,9 +34,8 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout repository with full history
         uses: actions/checkout@v6
@@ -59,7 +58,6 @@ jobs:
             BEFORE="${{ github.event.before }}"
             AFTER="${{ github.event.after }}"
           else
-            # pull_request closed + merged
             BEFORE="${{ github.event.pull_request.base.sha }}"
             AFTER="${{ github.event.pull_request.head.sha }}"
           fi
@@ -68,41 +66,31 @@ jobs:
           echo "After SHA:  ${AFTER}"
 
           # ── Run detection script with JSON output ─────────────────────
-          python scripts/ci/ci_detect_changes.py \
+          python scripts/ops/ci_detect_changes.py \
             "$BEFORE" "$AFTER" \
             --json > changes.json
           cat changes.json
 
-          # ── Parse JSON and set outputs ────────────────────────────────
-          FOUND=$(python -c "import json; d=json.load(open('changes.json')); print(str(d['found']).lower())")
-          echo "found=$FOUND" >> "$GITHUB_OUTPUT"
-
-          if [ "$FOUND" = "true" ]; then
-            python -c "
-          import json
-          d = json.load(open('changes.json'))
-          versions = ','.join(c['version'] for c in d['changed'])
-          revisions = ','.join(str(c['revision']) for c in d['changed'])
-          print(f'versions={versions}')
-          print(f'revisions={revisions}')
-          " >> "$GITHUB_OUTPUT"
-            echo ""
-            echo "▸ Versions to build: $(python -c "import json; d=json.load(open('changes.json')); print(','.join(c['version'] for c in d['changed']))")"
-            echo "▸ Revisions:         $(python -c "import json; d=json.load(open('changes.json')); print(','.join(str(c['revision']) for c in d['changed']))")"
-          else
-            echo "No version changes detected — exiting."
-          fi
-
-      - name: Dispatch build-release for each version
-        if: steps.detect.outputs.found == 'true'
+      - name: Build dispatch matrix
+        id: set-matrix
         run: |
-          IFS=',' read -ra VERSIONS <<< "${{ steps.detect.outputs.versions }}"
-          IFS=',' read -ra REVISIONS <<< "${{ steps.detect.outputs.revisions }}"
-          for i in "${!VERSIONS[@]}"; do
-            ver="${VERSIONS[$i]}"
-            rev="${REVISIONS[$i]}"
-            echo "━━━ Dispatching build: version=${ver}, revision=${rev} ━━━"
-            gh workflow run build-release.yml \
-              -f version="${ver}" \
-              -f revision="${rev}"
-          done
+          include=$(jq -c '
+            if .found then
+              [.changed[] | {version, revision}]
+            else
+              []
+            end
+          ' changes.json)
+          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    uses: ./.github/workflows/build-release.yml
+    with:
+      version: ${{ matrix.version }}
+      revision: ${{ matrix.revision }}
+    secrets: inherit

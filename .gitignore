@@ -8,3 +8,6 @@ web/node_modules/
 catalog.json
 cache
 dist
+ports/ffmpeg
+ports/ffmpeg-*
+.pytest_cache

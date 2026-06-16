@@ -10,6 +10,9 @@
 
 name: Retention Cleanup
 
+concurrency:
+  group: data-branch
+
 on:
   schedule:
     - cron: '0 0 * * 0'   # Sunday midnight UTC
@@ -31,7 +34,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: data
-          path: data-repo
+          path: data
           fetch-depth: 0
         continue-on-error: true
 
@@ -51,11 +54,11 @@ jobs:
         run: pip install pyyaml
 
       # Run retention policy script.
-      # The script reads data from data-repo/data/ and prints DELETE_RELEASE:
+      # The script reads data from data/ and prints DELETE_RELEASE:
       # and DELETE_TAG: lines for each version that should be removed.
       - name: Run retention policy
         run: |
-          python scripts/ci/retention_policy.py data-repo/data > cleanup_output.txt
+          python scripts/ops/retention_policy.py data > cleanup_output.txt
           echo "=== Cleanup output ==="
           cat cleanup_output.txt
         shell: bash
@@ -64,7 +67,7 @@ jobs:
       # Best-effort: ignore errors if a release was already deleted.
       - name: Delete GitHub Releases
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ ! -f cleanup_output.txt ]; then
             echo "No cleanup output found — nothing to delete."
@@ -93,7 +96,7 @@ jobs:
             git push origin --delete "$tag" 2>/dev/null || echo "  (skipped — tag may not exist)"
           done < <(grep '^DELETE_TAG:' ../cleanup_output.txt || true)
         shell: bash
-        working-directory: data-repo
+        working-directory: data
 
       # Commit and push the updated data branch (version YAML deletions +
       # build-index updates performed by retention_policy.py).
@@ -101,15 +104,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
+          git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit on data branch"
-          else
-            git commit -m "retention: cleanup old builds"
-            git push origin data
+            exit 0
           fi
+          git commit -m "retention: cleanup old builds"
+          for i in 1 2 3; do
+            git pull --rebase origin data && git push origin data && break
+            echo "  Push attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || { echo "ERROR: failed to push after 3 attempts"; exit 1; }
         shell: bash
-        working-directory: data-repo
+        working-directory: data
 
   # ── Trigger pages rebuild ─────────────────────────────────────────────────
   trigger-pages:

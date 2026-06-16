@@ -6,7 +6,7 @@ source:
   ref: "n${VERSION}"
 
 build:
-  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect"
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
   debug:
     options: "--disable-optimizations"
   release:
@@ -16,4 +16,3 @@ build:
       host: true
     - name: vcpkg-pkgconfig-get-modules
       host: true
-

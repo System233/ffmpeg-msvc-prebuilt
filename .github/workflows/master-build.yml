@@ -1,73 +1,39 @@
-# ---------------------------------------------------------------------------
-# master-build.yml — Weekly FFmpeg master branch build
-#
-# Runs every Friday at 20:00 UTC+8 (12:00 UTC) and may be triggered
-# manually via workflow_dispatch.
-#
-# Clones the upstream ffmpeg/ffmpeg master, determines the closest
-# existing version family YAML, then dispatches build-release.yml with
-# version=master and the git describe string as ffmpeg_ref.
-#
-# SPEC: ci/SPEC.md §7.4
-# ---------------------------------------------------------------------------
-
 name: Build FFmpeg Master
 
 on:
   schedule:
-    - cron: '0 12 * * 5'   # Friday 20:00 UTC+8 = 12:00 UTC
+    - cron: '0 12 * * 5'
   workflow_dispatch:
 
 jobs:
-  build-master:
+  get-metadata:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-
+    outputs:
+      describe: ${{ steps.meta.outputs.describe }}
+      commit: ${{ steps.meta.outputs.commit }}
+      sha512: ${{ steps.meta.outputs.sha512 }}
     steps:
-      # ── Step 1: Shallow-clone upstream FFmpeg master ──────────────────────
-      - name: Clone FFmpeg master
-        id: ffmpeg
+      - name: Clone FFmpeg master (full history for git describe)
         run: |
-          git clone --depth 100 https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+          git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
 
-      # ── Step 2: Get describe string ───────────────────────────────────────
-      - name: Get git describe
-        id: describe
+      - name: Get build metadata
+        id: meta
         run: |
           DESCRIBE=$(git -C ffmpeg-src describe --tags --abbrev=7)
+          COMMIT=$(git -C ffmpeg-src rev-parse HEAD)
+          SHA512=$(curl -sL "https://github.com/FFmpeg/FFmpeg/archive/${COMMIT}.tar.gz" | sha512sum | cut -d' ' -f1)
           echo "describe=$DESCRIBE" >> "$GITHUB_OUTPUT"
-          echo "Resolved describe: $DESCRIBE"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "sha512=$SHA512" >> "$GITHUB_OUTPUT"
 
-      # ── Step 3: Checkout this repo + setup Python ─────────────────────────
-      - name: Checkout ffmpeg-msvc-prebuilt
-        uses: actions/checkout@v6
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      # ── Step 4: Find closest existing version family YAML ─────────────────
-      # Use find_closest_yaml.py to locate the closest version family YAML
-      - name: Find closest YAML family
-        id: closest
-        run: |
-          DESCRIBE=$(git -C ffmpeg-src describe --tags --abbrev=7)
-          CLOSEST=$(python scripts/find_closest_yaml.py --describe "$DESCRIBE")
-          echo "Expected closest version family: $CLOSEST"
-          echo "family=$CLOSEST" >> "$GITHUB_OUTPUT"
-
-      # ── Step 5: Dispatch build-release.yml ────────────────────────────────
-      # Master builds do NOT commit any YAML files to main.
-      - name: Dispatch build-release
-        run: |
-          DESCRIBE="${{ steps.describe.outputs.describe }}"
-          FAMILY="${{ steps.closest.outputs.family }}"
-          echo "Dispatching build-release.yml"
-          echo "  version=master"
-          echo "  ffmpeg_ref=$DESCRIBE"
-          echo "  closest_family=$FAMILY"
-          gh workflow run build-release.yml \
-            -f version=master \
-            -f ffmpeg_ref="$DESCRIBE"
+  build:
+    needs: get-metadata
+    uses: ./.github/workflows/build-release.yml
+    with:
+      yaml: master
+      version: ${{ needs.get-metadata.outputs.describe }}
+      revision: 0
+      ffmpeg_ref: ${{ needs.get-metadata.outputs.describe }}
+      sha512: ${{ needs.get-metadata.outputs.sha512 }}
+    secrets: inherit

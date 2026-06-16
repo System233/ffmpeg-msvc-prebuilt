@@ -2,18 +2,22 @@
 # scan-updates.yml — Scan for new FFmpeg upstream releases and create PRs
 #
 # Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API, detects new
-# versions, creates YAML configs from the closest existing version, generates
-# port files, and opens a PR on a ci/ffmpeg-{version} branch.
+# versions, copies the closest existing YAML, computes sha512, generates
+# port files, and opens an auto-merge PR on a ci/ffmpeg-{version} branch.
 #
-# See ci/SPEC.md §7.2 for the full specification.
+# Requires contents:write and pull-requests:write for git push + gh pr create.
 # ---------------------------------------------------------------------------
 
 name: Scan for new FFmpeg releases
 
 on:
   schedule:
-    - cron: "0 6 * * *"          # Daily at 06:00 UTC
-  workflow_dispatch:              # Manual trigger
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   scan:
@@ -27,38 +31,23 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements.txt
 
-      # ── Detect new upstream versions ──────────────────────────────────
       - name: Scan for new upstream releases
-        id: scan
         run: |
-          python scripts/ci/scan_updates.py 2>&1 | tee scan_output.txt
+          python scripts/ops/scan_updates.py 2>&1 | tee scan_output.txt
 
-          # Try JSON output first (future-proof for scan_updates.py upgrade)
-          if python -c "
-          import json, sys
-          with open('scan_output.txt') as f:
-              data = json.load(f)
-          versions = data.get('new_versions', [])
-          for v in versions:
-              print(v)
-          " 2>/dev/null; then
-            : # JSON parsing succeeded
-          else
-            # Fallback: grep for [NEW] lines and extract version
-            grep '\[NEW\]' scan_output.txt \
-              | sed 's/.*[[:space:]]\([0-9]\+\.[0-9]\+\(\.[0-9]\+\)*\)[[:space:]].*/\1/'
-          fi > new_versions.txt
-
+      - name: Extract new versions
+        id: versions
+        run: |
+          grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' scan_output.txt > new_versions.txt || true
           count=$(wc -l < new_versions.txt)
           echo "Detected ${count} new version(s)"
           cat new_versions.txt
 
-      # ── Create PRs for each new version ──────────────────────────────
-      - name: Create PRs for new versions
+      - name: Create auto-merge PRs for new versions
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ ! -s new_versions.txt ]; then
             echo "No new versions to process."
@@ -73,27 +62,22 @@ jobs:
             echo ""
             echo "=== Processing version: ${version} ==="
 
-            # ── a. Check if YAML already exists ────────────────────────
             if [ -f "ffmpeg/${version}.yaml" ]; then
               echo "  SKIP: ffmpeg/${version}.yaml already exists"
               continue
             fi
 
-            # ── b. Find closest existing YAML ──────────────────────────
             CLOSEST=$(python scripts/find_closest_yaml.py --version "$version")
-
-            # ── c. Create PR for version ────────────────────────────────
-            python scripts/ci/create_version_pr.py --version "$version" --closest-yaml "$CLOSEST"
+            python scripts/ops/create_version_pr.py --version "$version" --closest-yaml "$CLOSEST"
 
           done < new_versions.txt
 
-      # ── Summary (always runs) ────────────────────────────────────────
       - name: Summary
         if: always()
         run: |
           echo "=== Scan Updates Summary ==="
-          if [ -f new_versions.txt ] && [ -s new_versions.txt ]; then
-            echo "New versions detected:"
+          if [ -s new_versions.txt ]; then
+            echo "New versions:"
             cat new_versions.txt
           else
             echo "No new versions detected."

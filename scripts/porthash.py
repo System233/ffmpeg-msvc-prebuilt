@@ -110,7 +110,12 @@ def hash_port_dir(ports_dir: Path, package: str) -> str:
     for fp in files:
         rel = fp.relative_to(pkg_dir)
         hasher.update(str(rel).encode("utf-8"))
-        hasher.update(fp.read_bytes())
+        with open(fp, "rb") as f:
+            while True:
+                chunk = f.read(1048576)
+                if not chunk:
+                    break
+                hasher.update(chunk)
 
     return hasher.hexdigest()
 
