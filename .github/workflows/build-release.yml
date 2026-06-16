@@ -146,6 +146,7 @@ jobs:
 
       - name: Upload binary cache artifact
         uses: actions/upload-artifact@v6
+        if: inputs.dry_run != true
         with:
           name: vcpkg-cache-${{ matrix.triplet }}
           path: ${{ runner.temp }}/vcpkg-cache
@@ -217,13 +218,27 @@ jobs:
 
       - name: Restore vcpkg downloads cache
         if: inputs.dry_run == true
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
           key: vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
-          restore-keys: |
-            vcpkg-dl-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}
+          fail-on-cache-miss: true
+
+      - name: Restore vcpkg binary cache (dry_run)
+        if: inputs.dry_run == true
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ env.VCPKG_COMMIT }}-${{ matrix.triplet }}-${{ hashFiles('ports/ffmpeg-deps/vcpkg.json') }}
+          fail-on-cache-miss: true
             
+      - name: Restore binary cache from seed
+        uses: actions/download-artifact@v8
+        if: inputs.dry_run != true
+        with:
+          name: vcpkg-cache-${{ matrix.triplet }}
+          path: ${{ runner.temp }}/vcpkg-cache
+
       - name: Patch vcvarsall.bat for ARM Windows SDK
         if: matrix.triplet == 'arm-windows'
         run: |
@@ -237,12 +252,6 @@ jobs:
               Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
             }
           }
-
-      - name: Restore binary cache from seed
-        uses: actions/download-artifact@v8
-        with:
-          name: vcpkg-cache-${{ matrix.triplet }}
-          path: ${{ runner.temp }}/vcpkg-cache
 
       # ── Step 1: Resolve linkage name and variant identifiers ──────────────
       # Also performs runtime filtering by target_arch / target_license.
