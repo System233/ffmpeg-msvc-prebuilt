@@ -88,6 +88,9 @@ jobs:
       #     msystem: MINGW64
       #     install: make pkg-config diffutils nasm
 
+      - name: Install NASM via Choco
+        run: choco install nasm --no-progress -y
+
       - name: Clone vcpkg at pinned commit
         run: |
           git clone https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
@@ -212,6 +215,9 @@ jobs:
       #   with:
       #     msystem: MINGW64
       #     install: make pkg-config diffutils nasm
+
+      - name: Install NASM via Choco
+        run: choco install nasm --no-progress -y
 
       - name: Set up Python
         uses: actions/setup-python@v6
