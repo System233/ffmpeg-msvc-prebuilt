@@ -1,0 +1,46 @@
+arch: x64
+triplet: x64-windows-mixed
+linkage: shared
+license: gpl
+download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-n8.2-dev-1-gabc1234/ffmpeg-n8.2-dev-1-gabc1234-x64-windows-mixed-shared-gpl.zip
+features:
+- avcodec
+- avdevice
+- avfilter
+- avformat
+- avutil
+- swresample
+- swscale
+- aom
+- dav1d
+- mp3lame
+- opus
+- x264
+- x265
+- zlib
+- d3d11va
+- d3d12va
+- dxva2
+- mediafoundation
+- amf
+- qsv
+- nvcodec
+- vulkan
+dependencies:
+- aom
+- dav1d
+- mp3lame
+- opus
+- x264
+- x265
+- zlib
+- amd-amf
+- ffnvcodec-12
+- libvpl
+- vulkan
+assets:
+  binary:
+    file: ffmpeg-n8.2-dev-1-gabc1234-x64-windows-mixed-shared-gpl.zip
+    size: 54100000
+    digest: sha256:ma11111111111111111111111111111111111111111111111111111111111111
+variant_id: ffmpeg-n8.2-dev-1-gabc1234-x64-windows-mixed-shared-gpl

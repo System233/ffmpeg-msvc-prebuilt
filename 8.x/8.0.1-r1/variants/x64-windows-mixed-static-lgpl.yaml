@@ -1,0 +1,34 @@
+arch: x64
+triplet: x64-windows-mixed
+linkage: static
+license: lgpl
+download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-8.0.1-r1/ffmpeg-8.0.1-x64-windows-mixed-static-lgpl.zip
+features:
+- avcodec
+- avdevice
+- avfilter
+- avformat
+- avutil
+- swresample
+- swscale
+- aom
+- dav1d
+- mp3lame
+- opus
+- zlib
+- d3d11va
+- dxva2
+- amf
+dependencies:
+- aom
+- dav1d
+- mp3lame
+- opus
+- zlib
+- amd-amf
+assets:
+  binary:
+    file: ffmpeg-8.0.1-x64-windows-mixed-static-lgpl.zip
+    size: 77800000
+    digest: sha256:ddd4444444444444444444444444444444444444444444444444444444444444
+variant_id: ffmpeg-8.0.1-r1-x64-windows-mixed-static-lgpl

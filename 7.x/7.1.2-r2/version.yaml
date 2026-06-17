@@ -1,0 +1,580 @@
+version: 7.1.2
+revision: 2
+lts: true
+schema_version: 1
+ffmpeg_ref: n7.1.2
+release_tag: ffmpeg-7.1.2-r2
+release_id: 950
+release_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/tag/ffmpeg-7.1.2-r2
+created: '2026-06-10T09:00:00Z'
+updated: '2026-06-16T22:23:32Z'
+variant_count: 13
+total_variants: 24
+complete: false
+variants:
+- arch: arm64
+  triplet: arm64-windows
+  linkage: shared
+  license: gpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-arm64-windows-shared-gpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-arm64-windows-shared-gpl.zip
+      size: 39100000
+      digest: sha256:7a77777777777777777777777777777777777777777777777777777777777777
+  variant_id: ffmpeg-7.1.2-r2-arm64-windows-shared-gpl
+- arch: arm64
+  triplet: arm64-windows
+  linkage: shared
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-arm64-windows-shared-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-arm64-windows-shared-lgpl.zip
+      size: 36200000
+      digest: sha256:7b88888888888888888888888888888888888888888888888888888888888888
+  variant_id: ffmpeg-7.1.2-r2-arm64-windows-shared-lgpl
+- arch: arm64
+  triplet: arm64-windows
+  linkage: static
+  license: gpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-arm64-windows-static-gpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-arm64-windows-static-gpl.zip
+      size: 61800000
+      digest: sha256:7c99999999999999999999999999999999999999999999999999999999999999
+  variant_id: ffmpeg-7.1.2-r2-arm64-windows-static-gpl
+- arch: arm64
+  triplet: arm64-windows
+  linkage: static
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-arm64-windows-static-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-arm64-windows-static-lgpl.zip
+      size: 58500000
+      digest: sha256:7daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  variant_id: ffmpeg-7.1.2-r2-arm64-windows-static-lgpl
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: shared
+  license: gpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-shared-gpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - qsv
+  - nvcodec
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - ffnvcodec-11
+  - libvpl
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-shared-gpl.zip
+      size: 49500000
+      digest: sha256:7a11111111111111111111111111111111111111111111111111111111111111
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-shared-gpl
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: shared
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-shared-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-shared-lgpl.zip
+      size: 45800000
+      digest: sha256:7b22222222222222222222222222222222222222222222222222222222222222
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-shared-lgpl
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: shared
+  license: nonfree
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-shared-nonfree.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - fdk-aac
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - qsv
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - fdk-aac
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - ffnvcodec-11
+  - libvpl
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-shared-nonfree.zip
+      size: 50200000
+      digest: sha256:7c33333333333333333333333333333333333333333333333333333333333333
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-shared-nonfree
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: static
+  license: gpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-static-gpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - qsv
+  - nvcodec
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - ffnvcodec-11
+  - libvpl
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-static-gpl.zip
+      size: 82000000
+      digest: sha256:7d44444444444444444444444444444444444444444444444444444444444444
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-static-gpl
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: static
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-static-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-static-lgpl.zip
+      size: 76600000
+      digest: sha256:7e55555555555555555555555555555555555555555555555555555555555555
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-static-lgpl
+- arch: x64
+  triplet: x64-windows-mixed
+  linkage: static
+  license: nonfree
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x64-windows-mixed-static-nonfree.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - fdk-aac
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - qsv
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - fdk-aac
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - ffnvcodec-11
+  - libvpl
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x64-windows-mixed-static-nonfree.zip
+      size: 82800000
+      digest: sha256:7f66666666666666666666666666666666666666666666666666666666666666
+  variant_id: ffmpeg-7.1.2-r2-x64-windows-mixed-static-nonfree
+- arch: x86
+  triplet: x86-windows
+  linkage: shared
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x86-windows-shared-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x86-windows-shared-lgpl.zip
+      size: 31200000
+      digest: sha256:7fcc222222222222222222222222222222222222222222222222222222222222
+  variant_id: ffmpeg-7.1.2-r2-x86-windows-shared-lgpl
+- arch: x86
+  triplet: x86-windows
+  linkage: static
+  license: gpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x86-windows-static-gpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - x264
+  - x265
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x86-windows-static-gpl.zip
+      size: 56200000
+      digest: sha256:7add333333333333333333333333333333333333333333333333333333333333
+  variant_id: ffmpeg-7.1.2-r2-x86-windows-static-gpl
+- arch: x86
+  triplet: x86-windows
+  linkage: static
+  license: lgpl
+  download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-x86-windows-static-lgpl.zip
+  features:
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - avutil
+  - swresample
+  - swscale
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - d3d11va
+  - d3d12va
+  - dxva2
+  - mediafoundation
+  - amf
+  - vulkan
+  - srt
+  dependencies:
+  - aom
+  - dav1d
+  - mp3lame
+  - opus
+  - zlib
+  - amd-amf
+  - vulkan
+  - libsrt
+  assets:
+    binary:
+      file: ffmpeg-7.1.2-x86-windows-static-lgpl.zip
+      size: 53200000
+      digest: sha256:7bee444444444444444444444444444444444444444444444444444444444444
+  variant_id: ffmpeg-7.1.2-r2-x86-windows-static-lgpl

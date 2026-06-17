@@ -1,0 +1,44 @@
+arch: arm64
+triplet: arm64-windows
+linkage: shared
+license: gpl
+download_url: https://github.com/BtbN/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.2-r2/ffmpeg-7.1.2-arm64-windows-shared-gpl.zip
+features:
+- avcodec
+- avdevice
+- avfilter
+- avformat
+- avutil
+- swresample
+- swscale
+- aom
+- dav1d
+- mp3lame
+- opus
+- x264
+- x265
+- zlib
+- d3d11va
+- d3d12va
+- dxva2
+- mediafoundation
+- amf
+- vulkan
+- srt
+dependencies:
+- aom
+- dav1d
+- mp3lame
+- opus
+- x264
+- x265
+- zlib
+- amd-amf
+- vulkan
+- libsrt
+assets:
+  binary:
+    file: ffmpeg-7.1.2-arm64-windows-shared-gpl.zip
+    size: 39100000
+    digest: sha256:7a77777777777777777777777777777777777777777777777777777777777777
+variant_id: ffmpeg-7.1.2-r2-arm64-windows-shared-gpl
