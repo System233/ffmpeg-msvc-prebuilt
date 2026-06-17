@@ -61,7 +61,7 @@
     "linkages": "链接方式",
     "viewOnGitHub": "在 GitHub 查看",
     "fullDetails": "完整详情",
-    "ffmpegCommit": "FFmpeg 提交",
+    "ffmpegRef": "FFmpeg 版本",
     "status": "状态",
     "progress": "构建进度",
     "metadata": "完整构建元数据",
@@ -95,6 +95,7 @@
     "features": "功能",
     "dependencies": "依赖库",
     "download": "下载",
+    "develop": "开发版 (SDK)",
     "noVariant": "不可用"
   },
   "filter": {

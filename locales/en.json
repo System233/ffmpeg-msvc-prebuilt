@@ -59,7 +59,7 @@
     "linkages": "Linkage",
     "viewOnGitHub": "View on GitHub",
     "fullDetails": "Full Details",
-    "ffmpegCommit": "FFmpeg Commit",
+    "ffmpegRef": "FFmpeg Ref",
     "status": "Status",
     "progress": "Build Progress",
     "metadata": "Full Artifact Metadata",
@@ -93,6 +93,7 @@
     "features": "Features",
     "dependencies": "Dependencies",
     "download": "Download",
+    "develop": "SDK (Develop)",
     "noVariant": "Not available"
   },
   "filter": {

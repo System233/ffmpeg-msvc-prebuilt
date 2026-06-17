@@ -127,7 +127,7 @@ function copyText(text: string) {
 </script>
 
 <template>
-<div v-if="release" class="space-y-12 pb-20 pt-6">
+<div v-if="release" class="space-y-12 pb-20">
   <!-- Header -->
   <header class="space-y-6">
     <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500">
@@ -138,11 +138,14 @@ function copyText(text: string) {
 
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
       <div class="flex flex-wrap items-center gap-4">
-        <h1 class="text-3xl font-bold tracking-tight m-0 text-gray-900 dark:text-white">FFmpeg {{ release.version }}</h1>
+        <h1 class="text-3xl font-bold tracking-tight m-0 text-gray-900 dark:text-white">
+        FFmpeg {{ release.version }}
+        <span class=" text-gray-500">#{{release.revision}}</span>
+        </h1>
         <div class="flex items-center gap-2">
           <span v-if="release.lts" class="badge badge-green">[[release.lts]]</span>
           <span v-if="release.major === 'master'" class="badge badge-blue">[[release.master]]</span>
-          <span class="badge badge-outline">r{{ release.revision }}</span>
+          <!-- <span class="badge badge-outline">r{{ release.revision }}</span> -->
         </div>
       </div>
       <a v-if="release.release_url" :href="release.release_url" target="_blank" class="btn-secondary h-8 px-3 text-xs gap-2 font-bold">
@@ -157,12 +160,9 @@ function copyText(text: string) {
         <div class="text-xs text-gray-600 dark:text-gray-400 font-medium">{{ fmtDate(release.created) }}</div>
       </div>
       <div class="space-y-1">
-        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.ffmpegCommit]]</span>
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.ffmpegRef]]</span>
         <div class="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
-          <a v-if="release.ffmpeg_commit" :href="'https://github.com/FFmpeg/FFmpeg/commit/' + release.ffmpeg_commit" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
-            {{ release.ffmpeg_commit?.slice(0, 8) }}
-            <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-[8px] inline-block ml-0.5" />
-          </a>
+          <span v-if="release.ffmpeg_ref" class="font-bold">{{ release.ffmpeg_ref }}</span>
           <span v-else>—</span>
         </div>
       </div>
@@ -212,7 +212,7 @@ function copyText(text: string) {
             <td v-for="c in getCombos()" :key="c" class="text-center! py-3">
               <template v-if="getV(arch, c.split('-')[0], c.split('-')[1])">
                 <a :href="getV(arch, c.split('-')[0], c.split('-')[1]).download_url" class="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs whitespace-nowrap">
-                  {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).file_size) }}
+                  {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).assets.binary.size) }}
                 </a>
               </template>
               <span v-else class="text-gray-200 dark:text-gray-800">—</span>
@@ -275,10 +275,10 @@ function copyText(text: string) {
     </div>
     
     <div class="space-y-6">
-      <div v-for="v in filteredVariants" :key="v.asset_name" class="card p-5 space-y-5">
+      <div v-for="v in filteredVariants" :key="v.assets.binary.file" class="card p-5 space-y-5">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div class="space-y-2">
-            <h3 class="text-sm font-bold m-0 text-gray-900 dark:text-white leading-tight">{{ v.asset_name }}</h3>
+            <h3 class="text-sm font-bold m-0 text-gray-900 dark:text-white leading-tight">{{ v.assets.binary.file }}</h3>
             <div class="flex flex-wrap gap-1.5 pt-1">
               <span class="badge badge-purple" :title="tooltipMap[v.arch]">{{ v.arch }}</span>
               <span class="badge badge-outline lowercase" :title="tooltipMap[v.linkage]">{{ v.linkage }}</span>
@@ -286,10 +286,16 @@ function copyText(text: string) {
               <span class="badge badge-outline font-mono text-[8px]">{{ v.triplet }}</span>
             </div>
           </div>
-          <a :href="v.download_url" class="btn-primary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
-            <Icon icon="fa6-solid:download" class="text-[10px]" />
-            [[variant.download]] ({{ fmtSize(v.file_size) }})
-          </a>
+          <div class="space-x-2">
+            <a :href="v.download_url" class="btn-primary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
+              <Icon icon="fa6-solid:download" class="text-[10px]" />
+              [[variant.download]] ({{ fmtSize(v.assets.binary.size) }})
+            </a>
+            <a v-if="v.assets.develop" :href="v.download_url.replace(v.assets.binary.file, v.assets.develop.file)" class="btn-secondary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
+              <Icon icon="fa6-solid:download" class="text-[10px]" />
+              [[variant.develop]] ({{ fmtSize(v.assets.develop.size) }})
+            </a>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -299,7 +305,7 @@ function copyText(text: string) {
               <Icon icon="fa6-solid:wand-magic-sparkles" class="text-indigo-500" />
               [[variant.features]]
             </h4>
-            <div v-if="v.features?.length" class="flex flex-wrap gap-1 pt-1">
+            <div v-if="v.features?.length" class="flex flex-wrap gap-1 pt-4">
               <span v-for="f in v.features" :key="f" class="px-1.5 py-0.5 text-[9px] font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded uppercase">
                 {{ f }}
               </span>
@@ -313,7 +319,7 @@ function copyText(text: string) {
               <Icon icon="fa6-solid:link" class="text-amber-500" />
               [[variant.dependencies]]
             </h4>
-            <div v-if="v.dependencies?.length" class="flex flex-wrap gap-1 pt-1">
+            <div v-if="v.dependencies?.length" class="flex flex-wrap gap-1 pt-4">
               <span v-for="d in v.dependencies" :key="d" class="px-1.5 py-0.5 text-[9px] font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded uppercase">
                 {{ d }}
               </span>
@@ -325,10 +331,10 @@ function copyText(text: string) {
         <!-- SHA256 -->
         <div class="pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3">
           <Icon icon="fa6-solid:fingerprint" class="text-gray-300 text-xs shrink-0" />
-          <code class="flex-1 text-[10px] font-mono text-gray-400 truncate" :title="v.digest">
-            {{ v.digest }}
+          <code class="flex-1 text-[10px] font-mono text-gray-400 truncate" :title="v.assets.binary.digest">
+            {{ v.assets.binary.digest }}
           </code>
-          <button @click="copyText(v.digest)" class="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase shrink-0">[[release.copyHash]]</button>
+          <button @click="copyText(v.assets.binary.digest)" class="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase shrink-0">[[release.copyHash]]</button>
         </div>
       </div>
     </div>

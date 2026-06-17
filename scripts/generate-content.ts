@@ -13,8 +13,7 @@ export interface ReleaseIndexItem {
   major: string
   revision: number | null
   lts: boolean
-  ffmpeg_tag: string | null
-  ffmpeg_commit: string | null
+  ffmpeg_ref: string
   release_tag: string
   release_url: string
   created: string
@@ -27,15 +26,22 @@ export interface ReleaseIndexItem {
   linkages: string[]
 }
 
+export interface AssetInfo {
+  file: string
+  size: number
+  digest: string
+}
+
 export interface VariantData {
   arch: string
   triplet: string
   linkage: string
   license: string
-  asset_name: string
   download_url: string
-  file_size: number
-  digest: string
+  assets: {
+    binary: AssetInfo
+    develop?: AssetInfo
+  }
   features: string[]
   dependencies: string[]
 }
@@ -89,31 +95,34 @@ for (const p of dataSearchPaths) {
 // ---------------------------------------------------------------------------
 
 /**
- * Scan a resolved data/ directory and return metadata for every valid YAML
- * file, skipping build-index.yaml entries.
+ * Scan a resolved data/ directory and return metadata for every
+ * data/{major}/{version}/version.yaml file, skipping old-style build-index
+ * and variants directories.
  */
 function scanYamlFiles(
   dataDirPath: string,
 ): Array<{ major: string; filePath: string }> {
   const results: Array<{ major: string; filePath: string }> = []
 
-  const entries = fs.readdirSync(dataDirPath, { withFileTypes: true })
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const major = entry.name
+  const majorDirs = fs.readdirSync(dataDirPath, { withFileTypes: true })
+  for (const majorDir of majorDirs) {
+    if (!majorDir.isDirectory()) continue
+    const major = majorDir.name
     const majorPath = path.join(dataDirPath, major)
 
-    let files: string[]
+    let versionDirs: string[]
     try {
-      files = fs.readdirSync(majorPath)
+      versionDirs = fs.readdirSync(majorPath)
     } catch {
       continue
     }
 
-    for (const file of files) {
-      if (file === 'build-index.yaml') continue
-      if (!file.endsWith('.yaml')) continue
-      results.push({ major, filePath: path.join(majorPath, file) })
+    for (const vdir of versionDirs) {
+      if (vdir === 'variants') continue // skip old-style variants dir
+      const versionYaml = path.join(majorPath, vdir, 'version.yaml')
+      if (fs.existsSync(versionYaml)) {
+        results.push({ major, filePath: versionYaml })
+      }
     }
   }
 
@@ -123,21 +132,17 @@ function scanYamlFiles(
 /**
  * Derive a stable release identifier from parsed YAML data.
  *
- * - Standard releases: "{version}-r{revision}"  (e.g. "8.1.1-r2")
- * - Master builds:     uses ffmpeg_commit value   (e.g. "n8.2-dev-1-gabc1234")
+ * Unified format: "{ffmpeg_ref}-r{revision}"  (e.g. "n8.1.1-r2", "n8.2-dev-1-gabc1234-r0")
  */
 function computeReleaseId(
   raw: {
     version: string
     revision: number | null
-    ffmpeg_commit: string | null
+    ffmpeg_ref: string
   },
-  major: string,
+  _major: string,
 ): string {
-  if (major === 'master' || raw.revision === null || raw.revision === undefined) {
-    return raw.ffmpeg_commit || raw.version || 'unknown'
-  }
-  return `${raw.version}-r${raw.revision}`
+  return `${raw.ffmpeg_ref || 'unknown'}-r${raw.revision ?? 0}`
 }
 
 /**
@@ -151,18 +156,41 @@ function parseRelease(
 ): ReleaseData {
   const variantsRaw = (raw.variants as Array<Record<string, unknown>>) || []
 
-  const variants: VariantData[] = variantsRaw.map((v) => ({
-    arch: String(v.arch ?? ''),
-    triplet: String(v.triplet ?? ''),
-    linkage: String(v.linkage ?? ''),
-    license: String(v.license ?? ''),
-    asset_name: String(v.asset_name ?? ''),
-    download_url: String(v.download_url ?? ''),
-    file_size: Number(v.file_size ?? 0),
-    digest: String(v.digest ?? ''),
-    features: (v.features as string[]) || [],
-    dependencies: (v.dependencies as string[]) || [],
-  }))
+  const variants: VariantData[] = variantsRaw.map((v) => {
+    const assetsRaw = v.assets as Record<string, unknown> | undefined
+    const binaryRaw = assetsRaw?.binary as Record<string, unknown> | undefined
+    const developRaw = assetsRaw?.develop as Record<string, unknown> | undefined
+
+    const binaryFile = String(binaryRaw?.file ?? '')
+    const binarySize = Number(binaryRaw?.size ?? 0)
+    const binaryDigest = String(binaryRaw?.digest ?? '')
+
+    return {
+      arch: String(v.arch ?? ''),
+      triplet: String(v.triplet ?? ''),
+      linkage: String(v.linkage ?? ''),
+      license: String(v.license ?? ''),
+      download_url: binaryFile ? `${raw.release_url || ''}/${binaryFile}` : '',
+      assets: {
+        binary: {
+          file: binaryFile,
+          size: binarySize,
+          digest: binaryDigest,
+        },
+        ...(developRaw
+          ? {
+              develop: {
+                file: String(developRaw?.file ?? ''),
+                size: Number(developRaw?.size ?? 0),
+                digest: String(developRaw?.digest ?? ''),
+              },
+            }
+          : {}),
+      },
+      features: (v.features as string[]) || [],
+      dependencies: (v.dependencies as string[]) || [],
+    }
+  })
 
   const archs = [...new Set(variants.map((v) => v.arch))].sort()
   const licenses = [...new Set(variants.map((v) => v.license))].sort()
@@ -174,26 +202,13 @@ function parseRelease(
       ? Number(rawRevision)
       : null
 
-  const rawFfmpegTag = raw.ffmpeg_tag
-  const ffmpegTag =
-    rawFfmpegTag !== null && rawFfmpegTag !== undefined
-      ? String(rawFfmpegTag)
-      : null
-
-  const rawFfmpegCommit = raw.ffmpeg_commit
-  const ffmpegCommit =
-    rawFfmpegCommit !== null && rawFfmpegCommit !== undefined
-      ? String(rawFfmpegCommit)
-      : null
-
   return {
     id,
     version: String(raw.version ?? ''),
     major,
     revision,
     lts: Boolean(raw.lts ?? false),
-    ffmpeg_tag: ffmpegTag,
-    ffmpeg_commit: ffmpegCommit,
+    ffmpeg_ref: String(raw.ffmpeg_ref ?? ''),
     release_tag: String(raw.release_tag ?? ''),
     release_url: String(raw.release_url ?? ''),
     created: String(raw.created ?? ''),
@@ -240,8 +255,7 @@ export interface ReleaseIndexItem {
   major: string
   revision: number | null
   lts: boolean
-  ffmpeg_tag: string | null
-  ffmpeg_commit: string | null
+  ffmpeg_ref: string
   release_tag: string
   release_url: string
   created: string
@@ -256,15 +270,22 @@ export interface ReleaseIndexItem {
 `
 
 const RELEASE_TYPE_DEFS = `
+export interface AssetInfo {
+  file: string
+  size: number
+  digest: string
+}
+
 export interface VariantData {
   arch: string
   triplet: string
   linkage: string
   license: string
-  asset_name: string
   download_url: string
-  file_size: number
-  digest: string
+  assets: {
+    binary: AssetInfo
+    develop?: AssetInfo
+  }
   features: string[]
   dependencies: string[]
 }
@@ -275,8 +296,7 @@ export interface ReleaseData {
   major: string
   revision: number | null
   lts: boolean
-  ffmpeg_tag: string | null
-  ffmpeg_commit: string | null
+  ffmpeg_ref: string
   release_tag: string
   release_url: string
   created: string
@@ -319,7 +339,7 @@ function main(): void {
       }
 
       const id = computeReleaseId(
-        raw as { version: string; revision: number | null; ffmpeg_commit: string | null },
+        raw as { version: string; revision: number | null; ffmpeg_ref: string },
         major,
       )
       const release = parseRelease(id, major, raw)
