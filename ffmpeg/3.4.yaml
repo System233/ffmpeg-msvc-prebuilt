@@ -1,0 +1,30 @@
+extends: "base"
+
+source:
+  method: git
+  repo: ffmpeg/ffmpeg
+  ref: "n${VERSION}"
+
+dep_overrides:
+  nvcodec: "ffnvcodec-11"
+  qsv: "mfx-dispatch"
+
+build:
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
+  debug:
+    options: "--disable-optimizations"
+  release:
+    options: "--enable-optimizations"
+  host_deps:
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
+
+features:
+  nvcodec:
+    flag: "--enable-cuda --enable-nvenc"
+  openssl:
+    flag: "--enable-openssl"
+    depends: ["openssl", "@license-nonfree"]
+    description: "Use OpenSSL for TLS support"

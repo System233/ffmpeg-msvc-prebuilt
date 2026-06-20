@@ -1,0 +1,15 @@
+{
+  "name": "libdvdcss",
+  "version-semver": "1.5.0",
+  "port-version": 1,
+  "description": "Accessing DVDs like a block device library (with shell32 link fix for MSVC builds)",
+  "homepage": "https://www.videolan.org/developers/libdvdcss.html",
+  "license": "GPL-2.0-or-later",
+  "supports": "!uwp & !xbox",
+  "dependencies": [
+    {
+      "name": "vcpkg-tool-meson",
+      "host": true
+    }
+  ]
+}

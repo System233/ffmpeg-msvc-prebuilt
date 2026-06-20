@@ -1,0 +1,590 @@
+# ---------------------------------------------------------------------------
+# build-release.yml — Build & release FFmpeg (MSVC prebuilt)
+#
+# Triggered manually (workflow_dispatch) or called from another workflow
+# (workflow_call).  Builds FFmpeg across a matrix of triplets, licenses,
+# and linkage types, then publishes all artifacts as a GitHub Release.
+#
+# SPEC: ci/SPEC.md §7.1
+# ---------------------------------------------------------------------------
+
+name: Build FFmpeg Release
+
+concurrency:
+  group: data-branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number; passed as --version to ffport generate"
+        required: true
+        type: string
+      yaml:
+        description: "YAML config name (defaults to version value)"
+        required: false
+        type: string
+      revision:
+        description: "Revision value from YAML (required for release builds)"
+        required: false
+        type: number
+      ffmpeg_ref:
+        description: "git describe --tags --abbrev=7 output (required for master)"
+        required: false
+        type: string
+      target_arch:
+        description: "Limit build architecture (e.g. x64-windows)"
+        required: false
+        type: string
+      target_license:
+        description: "Limit license type (e.g. gpl)"
+        required: false
+        type: string
+      sha512:
+        description: "SHA-512 of the source tarball (optional)"
+        required: false
+        type: string
+      dry_run:
+        description: 'Skip release creation and data branch push'
+        type: boolean
+        default: false
+
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      yaml:
+        type: string
+        required: false
+      revision:
+        type: number
+        required: false
+      ffmpeg_ref:
+        type: string
+        required: false
+      target_arch:
+        type: string
+        required: false
+      target_license:
+        type: string
+        required: false
+      sha512:
+        type: string
+        required: false
+      dry_run:
+        type: boolean
+        required: false
+        default: false
+
+# ─── Global environment ──────────────────────────────────────────────────────
+env:
+  VCPKG_TAG: 2026.06.01
+  PYTHONIOENCODING: utf-8
+
+
+# ─── Jobs ────────────────────────────────────────────────────────────────────
+
+jobs:
+  # ── Scan: check which variants need building, output dynamic matrix ───────
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Scan variants and output dynamic build matrix
+        id: scan
+        env:
+            TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
+            LICENSES: "lgpl gpl" #nonfree
+            LINKAGES: "shared static"
+        run: |
+          ver="${{ inputs.version }}"
+          rev="${{ inputs.revision }}"
+          target_arch="${{ inputs.target_arch }}"
+          target_license="${{ inputs.target_license }}"
+
+          # Determine major version
+          major="$(python scripts/ops/naming.py major --version "$ver")"
+
+          git fetch origin data 2>/dev/null || echo "Data branch not found"
+
+          include="[]"
+          for triplet in $TRIPLETS; do
+            for license in $LICENSES; do
+              for linkage in $LINKAGES; do
+                [ -n "$target_arch" ] && [ "$triplet" != "$target_arch" ] && continue
+                [ -n "$target_license" ] && [ "$license" != "$target_license" ] && continue
+
+                variant_key="${triplet}-${linkage}-${license}"
+
+                # Check data branch for existing variants
+                path="$(python scripts/ops/naming.py data-path \
+                  --version "$ver" --revision "$rev" \
+                  --triplet "$triplet" --linkage "$linkage" --license "$license")"
+
+                if git show "origin/data:${path}" 2>/dev/null >/dev/null; then
+                  echo "SKIP: ${variant_key} already built"
+                else
+                  echo "NEED: ${variant_key}"
+                  include=$(echo "$include" | jq -c \
+                    --arg t "$triplet" --arg l "$license" --arg g "$linkage" \
+                    '. + [{"triplet": $t, "license": $l, "linkage": $g}]')
+                fi
+              done
+            done
+          done
+
+          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: $(echo "$include" | jq -c '. | length') variant(s) to build"
+
+  # ── Seed: build base dependencies once per triplet ─────────────────────────
+  # If both caches fully hit (primary key match), all heavy work is skipped.
+  seed:
+    runs-on: windows-2022
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        triplet:
+          - arm-windows
+          - arm64-windows
+          - x86-windows
+          - x64-windows
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Clone vcpkg at pinned tag
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Compute port hash
+        id: porthash
+        run: |
+          python scripts/ffport.py deps
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
+      - name: Restore vcpkg downloads cache
+        id: dl-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          restore-keys: |
+            vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
+            vcpkg-dl-${{ matrix.triplet }}-
+            vcpkg-dl-
+
+      - name: Restore vcpkg binary cache
+        id: bin-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          restore-keys: |
+            vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
+            vcpkg-seed-${{ matrix.triplet }}-
+            vcpkg-seed-
+
+      - name: Check cache status
+        id: cache-check
+        run: |
+          if ("${{ steps.dl-cache.outputs.cache-hit }}" -eq "true" -and `
+              "${{ steps.bin-cache.outputs.cache-hit }}" -eq "true") {
+            echo "Fully cached — skipping seed work"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=true"
+          } else {
+            echo "Cache miss — need to populate"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=false"
+          }
+
+      - name: Bootstrap vcpkg
+        if: steps.cache-check.outputs.skip != 'true'
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Patch vcvarsall.bat for ARM Windows SDK
+        if: steps.cache-check.outputs.skip != 'true' && matrix.triplet == 'arm-windows'
+        run: |
+          $patched = $false
+          $vsPaths = & vswhere -all -legacy -property installationPath
+          foreach ($vsPath in $vsPaths) {
+            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+            Write-Output "Patching $vcvarsall"
+            $content = Get-Content $vcvarsall -Raw -Encoding Ascii
+            $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
+            Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
+            $patched = $true
+          }
+          if (-not $patched) {
+            throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
+          }
+
+      - name: Install ffmpeg-deps
+        if: steps.cache-check.outputs.skip != 'true'
+        env:
+          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        run: |
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          if ($json.features) {
+            foreach ($f in $json.features.PSObject.Properties.Name) {
+              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
+                --triplet=${{ matrix.triplet }} `
+                --recurse
+            }
+          }
+
+      - name: Upload build logs (seed)
+        if: always() && steps.cache-check.outputs.skip != 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-seed-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+          compression-level: 9
+          retention-days: 7
+
+  # ── Build: compile FFmpeg for triplets × licenses × linkages ──────────────
+  # Matrix is dynamically populated by the scan job — only unbuilt variants.
+  build:
+    needs: [seed, scan]
+    if: needs.scan.outputs.matrix != '[]'
+    runs-on: windows-2022
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # ── Setup steps ─────────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          
+      - name: Resolve variant metadata
+        id: vars
+        run: |
+          $ver = "${{ inputs.version }}"
+          $rev = "${{ inputs.revision }}"
+          $triplet = "${{ matrix.triplet }}"
+          $license = "${{ matrix.license }}"
+          $linkage = "${{ matrix.linkage }}"
+
+          $variant_id = & python scripts/ops/naming.py variant-id `
+            --version $ver --revision $rev `
+            --triplet $triplet --linkage $linkage --license $license
+
+          $port_name = "ffmpeg"
+
+          echo "linkage_name=$linkage" >> $env:GITHUB_OUTPUT
+          echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
+          echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
+
+      - name: Compute port hash
+        id: porthash
+        run: |
+          python scripts/ffport.py deps
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
+      - name: Clone vcpkg at pinned tag
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Bootstrap vcpkg
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Restore vcpkg downloads cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          fail-on-cache-miss: true
+          restore-keys: |
+            vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
+            vcpkg-dl-${{ matrix.triplet }}-
+            vcpkg-dl-
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          fail-on-cache-miss: true
+          restore-keys: |
+            vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
+            vcpkg-seed-${{ matrix.triplet }}-
+            vcpkg-seed-
+
+      - name: Patch vcvarsall.bat for ARM Windows SDK
+        if: matrix.triplet == 'arm-windows'
+        run: |
+          $patched = $false
+          $vsPaths = & vswhere -all -legacy -property installationPath
+          foreach ($vsPath in $vsPaths) {
+            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+            Write-Output "Patching $vcvarsall"
+            $content = Get-Content $vcvarsall -Raw -Encoding Ascii
+            $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
+            Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
+            $patched = $true
+          }
+          if (-not $patched) {
+            throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
+          }
+
+      # ── Step 3: Generate vcpkg port files ─────────────────────────────────
+      - name: Step 3 - Generate port files
+        run: |
+          $yaml = "${{ inputs.yaml }}"
+          if (-not $yaml) { $yaml = "${{ inputs.version }}" }
+          $args = @("scripts/ffport.py", "generate", $yaml, "--version", "${{ inputs.version }}")
+          if ("${{ inputs.sha512 }}") { $args += "--sha512"; $args += "${{ inputs.sha512 }}" }
+          if ("${{ inputs.ffmpeg_ref }}") { $args += "--ref"; $args += "${{ inputs.ffmpeg_ref }}" }
+          & python $args
+
+      # ── Step 4: Build FFmpeg via vcpkg ────────────────────────────────────
+      - name: Step 4 - Build FFmpeg
+        env:
+          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        run: |
+          $port = "ffmpeg"
+          $features = "all-${{ matrix.license }}"
+          if ("${{ matrix.linkage }}" -eq "static") {
+            $features = "$features,static"
+          }
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" `
+            --triplet=${{ matrix.triplet }} `
+            --recurse
+
+      # ── Step 5: Package release archive + generate variant YAML ───────────
+      - name: Step 5 - Package release archive
+        run: |
+          $vcpkg_root = "${{ runner.temp }}/vcpkg"
+          $port = "${{ steps.vars.outputs.port_name }}"
+          $triplet = "${{ matrix.triplet }}"
+          $license = "${{ matrix.license }}"
+
+          python scripts/package_release.py `
+            --port-dir ${vcpkg_root}/packages/${port}_${triplet} `
+            --license $license `
+            --ffmpeg-ref "${{ inputs.ffmpeg_ref }}"
+
+      # ── Step 6: Upload artifacts ──────────────────────────────────────────
+      - name: Step 6 - Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.vars.outputs.variant_id }}
+          path: |
+            Release/*.zip
+            Release/*.var.yaml
+          compression-level: 0
+          retention-days: 5
+
+      # ── Step 7: Upload build logs for debugging ──────────────────────────
+      # Always runs, even if Step 4 fails, so logs are available for triage.
+      - name: Step 7 - Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+          compression-level: 9
+          retention-days: 7
+
+  # ── Finalize: merge variants into data branch, create/update release ──────
+  finalize:
+    needs: build
+    if: success() || failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Dry run notice
+        if: inputs.dry_run == true
+        run: |
+          echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
+
+      # Checkout main branch so we have access to scripts/
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts/
+            requirements.txt
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Checkout data branch
+      - name: Checkout data branch
+        id: checkout-data
+        uses: actions/checkout@v6
+        with:
+          ref: data
+          path: data
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Ensure data branch working directory
+        id: ensure-data
+        run: |
+          if [ -d data/.git ]; then
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+          else
+            echo "Data branch checkout failed — creating fresh directory"
+            mkdir -p data
+            git -C data init
+            git -C data remote add origin \
+              "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+            echo "status=created" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ffmpeg-*
+          path: ${{ github.workspace }}/artifacts/
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Artifacts ==="
+          ls -la ${{ github.workspace }}/artifacts/ 2>/dev/null || echo "(empty)"
+          echo "=== Var YAMLs ==="
+          ls ${{ github.workspace }}/artifacts/*.var.yaml 2>/dev/null || echo "(none)"
+          echo "=== Zips ==="
+          ls ${{ github.workspace }}/artifacts/*.zip 2>/dev/null || echo "(none)"
+        shell: bash
+
+      - name: Import variant YAMLs (auto-merges into version.yaml)
+        env:
+          TOTAL_VARIANTS: 24
+        run: |
+          for f in artifacts/*.var.yaml; do
+            [ -f "$f" ] || continue
+            python scripts/ops/db.py import "$f" || echo "  WARNING: import failed for $f"
+          done
+        shell: bash
+
+      - name: Commit and push data branch
+        if: inputs.dry_run != true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit on data branch"
+            exit 0
+          fi
+          git commit -m "Build artifacts for ${{ inputs.version }}"
+          # Push with rebase retry to handle concurrent runs
+          for i in 1 2 3; do
+            git pull --rebase origin data && git push origin data && break
+            echo "  Push attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || { echo "ERROR: failed to push after 3 attempts"; exit 1; }
+        working-directory: data
+        shell: bash
+
+      # ── Release tag ──────────────────────────────────────────────────────
+      - name: Determine release tag
+        id: release_tag
+        run: |
+          var_file=$(find ${{ github.workspace }}/artifacts -maxdepth 1 -name '*.var.yaml' 2>/dev/null | head -1)
+          if [ -z "$var_file" ]; then
+            echo "No artifacts — nothing to release" >&2
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ver=$(python scripts/ops/naming.py var-version "$var_file")
+          today=$(date +%Y%m%d)
+          echo "tag=ffmpeg-${ver}-${today}" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      # ── Create or append GitHub Release ───────────────────────────────────
+      - name: Create or append GitHub Release
+        if: inputs.dry_run != true && steps.release_tag.outputs.tag != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          ARTIFACTS_DIR="${{ github.workspace }}/artifacts"
+
+          # Count zip assets
+          ZIPS=("$ARTIFACTS_DIR"/*.zip)
+          if [ ${#ZIPS[@]} -eq 0 ]; then
+            echo "No zip artifacts found — skipping release step"
+            exit 0
+          fi
+
+          if gh release view "$TAG" --json id &>/dev/null; then
+            echo "Release $TAG already exists — uploading additional assets"
+            gh release upload "$TAG" "$ARTIFACTS_DIR"/*.zip --clobber
+          else
+            echo "Creating release $TAG"
+            if [ "${{ inputs.version }}" = "master" ]; then
+              TITLE="FFmpeg ${{ inputs.ffmpeg_ref }} (MSVC Prebuilt, Master)"
+            else
+              TITLE="FFmpeg ${{ inputs.version }} (MSVC Prebuilt)"
+            fi
+            gh release create "$TAG" \
+              "$ARTIFACTS_DIR"/*.zip \
+              --title "$TITLE" \
+              --notes "Automated build of FFmpeg ${{ inputs.version }} using MSVC via vcpkg."
+          fi
+        shell: bash
+
+
+
+  # ── Trigger pages rebuild ─────────────────────────────────────────────────
+  trigger-pages:
+    needs: finalize
+    if: inputs.dry_run != true
+    uses: ./.github/workflows/pages.yml

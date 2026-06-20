@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# dependency-submission.yml — Submit vcpkg dependency graph to GitHub
+#
+# Runs weekly and on dependency-related pushes.  Bootstraps vcpkg, runs
+# --dry-run install for each triplet with the dependencygraph feature
+# flag, so vcpkg auto-submits the dependency tree to GitHub's Dependency
+# Graph API.  Dependabot alerts are then driven from this data.
+#
+# SPEC: docs/ops-spec.md §6 (supply chain)
+# ---------------------------------------------------------------------------
+
+name: Dependency Submission
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - vcpkg-configuration.json
+      - ports/**
+      - ffmpeg/**
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+  VCPKG_FEATURE_FLAGS: dependencygraph
+  VCPKG_TAG: 2026.06.01
+
+jobs:
+  submit:
+    strategy:
+      fail-fast: false
+      matrix:
+        triplet:
+          - x64-windows
+          - x86-windows
+          - arm64-windows
+          - arm-windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate ffmpeg-deps port
+        run: python scripts/ffport.py deps
+
+      - name: Bootstrap vcpkg at pinned tag
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Set up vcpkg cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-dep-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}
+          restore-keys: |
+            vcpkg-dep-${{ matrix.triplet }}-
+            vcpkg-dep-
+
+      - name: Install overlay port dependencies (dry-run with SBOM)
+        env:
+          VCPKG_BINARY_SOURCES: "files,${{ runner.temp }}/vcpkg-cache,readwrite"
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        run: |
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          if ($json.features) {
+            $allFeatures = $json.features.PSObject.Properties.Name -join ','
+            & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$allFeatures]" `
+              --triplet=${{ matrix.triplet }} --dry-run --recurse
+          } else {
+            Write-Host "No features found in ffmpeg-deps — nothing to submit"
+          }

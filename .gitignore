@@ -1,3 +1,13 @@
-.vscode
+# Build and extracted data
+_work/
+build/
+*.pyc
+__pycache__
+node_modules
+web/node_modules/
+catalog.json
+cache
 dist
-build
+ports/ffmpeg
+ports/ffmpeg-*
+.pytest_cache

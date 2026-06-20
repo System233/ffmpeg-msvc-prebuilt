@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------------------
+# scan-updates.yml — Scan for new FFmpeg upstream releases and create PRs
+#
+# Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API, detects new
+# versions, copies the closest existing YAML, computes sha512, generates
+# port files, and opens an auto-merge PR on a ci/ffmpeg-{version} branch.
+#
+# Requires contents:write and pull-requests:write for git push + gh pr create.
+# ---------------------------------------------------------------------------
+
+name: Scan for new FFmpeg releases
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scan for new upstream releases
+        run: |
+          python scripts/ops/scan_updates.py 2>&1 | tee scan_output.txt
+
+      - name: Extract new versions
+        id: versions
+        run: |
+          grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' scan_output.txt > new_versions.txt || true
+          count=$(wc -l < new_versions.txt)
+          echo "Detected ${count} new version(s)"
+          cat new_versions.txt
+
+      - name: Create auto-merge PRs for new versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -s new_versions.txt ]; then
+            echo "No new versions to process."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          while IFS= read -r version; do
+            [ -z "$version" ] && continue
+            echo ""
+            echo "=== Processing version: ${version} ==="
+
+            if [ -f "ffmpeg/${version}.yaml" ]; then
+              echo "  SKIP: ffmpeg/${version}.yaml already exists"
+              continue
+            fi
+
+            CLOSEST=$(python scripts/find_closest_yaml.py --version "$version")
+            python scripts/ops/create_version_pr.py --version "$version" --closest-yaml "$CLOSEST"
+
+          done < new_versions.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Scan Updates Summary ==="
+          if [ -s new_versions.txt ]; then
+            echo "New versions:"
+            cat new_versions.txt
+          else
+            echo "No new versions detected."
+          fi

@@ -1,0 +1,168 @@
+# =============================================================================
+# Schema for data/ version YAML files (produced by import_yaml.py)
+# Schema version: 1
+# =============================================================================
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ffmpeg-msvc-prebuilt.example/schema/v1/release.schema.yaml"
+title: "Release Version YAML"
+description: >
+  Schema for version YAML files under data/ produced by import_yaml.py.
+  One file per version group (e.g. a release or master build).
+
+type: object
+required:
+  - version
+  - revision
+  - lts
+  - schema_version
+  - ffmpeg_ref
+  - release_tag
+  - release_url
+  - created
+  - updated
+  - variant_count
+  - total_variants
+  - complete
+  - variants
+
+properties:
+  version:
+    type: string
+    description: 'FFmpeg version (e.g. "8.1.1") or "master" for dev builds'
+
+  revision:
+    type: ["integer", "null"]
+    description: vcpkg port revision number (null for master builds)
+
+  lts:
+    type: boolean
+    description: Whether this is an LTS release
+
+  schema_version:
+    type: integer
+    minimum: 1
+    description: >
+      Schema version of this file. Incremented on backward-incompatible
+      structural changes so migration scripts can identify the format.
+
+  ffmpeg_ref:
+    type: string
+    description: >
+      FFmpeg git reference. Release: tag name ("n8.1.1").
+      Master: git describe ("n8.0-1234-gabc").
+
+  release_tag:
+    type: string
+    description: 'GitHub release tag (e.g. "ffmpeg-8.1.1-r2")'
+
+  release_id:
+    type: ["integer", "null"]
+    description: GitHub release API ID (populated after release creation)
+
+  release_url:
+    type: string
+    format: uri
+    description: URL to the GitHub release page
+
+  created:
+    type: string
+    format: date-time
+    description: UTC timestamp when this version file was first created
+
+  updated:
+    type: string
+    format: date-time
+    description: UTC timestamp of the last update
+
+  variant_count:
+    type: integer
+    description: Current number of variants collected for this version
+
+  total_variants:
+    type: integer
+    description: Expected number of variants when complete (24 for full release)
+
+  complete:
+    type: boolean
+    description: Whether all expected variants have been collected
+
+  variants:
+    type: array
+    description: List of build variants for this version
+    items:
+      $ref: "#/$defs/variant_entry"
+
+$defs:
+  asset_info:
+    type: object
+    description: A single distributable archive file
+    required: [file, size, digest]
+    properties:
+      file:
+        type: string
+        description: Archive filename
+      size:
+        type: integer
+        description: File size in bytes
+      digest:
+        type: string
+        pattern: "^sha256:[a-f0-9]{64}$"
+        description: SHA-256 checksum with algorithm prefix
+
+  variant_entry:
+    type: object
+    description: A single build variant within a release version
+    required:
+      - variant_id
+      - arch
+      - triplet
+      - linkage
+      - license
+      - download_url
+      - assets
+      - features
+      - dependencies
+    properties:
+      variant_id:
+        type: string
+        pattern: "^ffmpeg-"
+        description: >
+          Unique identifier:
+          ffmpeg-{version}-r{revision}_{triplet}-{linkage}-{license}
+      arch:
+        type: string
+        enum: [x64, x86, arm64, arm]
+        description: CPU architecture
+      triplet:
+        type: string
+        description: vcpkg triplet
+      linkage:
+        type: string
+        enum: [shared, static]
+      license:
+        type: string
+        enum: [lgpl, gpl, nonfree]
+      download_url:
+        type: string
+        format: uri
+        description: Full URL to download the binary archive
+      assets:
+        type: object
+        required: [binary]
+        properties:
+          binary:
+            $ref: "#/$defs/asset_info"
+            description: Main binary archive
+          develop:
+            $ref: "#/$defs/asset_info"
+            description: >
+              SDK/develop archive (shared linkage only).
+              Includes PDBs, debug libs.
+      features:
+        type: array
+        items:
+          type: string
+      dependencies:
+        type: array
+        items:
+          type: string

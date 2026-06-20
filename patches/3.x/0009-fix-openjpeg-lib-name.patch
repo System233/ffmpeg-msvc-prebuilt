@@ -1,0 +1,27 @@
+From 47d813f3ccf4a06b8bd075ab7475c21070d48e3c Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Sun, 14 Jun 2026 22:45:09 +0800
+Subject: [PATCH] Fix openjpeg static library name for MSVC builds
+
+---
+ configure | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configure b/configure
+index 7550414..1f2dd43 100644
+--- a/configure
++++ b/configure
+@@ -5975,8 +5975,8 @@ enabled libopenjpeg       && { { check_lib libopenjpeg openjpeg-2.3/openjpeg.h o
+                                { check_lib libopenjpeg openjpeg-2.1/openjpeg.h opj_version -lopenjp2 -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
+                                check_lib libopenjpeg openjpeg-2.1/openjpeg.h opj_version -lopenjp2 ||
+                                { check_lib libopenjpeg openjpeg-2.0/openjpeg.h opj_version -lopenjp2 -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
+-                               { check_lib libopenjpeg openjpeg-1.5/openjpeg.h opj_version -lopenjpeg -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
+-                               { check_lib libopenjpeg openjpeg.h opj_version -lopenjpeg -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
++                                { check_lib libopenjpeg openjpeg-1.5/openjpeg.h opj_version -lopenjpeg -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
++                                { check_lib libopenjpeg openjpeg.h opj_version -lopenjp2 -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||
+                                die "ERROR: libopenjpeg not found"; }
+ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.6557" libopenmpt/libopenmpt.h openmpt_module_create
+ enabled libopus           && {
+-- 
+2.47.1.windows.2
+

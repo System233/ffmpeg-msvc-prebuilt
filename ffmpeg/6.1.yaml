@@ -1,0 +1,23 @@
+extends: "base"
+
+source:
+  method: git
+  repo: ffmpeg/ffmpeg
+  ref: "n${VERSION}"
+  sha512: abb9207364553248278f8e23e3d565da51ecb0ae9b20edda41624b314541bc3f53a8d6aac7fa5455168d2323d5d70d5a8acbe059f33423fbc2563e1a6cd0348b
+
+dep_overrides:
+  nvcodec: "ffnvcodec-11"
+
+build:
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
+  debug:
+    options: "--disable-optimizations"
+  release:
+    options: "--enable-optimizations"
+  host_deps:
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
+

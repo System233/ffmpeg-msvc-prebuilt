@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# pr-build.yml — Verify builds on pull requests
+#
+# Triggered when a PR is opened or updated with changes to YAML specs, ports,
+# or patches.  Builds the affected versions with dry_run=true so no GitHub
+# Release or data-branch push occurs.
+# ---------------------------------------------------------------------------
+
+name: PR Build
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'ffmpeg/*.yaml'
+      - 'ports/**'
+      - 'patches/**'
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Detect changed versions
+        id: detect
+        run: |
+          BEFORE="${{ github.event.pull_request.base.sha }}"
+          AFTER="${{ github.event.pull_request.head.sha }}"
+          echo "Base SHA: ${BEFORE}"
+          echo "Head SHA: ${AFTER}"
+          python scripts/ops/ci_detect_changes.py \
+            --base "$BEFORE" --head "$AFTER" --json > changes.json
+          cat changes.json
+
+      - name: Build dispatch matrix
+        id: set-matrix
+        run: |
+          include=$(jq -c '
+            if .found then
+              [.changed[] | {version, revision}]
+            else
+              []
+            end
+          ' changes.json)
+          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    uses: ./.github/workflows/build-release.yml
+    with:
+      version: ${{ matrix.version }}
+      revision: ${{ matrix.revision }}
+      dry_run: true
+    secrets: inherit

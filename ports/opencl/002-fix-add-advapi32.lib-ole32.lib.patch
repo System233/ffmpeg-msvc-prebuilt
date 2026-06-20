@@ -1,0 +1,36 @@
+From 2b269508558ad9fa5cf9727aa28d702c8b149d17 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Tue, 16 Jun 2026 11:17:51 +0800
+Subject: [PATCH] fix: add advapi32.lib ole32.lib
+
+---
+ CMakeLists.txt | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1bbcafb..75fae32 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -124,8 +124,8 @@ add_library (OpenCL::OpenCL ALIAS OpenCL)
+ set_target_properties (OpenCL PROPERTIES VERSION 1\.0\.0 SOVERSION "1")
+ 
+ if (WIN32)
+-    target_link_libraries (OpenCL PRIVATE cfgmgr32.lib runtimeobject.lib)
+-    string(APPEND OPENCL_LIBS_PRIVATE_PC " -lcfgmgr32 -lruntimeobject")
++    target_link_libraries (OpenCL PRIVATE cfgmgr32.lib runtimeobject.lib advapi32.lib ole32.lib )
++    string(APPEND OPENCL_LIBS_PRIVATE_PC " -lcfgmgr32 -lruntimeobject -ladvapi32 -lole32")
+ 
+     # Generate a DLL without a "lib" prefix for mingw.
+     if (MINGW OR MSYS OR CYGWIN)
+@@ -204,7 +204,7 @@ if (ENABLE_OPENCL_LAYERINFO)
+   endif ()
+ 
+   if (WIN32)
+-    target_link_libraries (cllayerinfo PRIVATE cfgmgr32.lib runtimeobject.lib)
++    target_link_libraries (cllayerinfo PRIVATE cfgmgr32.lib runtimeobject.lib advapi32.lib ole32.lib)
+   else ()
+     target_link_libraries (cllayerinfo PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+   endif ()
+-- 
+2.47.1.windows.2
+

@@ -1,0 +1,13 @@
+diff --git a/configure b/configure
+index 55da57d..620f174 100644
+--- a/configure
++++ b/configure
+@@ -5957,7 +5957,7 @@ enabled libopencore_amrnb && require libopencore_amrnb opencore-amrnb/interf_dec
+ enabled libopencore_amrwb && require libopencore_amrwb opencore-amrwb/dec_if.h D_IF_init -lopencore-amrwb
+ enabled libopencv         && { check_header opencv2/core/core_c.h &&
+                                { use_pkg_config libopencv opencv opencv2/core/core_c.h cvCreateImageHeader ||
+-                                 require opencv opencv2/core/core_c.h cvCreateImageHeader -lopencv_core -lopencv_imgproc; } ||
++                                 require opencv opencv2/core/core_c.h cvCreateImageHeader -lopencv_core341 -lopencv_imgproc341; } ||
+                                require_pkg_config libopencv opencv opencv/cxcore.h cvCreateImageHeader; }
+ enabled libopenh264       && require_pkg_config libopenh264 openh264 wels/codec_api.h WelsGetCodecVersion
+ enabled libopenjpeg       && { { check_lib libopenjpeg openjpeg-2.3/openjpeg.h opj_version -lopenjp2 -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } ||

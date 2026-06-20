@@ -1,0 +1,119 @@
+# =============================================================================
+# Schema for .var.yaml files (produced by package_release.py)
+# Schema version: 1
+# =============================================================================
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ffmpeg-msvc-prebuilt.example/schema/v1/variant.schema.yaml"
+title: "Variant YAML"
+description: >
+  Schema for .var.yaml files produced by package_release.py.
+  One file per build variant.
+
+type: object
+required:
+  - variant_id
+  - version
+  - revision
+  - arch
+  - triplet
+  - linkage
+  - license
+  - lts
+  - ffmpeg_ref
+  - build_date
+  - assets
+  - features
+  - dependencies
+
+properties:
+  variant_id:
+    type: string
+    pattern: "^ffmpeg-"
+    description: >
+      Unique identifier:
+      ffmpeg-{version}-r{revision}-{triplet}-{linkage}-{license}
+
+  version:
+    type: string
+    description: 'FFmpeg version (e.g. "8.1.1") or "master" for dev builds'
+
+  revision:
+    type: integer
+    description: vcpkg port revision number
+
+  arch:
+    type: string
+    enum: [x64, x86, arm64, arm]
+    description: CPU architecture extracted from triplet
+
+  triplet:
+    type: string
+    description: 'vcpkg triplet (e.g. "x64-windows", "x64-windows-mixed")'
+
+  linkage:
+    type: string
+    enum: [shared, static]
+    description: Library linkage type
+
+  license:
+    type: string
+    enum: [lgpl, gpl, nonfree]
+    description: License variant
+
+  lts:
+    type: boolean
+    description: Whether this is an LTS release (odd major .1)
+
+  ffmpeg_ref:
+    type: string
+    description: >
+      FFmpeg git reference. Release: tag name ("n8.1.1").
+      Master: git describe ("n8.0-1234-gabc").
+
+  build_date:
+    type: string
+    format: date-time
+    description: UTC timestamp of when the build was packaged
+
+  assets:
+    type: object
+    description: Archives produced for this variant
+    required: [binary]
+    properties:
+      binary:
+        $ref: "#/$defs/asset_entry"
+        description: Main binary distribution archive
+      develop:
+        $ref: "#/$defs/asset_entry"
+        description: >
+          SDK/develop archive (shared linkage only).
+          Includes PDBs, debug libs, and extra headers.
+
+  features:
+    type: array
+    items:
+      type: string
+    description: vcpkg features enabled for this build
+
+  dependencies:
+    type: array
+    items:
+      type: string
+    description: vcpkg dependencies of this build
+
+$defs:
+  asset_entry:
+    type: object
+    description: A single distributable archive file
+    required: [file, size, digest]
+    properties:
+      file:
+        type: string
+        description: Archive filename
+      size:
+        type: integer
+        description: File size in bytes
+      digest:
+        type: string
+        pattern: "^sha256:[a-f0-9]{64}$"
+        description: SHA-256 checksum with algorithm prefix

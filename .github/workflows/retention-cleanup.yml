@@ -1,0 +1,125 @@
+# ---------------------------------------------------------------------------
+# retention-cleanup.yml — Enforce retention policy on old builds
+#
+# Runs weekly (Sunday midnight UTC) or manually via workflow_dispatch.
+# Deletes old version YAMLs, GitHub Releases, and git tags according to
+# the retention policy defined in ci/SPEC.md §5.
+#
+# SPEC: ci/SPEC.md §7.5
+# ---------------------------------------------------------------------------
+
+name: Retention Cleanup
+
+concurrency:
+  group: data-branch
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'   # Sunday midnight UTC
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Checkout main branch so we have access to scripts/
+      - uses: actions/checkout@v6
+
+      # Checkout data branch (stores build metadata)
+      - name: Checkout data branch
+        id: checkout-data
+        uses: actions/checkout@v6
+        with:
+          ref: data
+          path: data
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Exit gracefully if data branch does not exist
+        if: steps.checkout-data.outcome == 'failure'
+        run: |
+          echo "Data branch does not exist yet — nothing to clean up."
+          exit 0
+        shell: bash
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      # Run retention policy script.
+      # The script reads data from data/ and prints DELETE_RELEASE:
+      # and DELETE_TAG: lines for each version that should be removed.
+      - name: Run retention policy
+        run: |
+          python scripts/ops/retention_policy.py data > cleanup_output.txt
+          echo "=== Cleanup output ==="
+          cat cleanup_output.txt
+        shell: bash
+
+      # Parse DELETE_RELEASE lines and remove the corresponding GitHub Releases.
+      # Best-effort: ignore errors if a release was already deleted.
+      - name: Delete GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f cleanup_output.txt ]; then
+            echo "No cleanup output found — nothing to delete."
+            exit 0
+          fi
+          while IFS= read -r line; do
+            tag="${line#DELETE_RELEASE:}"
+            [ -n "$tag" ] || continue
+            echo "Deleting release: $tag"
+            gh release delete "$tag" --yes 2>/dev/null || echo "  (skipped — release may not exist)"
+          done < <(grep '^DELETE_RELEASE:' cleanup_output.txt || true)
+        shell: bash
+
+      # Parse DELETE_TAG lines and remove the corresponding git tags.
+      # Best-effort: ignore errors if a tag was already deleted.
+      - name: Delete git tags
+        run: |
+          if [ ! -f ../cleanup_output.txt ]; then
+            echo "No cleanup output found — nothing to delete."
+            exit 0
+          fi
+          while IFS= read -r line; do
+            tag="${line#DELETE_TAG:}"
+            [ -n "$tag" ] || continue
+            echo "Deleting tag: $tag"
+            git push origin --delete "$tag" 2>/dev/null || echo "  (skipped — tag may not exist)"
+          done < <(grep '^DELETE_TAG:' ../cleanup_output.txt || true)
+        shell: bash
+        working-directory: data
+
+      # Commit and push the updated data branch (version YAML deletions +
+      # build-index updates performed by retention_policy.py).
+      - name: Commit and push data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit on data branch"
+            exit 0
+          fi
+          git commit -m "retention: cleanup old builds"
+          for i in 1 2 3; do
+            git pull --rebase origin data && git push origin data && break
+            echo "  Push attempt $i failed, retrying in 5s..."
+            sleep 5
+          done || { echo "ERROR: failed to push after 3 attempts"; exit 1; }
+        shell: bash
+        working-directory: data
+
+  # ── Trigger pages rebuild ─────────────────────────────────────────────────
+  trigger-pages:
+    needs: cleanup
+    if: success()
+    uses: ./.github/workflows/pages.yml

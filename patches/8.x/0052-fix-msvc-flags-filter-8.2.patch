@@ -1,0 +1,20 @@
+diff --git a/configure b/configure
+index 439c062..6d4c381 100644
+--- a/configure
++++ b/configure
+@@ -5206,6 +5206,7 @@ msvc_common_flags(){
+             # generic catch all at the bottom will print the original flag.
+             -Wall)                ;;
+             -Wextra)              ;;
++            -Werror=*)            ;;
+             -std=c*)              echo /std:${flag#-std=};;
+             # Common flags
+             -fomit-frame-pointer) ;;
+@@ -5226,6 +5227,7 @@ msvc_common_flags(){
+             -L*) [ "$_flags_type" != "link" ] || echo -libpath:${flag#-L} ;;
+             -I*) [ "$_flags_type" = "link" ] || echo $flag ;;
+             -D*) [ "$_flags_type" = "link" ] || echo $flag ;;
++            -U*) [ "$_flags_type" = "link" ] || echo $flag ;;
+             -Wl,*)                ;;
+             *)                    echo $flag ;;
+         esac

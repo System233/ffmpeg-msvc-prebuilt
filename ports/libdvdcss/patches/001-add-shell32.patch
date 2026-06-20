@@ -1,0 +1,24 @@
+From 355546238ee0a791c890627f6504cb3f46dc137e Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Sun, 14 Jun 2026 16:14:03 +0800
+Subject: [PATCH] add shell32 lib
+
+---
+ meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/meson.build b/meson.build
+index 5095595..5e82537 100644
+--- a/meson.build
++++ b/meson.build
+@@ -34,6 +34,7 @@ extra_dependencies = []
+ if host_machine.system() == 'windows' and cc.get_argument_syntax() == 'msvc'
+     test_args += ['-D_CRT_SECURE_NO_WARNINGS', '-D_CRT_NONSTDC_NO_WARNINGS',
+                   '-D_WIN32_IE=0x0501', '-DWIN32_LEAN_AND_MEAN', '-DPATH_MAX=2048']
++    extra_dependencies += cc.find_library('shell32')
+ elif host_machine.system() == 'sunos'
+     test_args += '-D_POSIX_C_SOURCE=200809L'
+ endif
+-- 
+2.47.1.windows.2
+

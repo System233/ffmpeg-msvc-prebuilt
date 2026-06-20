@@ -1,0 +1,39 @@
+name: Build FFmpeg Master
+
+on:
+  schedule:
+    - cron: '0 12 * * 5'
+  workflow_dispatch:
+
+jobs:
+  get-metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      describe: ${{ steps.meta.outputs.describe }}
+      commit: ${{ steps.meta.outputs.commit }}
+      sha512: ${{ steps.meta.outputs.sha512 }}
+    steps:
+      - name: Clone FFmpeg master (full history for git describe)
+        run: |
+          git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+
+      - name: Get build metadata
+        id: meta
+        run: |
+          DESCRIBE=$(git -C ffmpeg-src describe --tags --abbrev=7)
+          COMMIT=$(git -C ffmpeg-src rev-parse HEAD)
+          SHA512=$(curl -sL "https://github.com/FFmpeg/FFmpeg/archive/${COMMIT}.tar.gz" | sha512sum | cut -d' ' -f1)
+          echo "describe=$DESCRIBE" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "sha512=$SHA512" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: get-metadata
+    uses: ./.github/workflows/build-release.yml
+    with:
+      yaml: master
+      version: ${{ needs.get-metadata.outputs.describe }}
+      revision: 0
+      ffmpeg_ref: ${{ needs.get-metadata.outputs.describe }}
+      sha512: ${{ needs.get-metadata.outputs.sha512 }}
+    secrets: inherit
