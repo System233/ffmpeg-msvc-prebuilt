@@ -46,8 +46,6 @@ jobs:
           cat new_versions.txt
 
       - name: Create auto-merge PRs for new versions
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [ ! -s new_versions.txt ]; then
             echo "No new versions to process."

@@ -13,3 +13,4 @@ ports/ffmpeg-deps
 .pytest_cache
 /web
 /data
+/.opencode

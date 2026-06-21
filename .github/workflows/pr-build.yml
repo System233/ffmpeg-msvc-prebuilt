@@ -69,6 +69,7 @@ jobs:
       revision: ${{ matrix.revision }}
       dry_run: true
     secrets: inherit
+
   all-checks-passed:
       name: all-checks-passed
       runs-on: ubuntu-latest

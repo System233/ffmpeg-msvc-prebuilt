@@ -1,0 +1,78 @@
+# ---------------------------------------------------------------------------
+# add-version.yml — Manually add a new FFmpeg version and create a PR
+#
+# Workflow dispatch only.  Verifies the upstream tag exists, then creates
+# a ci/ffmpeg-{version} branch with the new YAML and opens an auto-merge PR.
+# ---------------------------------------------------------------------------
+
+name: Add FFmpeg Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "FFmpeg version to add (e.g. 7.1.3, 8.2.1)"
+        required: true
+        type: string
+      sha512:
+        description: "SHA-512 of upstream tarball (optional, auto-computed)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  add-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Validate version format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::Invalid version format. Expected X.Y or X.Y.Z (e.g. 8.2.1)"
+            exit 1
+          fi
+
+      - name: Check not already exists
+        run: |
+          if [ -f "ffmpeg/${{ inputs.version }}.yaml" ]; then
+            echo "::error::ffmpeg/${{ inputs.version }}.yaml already exists"
+            exit 1
+          fi
+
+      - name: Verify upstream tag exists
+        run: |
+          TAG="n${{ inputs.version }}"
+          if ! git ls-remote --tags https://github.com/FFmpeg/FFmpeg.git \
+               "refs/tags/${TAG}" | grep -q .; then
+            echo "::error::Tag ${TAG} not found in upstream FFmpeg repository"
+            exit 1
+          fi
+          echo "Upstream tag ${TAG} verified"
+
+      - name: Create version branch and PR
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          CLOSEST=$(python scripts/find_closest_yaml.py --version "${{ inputs.version }}")
+          echo "Closest YAML: ${CLOSEST}"
+
+          SHA512_ARGS=""
+          [ -n "${{ inputs.sha512 }}" ] && SHA512_ARGS="--sha512 ${{ inputs.sha512 }}"
+
+          python scripts/ops/create_version_pr.py \
+            --version "${{ inputs.version }}" \
+            --closest-yaml "$CLOSEST" \
+            $SHA512_ARGS
