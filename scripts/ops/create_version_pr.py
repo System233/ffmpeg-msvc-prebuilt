@@ -102,6 +102,30 @@ def set_revision_yaml(path: Path, revision: str = "0") -> None:
     print(f"  Set revision: {revision} in {path.name}")
 
 
+def _create_pr(branch: str, version: str) -> None:
+    """Create a PR for the given branch and enable auto-merge."""
+    title = f"ffmpeg {version}"
+    body = f"Auto-generated port for FFmpeg {version}. Please review and merge."
+    result = _run([
+        "gh", "pr", "create",
+        "--base", "main",
+        "--head", branch,
+        "--title", title,
+        "--body", body,
+    ])
+    pr_url = result.stdout.strip()
+    pr_number = pr_url.rstrip("/").split("/")[-1]
+    print(f"\nPR created: {pr_url}")
+    merge_result = _run(
+        ["gh", "pr", "merge", pr_number, "--auto", "--squash"],
+        check=False,
+    )
+    if merge_result.returncode != 0:
+        print(f"  WARNING: auto-merge not enabled for this repository ({merge_result.stderr.strip()})")
+    else:
+        print(f"  Auto-merge enabled for #{pr_number}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Create a PR for a new FFmpeg version.",
@@ -132,8 +156,15 @@ def main() -> None:
 
     result = _run(["git", "ls-remote", "--heads", "origin", branch], check=False)
     if any(f"refs/heads/{branch}" in line for line in result.stdout.splitlines()):
-        print(f"SKIP: branch '{branch}' already exists on remote", file=sys.stderr)
-        sys.exit(1)
+        pr_result = _run(["gh", "pr", "list", "--head", branch, "--json", "number", "-q", ".[0].number"], check=False)
+        existing_pr = pr_result.stdout.strip()
+        if existing_pr:
+            print(f"SKIP: PR #{existing_pr} already exists for branch '{branch}'")
+        else:
+            print(f"Branch '{branch}' exists but no PR found — creating PR from existing branch")
+            if not args.dry_run:
+                _create_pr(branch, version)
+        sys.exit(0)
 
     _run(["cp", str(src_yaml), str(dst_yaml)])
     print(f"  Copied {src_yaml.name} -> {dst_yaml.name}")
@@ -151,7 +182,7 @@ def main() -> None:
     _run(["git", "checkout", "-b", branch])
     print(f"  Created branch: {branch}")
 
-    _run(["git", "add", yaml_path, "ports/ffmpeg/"])
+    _run(["git", "add", yaml_path])
     print(f"  Added: {yaml_path} and ports/")
 
     _run(["git", "commit", "-m", f"feat: add ffmpeg {version}"])
@@ -161,23 +192,10 @@ def main() -> None:
         _run(["git", "push", "origin", branch])
         print(f"  Pushed: origin {branch}")
 
-    title = f"ffmpeg {version}"
-    body = f"Auto-generated port for FFmpeg {version}. Please review and merge."
-
     if args.dry_run:
-        print(f"[DRY RUN] Would create PR: {title}")
+        print(f"[DRY RUN] Would create PR: ffmpeg {version}")
     else:
-        result = _run([
-            "gh", "pr", "create",
-            "--base", "main",
-            "--head", branch,
-            "--title", title,
-            "--body", body,
-            "--auto",
-        ])
-        pr_url = result.stdout.strip()
-        pr_number = pr_url.rstrip("/").split("/")[-1]
-        print(f"\nPR created: {pr_url} (auto-merge enabled)")
+        _create_pr(branch, version)
 
 
 if __name__ == "__main__":
