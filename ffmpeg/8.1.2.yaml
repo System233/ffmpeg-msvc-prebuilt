@@ -1,0 +1,19 @@
+extends: '8.1'
+patches:
+- 8.x/0002-fix-msvc-link-8.1.patch
+- 8.x/0003-fix-windowsinclude.patch
+- 8.x/0004-dependencies-8.1.patch
+- 8.x/0005-fix-nasm-8.1.patch
+- 8.x/0007-fix-lib-naming-8.1.patch
+- 8.x/0013-define-WINVER-8.1.patch
+- 8.x/0024-fix-osx-host-c11-8.1.patch
+- 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
+- 8.x/0045-use-prebuilt-bin2c-8.1.patch
+- 8.x/0046-fix-msvc-detection-8.1.patch
+- 8.x/0047-fix-msvc-utf8.patch
+- 8.x/0048-backport-23039.patch
+- 8.x/0050-lensfun-0.3.4-compat-8.x.patch
+- 8.x/0051-lensfun-configure-fix-8.x.patch
+revision: 0
+source:
+  sha512: c72f4062aecc16d8b2b1e8678d5efe3af4cfaa0cc7c0997052248f9e499e60c2463acf07877cf3b78b246ce3e8078cb043e8d97e90a6b50d06af32ff7369a788
