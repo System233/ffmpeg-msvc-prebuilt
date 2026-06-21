@@ -151,7 +151,7 @@ def main() -> None:
     _run(["git", "checkout", "-b", branch])
     print(f"  Created branch: {branch}")
 
-    _run(["git", "add", yaml_path, "ports/ffmpeg/"])
+    _run(["git", "add", yaml_path])
     print(f"  Added: {yaml_path} and ports/")
 
     _run(["git", "commit", "-m", f"feat: add ffmpeg {version}"])

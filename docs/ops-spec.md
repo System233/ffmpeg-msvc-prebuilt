@@ -320,7 +320,7 @@ if variant_id in data/{major}.x/build-index.yaml.variants:
 │    d. generate.py → 生成 ports/ffmpeg-{X}-{Y}/                │
 │                                                               │
 │    e. git checkout -b ci/ffmpeg-{version}                     │
-│       git add ffmpeg/ + ports/                                │
+│       git add ffmpeg/                                        │
 │       git push origin ci/ffmpeg-{version}                     │
 │                                                               │
 │    f. 检查分支是否已存在 → 是则跳过                            │
