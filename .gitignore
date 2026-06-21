@@ -11,3 +11,5 @@ dist
 ports/ffmpeg
 ports/ffmpeg-deps
 .pytest_cache
+/web
+/data

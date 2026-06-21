@@ -9,6 +9,8 @@
 Prebuilt FFmpeg binaries for Windows, compiled with MSVC.
 Download, extract, and run — no environment setup required.
 
+[![Build](https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/build-release.yml?label=Build&logo=github)](https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/build-release.yml)
+[![Master](https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/master-build.yml?label=Master&logo=github)](https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/master-build.yml)
 [![Pages](https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/pages.yml?branch=web&label=Pages&logo=github)](https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/pages.yml)
 [![Release](https://img.shields.io/github/v/release/System233/ffmpeg-msvc-prebuilt?display_name=tag&label=Release)](https://github.com/System233/ffmpeg-msvc-prebuilt/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20GPL%20%2F%20LGPL-blue)](LICENSE)
