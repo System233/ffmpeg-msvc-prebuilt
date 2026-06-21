@@ -45,34 +45,8 @@ from ops.naming import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Constants – FFmpeg library names (without version suffix)
-# ---------------------------------------------------------------------------
-
-# .lib / .dll base names that belong to FFmpeg itself
-FFMPEG_LIB_NAMES: Set[str] = {
-    "avcodec",
-    "avdevice",
-    "avfilter",
-    "avformat",
-    "avutil",
-    "swresample",
-    "swscale",
-}
-
 # Fixed tool & share subdirectory name (CMake uses this consistently)
 TOOL_DIR = "ffmpeg"
-
-# Sub-directories under include/ that belong to FFmpeg
-FFMPEG_INCLUDE_DIRS: Set[str] = {
-    "libavcodec",
-    "libavdevice",
-    "libavfilter",
-    "libavformat",
-    "libavutil",
-    "libswresample",
-    "libswscale",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -103,18 +77,6 @@ def sha256_file(path: Path) -> str:
                 break
             h.update(chunk)
     return h.hexdigest()
-
-
-def is_ffmpeg_lib(name: str) -> bool:
-    """Check if a .lib base name is an FFmpeg library (handles debug suffixes)."""
-    stem = Path(name).stem  # e.g. "avcodec" or "avcodec.lib" → "avcodec"
-    # Strip version suffix if present: "avcodec-62" → "avcodec"
-    if "-" in stem:
-        stem = stem.split("-")[0]
-    # Strip "d" debug suffix: "avcodecd" → "avcodec"
-    if stem.endswith("d"):
-        stem = stem[:-1]
-    return stem in FFMPEG_LIB_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -179,121 +141,24 @@ def find_exes(
     return found
 
 
-def find_dlls(
+def copy_dir_recursively(
     pkg_dir: Optional[Path],
+    subdir: str,
+    exclude_suffixes: Optional[Set[str]] = None,
 ) -> List[Tuple[Path, str]]:
-    """Discover av*.dll and sw*.dll (shared linkage only).
+    """Recursively collect all files from pkg_dir/subdir/.
 
     Returns list of (source_path, arcname_in_zip) tuples.
     """
     found: List[Tuple[Path, str]] = []
-    bin_dir = (pkg_dir / "bin") if pkg_dir is not None else None
-
-    if bin_dir is not None and bin_dir.is_dir():
-        for dll in sorted(bin_dir.glob("*.dll")):
-            stem = dll.stem
-            base = stem.split("-")[0]
-            if base in FFMPEG_LIB_NAMES:
-                found.append((dll, f"bin/{dll.name}"))
-
-    return found
-
-
-def find_pdbs(
-    pkg_dir: Optional[Path],
-) -> List[Tuple[Path, str]]:
-    """Discover ffmpeg/ffplay/ffprobe and av*/sw* PDB files (shared linkage).
-
-    Returns list of (source_path, arcname_in_zip) tuples.
-    """
-    pdb_exe_names = {"ffmpeg", "ffplay", "ffprobe"}
-    found: List[Tuple[Path, str]] = []
-    bin_dir = (pkg_dir / "bin") if pkg_dir is not None else None
-
-    if bin_dir is not None and bin_dir.is_dir():
-        for pdb in sorted(bin_dir.glob("*.pdb")):
-            stem = pdb.stem
-            base = stem.split("-")[0]
-            if base in FFMPEG_LIB_NAMES or stem in pdb_exe_names:
-                found.append((pdb, f"bin/{pdb.name}"))
-
-    return found
-
-
-def find_includes(
-    pkg_dir: Optional[Path],
-) -> List[Tuple[Path, str]]:
-    """Discover FFmpeg header files from the standard include directories.
-
-    Only collects headers under FFmpeg-owned subdirectories
-    (libavcodec/, libavdevice/, libavfilter/, libavformat/,
-     libavutil/, libswresample/, libswscale/).
-
-    Returns list of (source_path, arcname_in_zip) tuples.
-    """
-    found: List[Tuple[Path, str]] = []
-    inc_root = (pkg_dir / "include") if pkg_dir is not None else None
-
-    if inc_root is None or not inc_root.is_dir():
-        print("  WARNING: include directory not found")
-        return found
-
-    for subdir_name in sorted(FFMPEG_INCLUDE_DIRS):
-        subdir = inc_root / subdir_name
-        if not subdir.is_dir():
-            print(f"  WARNING: include subdirectory '{subdir_name}' not found")
-            continue
-        for src_path in sorted(subdir.rglob("*.h")):
-            if src_path.is_file():
-                relative = src_path.relative_to(inc_root)
-                found.append((src_path, f"include/{relative}"))
-
-    return found
-
-
-def find_libs(
-    pkg_dir: Optional[Path],
-    linkage: str,
-    include_debug: bool = False,
-) -> List[Tuple[Path, str]]:
-    """Discover FFmpeg .lib files.
-
-    For *shared* linkage with *include_debug=True* this collects both
-    release and debug import libs.  Otherwise only release libs.
-
-    Only collects FFmpeg-owned libraries (avcodec, avdevice, avfilter,
-    avformat, avutil, swresample, swscale).
-
-    Returns list of (source_path, arcname_in_zip) tuples.
-    """
-    found: List[Tuple[Path, str]] = []
-    if pkg_dir is None:
-        return found
-
-    seen: Set[str] = set()
-    lib_dir = pkg_dir / "lib"
-
-    if lib_dir.is_dir():
-        for lib_file in sorted(lib_dir.glob("*.lib")):
-            if is_ffmpeg_lib(lib_file.name):
-                arcname = f"lib/{lib_file.name}"
-                if arcname not in seen:
-                    found.append((lib_file, arcname))
-                    seen.add(arcname)
-
-    if linkage == "shared" and include_debug:
-        debug_lib = pkg_dir / "debug" / "lib"
-        if debug_lib.is_dir():
-            for lib_file in sorted(debug_lib.glob("*.lib")):
-                if is_ffmpeg_lib(lib_file.name):
-                    arcname = f"debug/lib/{lib_file.name}"
-                    if arcname not in seen:
-                        found.append((lib_file, arcname))
-                        seen.add(arcname)
-
-    if not found:
-        print("  WARNING: FFmpeg library files not found")
-
+    root = (pkg_dir / subdir) if pkg_dir is not None else None
+    if root is not None and root.is_dir():
+        for f in sorted(root.rglob("*")):
+            if f.is_file():
+                if exclude_suffixes and f.suffix.lower() in exclude_suffixes:
+                    continue
+                arcname = str(f.relative_to(pkg_dir))
+                found.append((f, arcname))
     return found
 
 
@@ -420,65 +285,28 @@ def collect_files(
         print(f"  Collected executables: {', '.join(exe_names)}")
 
     if linkage == "shared":
-        # 2. DLLs
-        dlls = find_dlls(pkg_dir)
-        collected.extend(dlls)
-        if dlls:
-            dll_names = [Path(a).name for _, a in dlls]
-            print(f"  Collected {len(dlls)} DLL(s): {', '.join(dll_names)}")
-
-        if variant_type == "develop":
-            # 3. PDBs (develop only)
-            pdbs = find_pdbs(pkg_dir)
-            collected.extend(pdbs)
-            if pdbs:
-                pdb_names = [Path(a).name for _, a in pdbs]
-                print(f"  Collected {len(pdbs)} PDB(s): {', '.join(pdb_names)}")
-
-        # 4. Headers
-        includes = find_includes(pkg_dir)
-        collected.extend(includes)
-        inc_subdirs: Set[str] = set()
-        for _, arc in includes:
-            parts = Path(arc).parts
-            if len(parts) >= 2:
-                inc_subdirs.add(parts[1])
-        if inc_subdirs:
-            print(f"  Collected headers from: {', '.join(sorted(inc_subdirs))}")
-
-        # 5. Libraries (debug libs only in develop)
-        libs = find_libs(pkg_dir, linkage, include_debug=(variant_type == "develop"))
-        collected.extend(libs)
-        if libs:
-            lib_names = sorted(set(Path(a).name for _, a in libs))
-            print(f"  Collected {len(libs)} library file(s): {', '.join(lib_names)}")
-
-        if variant_type == "develop" and pkg_dir:
-            # 6. Debug bin/ (DLLs + PDBs)
-            debug_bin = pkg_dir / "debug" / "bin"
-            if debug_bin.is_dir():
-                for f in sorted(debug_bin.iterdir()):
-                    if f.is_file():
-                        collected.append((f, f"debug/bin/{f.name}"))
-                print(f"  Collected debug/bin/ files")
-
-        if variant_type == "develop":
-            print("  Shared develop – full debug SDK")
+        if variant_type == "binary":
+            collected.extend(copy_dir_recursively(pkg_dir, "bin", exclude_suffixes={'.pdb'}))
+            collected.extend(copy_dir_recursively(pkg_dir, "lib"))
+            collected.extend(copy_dir_recursively(pkg_dir, "include"))
+            print("  Shared binary – release SDK (no PDBs, no debug)")
         else:
-            print("  Shared binary – release SDK")
+            collected.extend(copy_dir_recursively(pkg_dir, "bin"))
+            collected.extend(copy_dir_recursively(pkg_dir, "lib"))
+            collected.extend(copy_dir_recursively(pkg_dir, "include"))
+            collected.extend(copy_dir_recursively(pkg_dir, "debug"))
+            print("  Shared develop – full debug SDK")
 
-    else:
-        print("  Static – executables only")
-
-    # 7. Share files (shared linkage only — static has no SDK to share)
-    if linkage == "shared":
         share_files = find_share_files(pkg_dir)
         collected.extend(share_files)
         if share_files:
             share_names = [Path(a).name for _, a in share_files]
             print(f"  Collected share files: {', '.join(share_names)}")
 
-    # 8. BUILD_INFO / CONTROL (all linkage types)
+    else:
+        print("  Static – executables only")
+
+    # BUILD_INFO / CONTROL (all linkage types)
     if pkg_dir:
         for fname in ("BUILD_INFO", "CONTROL"):
             p = pkg_dir / fname
@@ -487,7 +315,6 @@ def collect_files(
                 print(f"  Added {fname}")
 
     if linkage == "static":
-        # Flatten arcnames to root directory
         collected = [(src, Path(arc).name) for src, arc in collected]
 
     return collected
