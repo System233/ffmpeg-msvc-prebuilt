@@ -69,3 +69,17 @@ jobs:
       revision: ${{ matrix.revision }}
       dry_run: true
     secrets: inherit
+  all-checks-passed:
+      name: all-checks-passed
+      runs-on: ubuntu-latest
+      needs: build
+      if: always()
+      steps:
+        - name: Check Matrix Status
+          run: |
+            if [ "${{ needs.build.result }}" != "success" ]; then
+              echo "Matrix builds failed!"
+              exit 1
+            else
+              echo "All Matrix builds passed successfully!"
+            fi
