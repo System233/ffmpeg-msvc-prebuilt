@@ -1,0 +1,26 @@
+diff --git a/libswscale/aarch64/Makefile b/libswscale/aarch64/Makefile
+index 835e5df..d47aac2 100644
+--- a/libswscale/aarch64/Makefile
++++ b/libswscale/aarch64/Makefile
+@@ -15,17 +15,15 @@ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops.o
+ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.gen.o
+ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_lookup.gen.o
+ 
+-$(SUBDIR)aarch64/ops_neon.gen.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
+-	$(M)$< -ops > $@.tmp
++$(SUBDIR)aarch64/ops_neon.gen.S:
++	ops_asmgen -ops > $@.tmp
+ 	$(CP) $@.tmp $@
+ 	$(RM) $@.tmp
+ 
+-$(SUBDIR)aarch64/ops_lookup.gen.c: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
+-	$(M)$< -lookup > $@.tmp
++$(SUBDIR)aarch64/ops_lookup.gen.c:
++	ops_asmgen -lookup > $@.tmp
+ 	$(CP) $@.tmp $@
+ 	$(RM) $@.tmp
+ 
+ clean::
+ 	$(RM) $(CLEANSUFFIXES:%=libswscale/aarch64/%)
+-
+-HOSTPROGS = aarch64/ops_asmgen

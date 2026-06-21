@@ -545,7 +545,7 @@ jobs:
           fi
           ver=$(python scripts/ops/naming.py var-version "$var_file")
           today=$(date +%Y%m%d)
-          echo "tag=ffmpeg-${ver}-${today}" >> "$GITHUB_OUTPUT"
+          echo "tag=ffmpeg-${ver}" >> "$GITHUB_OUTPUT"
         shell: bash
 
       # ── Create or append GitHub Release ───────────────────────────────────
@@ -586,5 +586,5 @@ jobs:
   # ── Trigger pages rebuild ─────────────────────────────────────────────────
   trigger-pages:
     needs: finalize
-    if: inputs.dry_run != true
+    if: (success() || failure()) &&inputs.dry_run != true
     uses: ./.github/workflows/pages.yml

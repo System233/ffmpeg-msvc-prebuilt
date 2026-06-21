@@ -123,6 +123,11 @@ if(DEFINED FFMPEG_NEED_BIN2C AND FFMPEG_NEED_BIN2C)
     vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/manual-tools/ffmpeg-bin2c")
 endif()
 
+# ffmpeg-opstool ops_asmgen path: host-compiled code generator for swscale
+if(DEFINED FFMPEG_NEED_OPSTOOL AND FFMPEG_NEED_OPSTOOL)
+    vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/manual-tools/ffmpeg-opstool")
+endif()
+
 if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
     vcpkg_find_acquire_program(NASM)
     get_filename_component(NASM_EXE_PATH "${NASM}" DIRECTORY)

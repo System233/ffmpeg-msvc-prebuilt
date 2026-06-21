@@ -9,5 +9,5 @@ catalog.json
 cache
 dist
 ports/ffmpeg
-ports/ffmpeg-*
+ports/ffmpeg-deps
 .pytest_cache

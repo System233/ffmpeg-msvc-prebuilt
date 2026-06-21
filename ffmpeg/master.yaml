@@ -6,15 +6,27 @@ source:
   ref: "${FFMPEG_REF}"
   head_ref: "master"
 
+# BUG
+# - microsoft/vcpkg#35694
+# - microsoft/vcpkg#46738
+# - microsoft/vcpkg#22437
+# - microsoft/vcpkg#23772
+# - microsoft/vcpkg-tool#295
+# - microsoft/vcpkg-tool#538
+
 build:
   base_options: "--enable-pic --disable-doc --enable-version3 --enable-runtime-cpudetect"
   host_deps:
     - name: ffmpeg-bin2c
       host: true
+    - name: ffmpeg-opstool
+      host: true
     - name: vcpkg-cmake-get-vars
       host: true
     - name: vcpkg-pkgconfig-get-modules
       host: true
+  cmake_defines:
+    FFMPEG_NEED_OPSTOOL: "ON"
 
 patches:
   # - 8.x/0002-fix-msvc-link-8.1.patch
@@ -32,4 +44,5 @@ patches:
   - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
   - 8.x/0051-lensfun-configure-fix-8.x.patch
   - 8.x/0052-fix-msvc-flags-filter-8.2.patch
-  - 8.x/0053-fix-host-cc-msvc.patch
+  - 8.x/0053-fix-host-cc-msvc-8.2.patch
+  - 8.x/0054-fix-opstool-aarch64-8.2.patch
