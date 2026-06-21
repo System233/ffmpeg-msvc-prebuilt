@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# approve-bot-workflows.yml — Auto-approve pending PR Build runs for bot PRs
+#
+# When "PR Build" is requested for a PR authored by github-actions[bot],
+# immediately approve it so the workflow can run without manual intervention.
+# ---------------------------------------------------------------------------
+
+name: Approve Bot Workflows
+
+on:
+  workflow_run:
+    workflows: ["PR Build"]
+    types: [requested]
+
+permissions:
+  actions: write
+
+jobs:
+  auto-approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.BOT_PAT }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const run = context.payload.workflow_run;
+            const pr = run.pull_requests[0];
+
+            if (!pr) {
+              console.log(`Run ${run.id}: no associated PR, skipping`);
+              return;
+            }
+
+            const { data: prData } = await github.rest.pulls.get({
+              owner, repo, pull_number: pr.number
+            });
+
+            if (prData.user.login !== 'github-actions[bot]') {
+              console.log(`PR #${pr.number} by ${prData.user.login}, not bot, skipping`);
+              return;
+            }
+
+            try {
+              await github.rest.actions.approveWorkflowRun({
+                owner, repo, run_id: run.id
+              });
+              console.log(`Approved run ${run.id} for PR #${pr.number}`);
+            } catch (err) {
+              console.log(`Failed to approve run ${run.id}: ${err.message}`);
+            }
