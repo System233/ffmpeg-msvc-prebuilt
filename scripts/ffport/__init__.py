@@ -44,6 +44,15 @@ def cmd_deps(args):
     deps_port.generate_deps_port()
 
 
+def cmd_get_revision(args):
+    """Print the revision number from a version YAML chain."""
+    docs, _ = yaml.resolve_chain(args.yaml)
+    merged = {}
+    for doc in docs:
+        merged = merge.deep_merge(merged, doc)
+    print(merged.get("revision", 0))
+
+
 def _generate(yaml_name, version=None, sha512=None, build_date=None,
               port_name="ffmpeg", output=None, ref=None):
     """Generate port directory for a given YAML config and optional version."""
@@ -173,6 +182,8 @@ def main():
 
     sub.add_parser("list", help="List available version YAML files")
     sub.add_parser("deps", help="Generate ffmpeg-deps virtual port")
+    rev = sub.add_parser("get-revision", help="Print revision from a version YAML")
+    rev.add_argument("yaml", help="Version stem (e.g. 8.1.1)")
 
     args = parser.parse_args()
 
@@ -182,6 +193,8 @@ def main():
         cmd_list(args)
     elif args.command == "deps":
         cmd_deps(args)
+    elif args.command == "get-revision":
+        cmd_get_revision(args)
 
 
 if __name__ == "__main__":

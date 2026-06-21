@@ -1,0 +1,79 @@
+# ---------------------------------------------------------------------------
+# build-all.yml — Build all FFmpeg versions
+#
+# Triggered by:
+#   - Schedule (daily 06:00 UTC): scans all versions, builds missing ones
+#   - Push to main with ffmpeg/*.yaml changes: detects changed versions, builds
+#   - Manual workflow_dispatch: same as schedule
+#
+# Uses concurrency: data-branch to serialize with other data-branch writers.
+# ---------------------------------------------------------------------------
+
+name: Build All FFmpeg Versions
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - 'ffmpeg/*.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: data-branch
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.scan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scan versions to build
+        id: scan
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.event.after }}"
+            python scripts/ops/ci_detect_changes.py \
+              --base "$BEFORE" --head "$AFTER" --json > changes.json
+            include=$(jq -c '
+              if .found then
+                [.changed[] | {version}]
+              else
+                []
+              end
+            ' changes.json)
+          else
+            include=$(python scripts/ffport.py list | jq -R -s '
+              split("\n") | map(select(length > 0)) | map({version: .})
+            ')
+          fi
+
+          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: scan
+    if: needs.scan.outputs.matrix != '[]'
+    strategy:
+      matrix:
+        config: ${{ fromJSON(needs.scan.outputs.matrix) }}
+    uses: ./.github/workflows/build-release.yml
+    with:
+      version: ${{ matrix.config.version }}
+    secrets: inherit

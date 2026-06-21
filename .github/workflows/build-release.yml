@@ -11,7 +11,7 @@
 name: Build FFmpeg Release
 
 concurrency:
-  group: data-branch
+  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || 'data-branch' }}
 
 on:
   workflow_dispatch:
@@ -97,6 +97,7 @@ jobs:
     outputs:
       matrix: ${{ steps.scan.outputs.matrix }}
       triplets: ${{ steps.scan.outputs.triplets }}
+      revision: ${{ steps.rev.outputs.value }}
     steps:
       - uses: actions/checkout@v6
 
@@ -109,11 +110,20 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Resolve revision
+        id: rev
+        run: |
+          rev="${{ inputs.revision }}"
+          if [ -z "$rev" ]; then
+            rev=$(python scripts/ffport.py get-revision "${{ inputs.version }}")
+          fi
+          echo "value=$rev" >> "$GITHUB_OUTPUT"
+
       - name: Scan variants and output dynamic build matrix
         id: scan
         run: |
           ver="${{ inputs.version }}"
-          rev="${{ inputs.revision }}"
+          rev="${{ steps.rev.outputs.value }}"
           target_arch="${{ inputs.target_arch }}"
           target_license="${{ inputs.target_license }}"
 
@@ -385,7 +395,7 @@ jobs:
         id: vars
         run: |
           $ver = "${{ inputs.version }}"
-          $rev = "${{ inputs.revision }}"
+          $rev = "${{ needs.scan.outputs.revision }}"
           $triplet = "${{ matrix.triplet }}"
           $license = "${{ matrix.license }}"
           $linkage = "${{ matrix.linkage }}"
