@@ -1,12 +1,12 @@
 {
   "site": {
-    "title": "FFmpeg MSVC 预编译"
+    "title": "FFmpeg MSVC 预构建"
   },
   "hero": {
-    "title": "FFmpeg MSVC 预编译",
-    "subtitle": "适用于 Windows 的即用型 FFmpeg 二进制文件，使用 MSVC 编译。所有依赖已包含 — 下载、解压、运行。",
-    "noReleases": "暂无发布。CI 发布首个版本后数据将显示于此处。",
-    "viewAll": "查看所有发布",
+    "title": "FFmpeg MSVC 预构建",
+    "subtitle": "开箱即用的 FFmpeg Windows 二进制文件，使用 MSVC 编译，所有依赖已包含 — 下载解压即运行。",
+    "noReleases": "暂无构建。CI 发布首个构建后数据将显示于此处。",
+    "viewAll": "查看所有构建",
     "chooseLang": "选择语言",
     "quickDownload": "快速下载 (x64 Windows)",
     "github": "GitHub",
@@ -31,43 +31,43 @@
     ]
   },
   "releases": {
-    "title": "发布列表",
+    "title": "构建列表",
     "empty": "没有匹配筛选条件的发布。",
     "cataloged": "个构建结果已入库",
-    "totalFound": "个发布版本",
+    "totalFound": "个构建版本",
     "action": "操作",
     "details": "详情",
     "reset": "重置筛选"
   },
   "release": {
-    "title": "发布详情",
+    "title": "构建详情",
     "latestLabel": "最新版本",
     "version": "版本",
     "revision": "修订号",
-    "lts": "长期支持",
+    "lts": "长期支持 (LTS)",
     "master": "开发版",
     "releaseTag": "GitHub 标签",
     "buildDate": "构建日期",
     "updatedDate": "更新日期",
-    "variants": "构建版本",
+    "variants": "变体数",
     "complete": "已完成",
     "incomplete": "构建中",
-    "releasedOn": "发布日期",
-    "backToList": "所有发布",
-    "notFound": "未找到发布版本",
+    "releasedOn": "构建日期",
+    "backToList": "所有构建",
+    "notFound": "未找到该构建",
     "selectHint": "下表提供直接下载链接。",
     "architectures": "架构",
     "licenses": "许可协议",
     "linkages": "链接方式",
     "viewOnGitHub": "在 GitHub 查看",
     "fullDetails": "完整详情",
-    "ffmpegRef": "FFmpeg 版本",
+    "ffmpegRef": "FFmpeg 引用",
     "status": "状态",
     "progress": "构建进度",
     "metadata": "完整构建元数据",
     "available": "个变体可用",
     "variantDetails": "变体详情",
-    "copyHash": "复制",
+    "copyHash": "复制哈希",
     "noFeatures": "未列出具体功能。",
     "noDeps": "无外部依赖。",
     "howToUse": "如何使用",
@@ -75,8 +75,9 @@
     "selectBuild": "选择一个构建版本开始",
     "selectBuildDesc": "使用左侧筛选器缩小选择范围，点击一个构建版本查看其详细元数据。",
     "loading": "正在加载元数据...",
-    "backToCatalog": "返回列表",
-    "errorDesc": "您寻找的发布版本不存在或已被移除。",
+    "backToCatalog": "返回构建列表",
+    "errorDesc": "目标构建不存在或已被移除。",
+    "copied": "已复制！",
     "tooltips": {
       "x64": "64位 Intel/AMD 架构 (x86_64)",
       "x86": "32位 Intel/AMD 架构 (i686)",
@@ -86,31 +87,40 @@
       "static": "自包含二进制文件。无需外部 DLL 即可运行。",
       "gpl": "通用公共许可证。包含完整功能。",
       "lgpl": "宽通用公共许可证。协议更宽松。",
-      "nonfree": "包含非自由组件 (如 fdk-aac)。"
+      "nonfree": "包含非自由组件 (如 fdk-aac)。",
+      "revision": "该发布的构建修订号",
+      "progress": "已完成变体数 / 总变体数",
+      "triplet": "Vcpkg 目标三元组：架构-平台",
+      "lts": "长期支持版 — 稳定发布，长期维护更新",
+      "latest": "该版本线中的最新构建",
+      "dev": "基于最新源码的开发构建版本",
+      "hash": "SHA-256 哈希值，用于校验文件完整性"
     }
   },
   "variant": {
     "size": "大小",
     "sha256": "SHA256",
-    "features": "功能",
-    "dependencies": "依赖库",
+    "features": "启用的功能",
+    "dependencies": "链接的依赖库",
     "download": "下载",
-    "develop": "开发版 (SDK)",
+    "develop": "SDK",
+    "shared": "动态",
+    "static": "静态",
     "noVariant": "不可用"
   },
   "filter": {
-    "search": "搜索版本...",
-    "allMajors": "所有版本",
+    "search": "搜索构建...",
+    "allMajors": "所有主版本",
     "ltsOnly": "仅长期支持",
     "completeOnly": "仅完成版本"
   },
   "footer": {
-    "message": "FFmpeg Windows MSVC 预编译二进制文件",
-    "copy": "© 2026 FFmpeg MSVC 预编译版。基于 MIT 协议开源。",
+    "message": "FFmpeg Windows MSVC 预构建二进制文件",
+    "copy": "© 2026 FFmpeg MSVC 预构建版。基于 MIT 协议开源。",
     "links": {
       "github": "源代码",
       "issues": "报告问题",
-      "releases": "所有发布"
+      "releases": "所有构建"
     }
   }
 }

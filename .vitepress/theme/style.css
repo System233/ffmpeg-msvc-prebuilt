@@ -33,24 +33,27 @@
   flex-direction: column;
 }
 
-/* .VPDoc .container {
-  flex-grow: 1;
-  max-width: 100% !important;
-  margin: 0 !important;
-  padding: 0 32px !important;
+.VPDoc .container,
+.VPDoc .content-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-} */
-
-.VPDocFooter {
+}
+.VPDoc .content-container {
   margin: 0;
 }
 
 .VPDoc .content {
-  flex-grow: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   max-width: 100% !important;
   width: 100% !important;
   padding: 0 !important;
+}
+
+.VPDocFooter {
+  margin: 0;
 }
 
 /* Remove default padding from VPDoc main container to avoid double padding */

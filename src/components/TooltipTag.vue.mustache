@@ -1,0 +1,21 @@
+<script setup lang="ts">
+defineProps<{
+  tooltip: string
+  color?: 'indigo' | 'amber' | 'purple' | 'blue'
+}>()
+</script>
+
+<template>
+<span class="group relative inline-flex cursor-pointer rounded transition-all hover:ring-2"
+  :class="{
+    'hover:ring-indigo-400/40 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/20': !color || color === 'indigo',
+    'hover:ring-amber-400/40 hover:bg-amber-100/50 dark:hover:bg-amber-900/20': color === 'amber',
+    'hover:ring-purple-400/40 hover:bg-purple-100/50 dark:hover:bg-purple-900/20': color === 'purple',
+    'hover:ring-blue-400/40 hover:bg-blue-100/50 dark:hover:bg-blue-900/20': color === 'blue',
+  }">
+  <slot />
+  <span class="invisible opacity-0 transition-all group-hover:visible group-hover:opacity-100 absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-[10px] px-2 py-1 rounded shadow-lg z-50 pointer-events-none">
+    {{ tooltip }}
+  </span>
+</span>
+</template>

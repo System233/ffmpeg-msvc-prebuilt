@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { useData } from 'vitepress'
+import { useData, withBase } from 'vitepress'
 import { ref, watchEffect, computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
+import TooltipTag from './TooltipTag.vue'
+import ScrollToTop from './ScrollToTop.vue'
 import { GITHUB_REPO_URL } from '../constants'
+import { compDesc } from '../descriptions'
 
-const { params } = useData()
+const { params, localeIndex } = useData()
 
 const release = ref<any>(null)
 const error = ref(false)
@@ -14,13 +17,29 @@ const error = ref(false)
 const selectedArch = ref<string | null>(null)
 const selectedLinkage = ref<string | null>(null)
 const selectedLicense = ref<string | null>(null)
+const variantSearch = ref('')
+const copiedVariantId = ref('')
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+const highlightedVariant = ref('')
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
+
+function scrollToVariant(id: string) {
+  const el = document.getElementById(id)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    highlightedVariant.value = id
+    if (highlightTimer) clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => { highlightedVariant.value = '' }, 2000)
+  }
+}
 
 // Tooltip data from localization
 const tooltipMap: Record<string, string> = {
   x64: "[[release.tooltips.x64]]",
   x86: "[[release.tooltips.x86]]",
   arm64: "[[release.tooltips.arm64]]",
-  arm32: "[[release.tooltips.arm32]]",
+  arm: "[[release.tooltips.arm32]]",
   shared: "[[release.tooltips.shared]]",
   static: "[[release.tooltips.static]]",
   gpl: "[[release.tooltips.gpl]]",
@@ -53,7 +72,9 @@ watchEffect(async () => {
 
 const filteredVariants = computed(() => {
   if (!release.value?.variants) return []
+  const q = variantSearch.value.toLowerCase()
   return release.value.variants.filter((v: any) => {
+    if (q && !v.assets.binary.file.toLowerCase().includes(q)) return false
     if (selectedArch.value && v.arch !== selectedArch.value) return false
     if (selectedLinkage.value && v.linkage !== selectedLinkage.value) return false
     if (selectedLicense.value && v.license !== selectedLicense.value) return false
@@ -61,9 +82,11 @@ const filteredVariants = computed(() => {
   })
 })
 
+const archOrder: Record<string, number> = { x64: 0, x86: 1, arm64: 2, arm: 3 }
+
 const availableArchs = computed(() => {
   const a = [...new Set(release.value?.variants?.map((v: any) => v.arch) || [])] as string[]
-  return a.sort()
+  return a.sort((a, b) => (archOrder[a] ?? 99) - (archOrder[b] ?? 99))
 })
 const linkages = computed(() => {
   const l = [...new Set(release.value?.variants?.map((v: any) => v.linkage) || [])] as string[]
@@ -94,8 +117,8 @@ function fmtDate(iso: string): string {
   })
 }
 
-const archLabel: Record<string, string> = { x64: 'x64', x86: 'x86', arm64: 'ARM64', arm32: 'ARM32' }
-const allCombos = ['shared-gpl', 'shared-lgpl', 'shared-nonfree', 'static-gpl', 'static-lgpl', 'static-nonfree']
+const archLabel: Record<string, string> = { x64: 'x64', x86: 'x86', arm64: 'ARM64', arm: 'ARM32' }
+const allCombos = ['shared-gpl', 'shared-lgpl', 'static-gpl', 'static-lgpl']
 
 function getCombos() {
   if (!release.value?.variants) return []
@@ -113,7 +136,7 @@ function getV(arch: string, linkage: string, license: string): any {
 
 function colLabel(c: string): string {
   const [link, lic] = c.split('-')
-  return (link === 'shared' ? 'Shared' : 'Static') + ' ' + lic.toUpperCase()
+  return `${link === 'shared' ? '[[variant.shared]]' : '[[variant.static]]'} ${lic.toUpperCase()}`
 }
 
 function getComboTooltip(c: string): string {
@@ -121,8 +144,25 @@ function getComboTooltip(c: string): string {
   return `${tooltipMap[link]} • ${tooltipMap[lic]}`
 }
 
-function copyText(text: string) {
-  navigator.clipboard.writeText(text)
+function copyText(digest: string, id: string) {
+  const hash = digest.includes(':') ? digest.split(':').slice(1).join(':') : digest
+  navigator.clipboard.writeText(hash)
+  copiedVariantId.value = id
+  if (copyTimer) clearTimeout(copyTimer)
+  copyTimer = setTimeout(() => { copiedVariantId.value = '' }, 1500)
+}
+
+function variantId(file: string): string {
+  return 'v-' + file.replace(/\.zip$/, '').replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+const FFMPEG_REPO = 'https://github.com/FFmpeg/FFmpeg'
+
+function ffmpegRefUrl(ref: string): string | null {
+  if (!ref) return null
+  const commitMatch = ref.match(/-g([a-f0-9]+)$/)
+  if (commitMatch) return `${FFMPEG_REPO}/commit/${commitMatch[1]}`
+  return `${FFMPEG_REPO}/releases/tag/${ref}`
 }
 </script>
 
@@ -131,7 +171,7 @@ function copyText(text: string) {
   <!-- Header -->
   <header class="space-y-6">
     <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500">
-      <a href="./" class="hover:text-blue-600 transition-colors no-underline">[[release.backToList]]</a>
+      <a :href="withBase(`/${localeIndex}/releases`)" class="font-bold hover:text-blue-600 transition-colors no-underline">[[release.backToList]]</a>
       <Icon icon="fa6-solid:chevron-right" class="text-[8px]" />
       <span class="text-gray-900 dark:text-white font-bold">{{ release.version }}</span>
     </div>
@@ -140,11 +180,11 @@ function copyText(text: string) {
       <div class="flex flex-wrap items-center gap-4">
         <h1 class="text-3xl font-bold tracking-tight m-0 text-gray-900 dark:text-white">
         FFmpeg {{ release.version }}
-        <span class=" text-gray-500">#{{release.revision}}</span>
+        <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class=" text-gray-500">#{{release.revision}}</span></TooltipTag>
         </h1>
         <div class="flex items-center gap-2">
           <span v-if="release.lts" class="badge badge-green">[[release.lts]]</span>
-          <span v-if="release.major === 'master'" class="badge badge-blue">[[release.master]]</span>
+          <span v-if="release.ffmpeg_ref?.includes('-dev')" class="badge badge-blue">[[release.master]]</span>
           <!-- <span class="badge badge-outline">r{{ release.revision }}</span> -->
         </div>
       </div>
@@ -162,14 +202,19 @@ function copyText(text: string) {
       <div class="space-y-1">
         <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.ffmpegRef]]</span>
         <div class="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
-          <span v-if="release.ffmpeg_ref" class="font-bold">{{ release.ffmpeg_ref }}</span>
+          <a v-if="release.ffmpeg_ref" :href="ffmpegRefUrl(release.ffmpeg_ref)" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+            {{ release.ffmpeg_ref }}
+            <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-[8px] inline-block ml-0.5" />
+          </a>
           <span v-else>—</span>
         </div>
       </div>
       <div class="space-y-1">
         <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">[[release.progress]]</span>
         <div class="text-xs font-bold text-gray-700 dark:text-gray-300">
-          <span :class="release.complete ? 'text-green-600' : 'text-amber-600'">{{ release.variant_count }} / {{ release.total_variants }}</span>
+          <TooltipTag :tooltip="'[[release.tooltips.progress]]'">
+            <span :class="release.complete ? 'text-green-600' : 'text-amber-600'">{{ release.variant_count }} / {{ release.total_variants }}</span>
+          </TooltipTag>
         </div>
       </div>
       <div class="space-y-1">
@@ -187,33 +232,45 @@ function copyText(text: string) {
   <!-- Download Matrix -->
   <section class="space-y-4">
     <h2 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">[[variant.download]]</h2>
-    <div class="overflow-x-auto">
+    <div>
       <table class="border-none">
         <thead class="bg-gray-50/50 dark:bg-gray-800/30">
           <tr>
             <th class="w-32 py-2">[[release.architectures]]</th>
             <th v-for="c in getCombos()" :key="c" class="text-center! py-2">
-              <div class="inline-flex items-center gap-1.5 cursor-help" :title="getComboTooltip(c)">
-                {{ colLabel(c) }}
-                <Icon icon="fa6-solid:circle-info" class="text-gray-400" />
-              </div>
+              <TooltipTag :tooltip="getComboTooltip(c)">
+                <div class="inline-flex items-center gap-1.5">
+                  {{ colLabel(c) }}
+                </div>
+              </TooltipTag>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="arch in availableArchs" :key="arch">
             <td class="font-bold text-gray-900 dark:text-white uppercase text-[10px] py-3 whitespace-nowrap">
-              <div class="flex items-center gap-2 cursor-help" :title="tooltipMap[arch]">
-                <Icon icon="fa6-solid:microchip" class="text-gray-300" />
-                {{ archLabel[arch] || arch }}
-                <Icon icon="fa6-solid:circle-info" class="text-gray-400" />
-              </div>
+              <TooltipTag :tooltip="tooltipMap[arch]">
+                <div class="flex items-center gap-2">
+                  <Icon icon="fa6-solid:microchip" class="text-gray-300" />
+                  {{ archLabel[arch] || arch }}
+                </div>
+              </TooltipTag>
             </td>
-            <td v-for="c in getCombos()" :key="c" class="text-center! py-3">
+            <td v-for="c in getCombos()" :key="c" class="text-center! py-2">
               <template v-if="getV(arch, c.split('-')[0], c.split('-')[1])">
-                <a :href="getV(arch, c.split('-')[0], c.split('-')[1]).download_url" class="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs whitespace-nowrap">
-                  {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).assets.binary.size) }}
-                </a>
+                <div class="flex flex-col items-center gap-0.5">
+                  <div class="flex items-center gap-2">
+                    <a :href="getV(arch, c.split('-')[0], c.split('-')[1]).download_url" class="text-blue-600 dark:text-blue-400 font-bold hover:underline text-xs whitespace-nowrap">
+                      {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).assets.binary.size) }}
+                    </a>
+                    <a href="#" @click.prevent="scrollToVariant(variantId(getV(arch, c.split('-')[0], c.split('-')[1]).assets.binary.file))" class="text-gray-300 hover:text-blue-500 transition-colors" title="Scroll to variant">
+                      <Icon icon="fa6-solid:arrow-down" class="text-xs" />
+                    </a>
+                  </div>
+                  <a v-if="getV(arch, c.split('-')[0], c.split('-')[1]).assets.develop" :href="getV(arch, c.split('-')[0], c.split('-')[1]).develop_download_url" class="text-[9px] text-blue-500/70 dark:text-blue-400/70 hover:text-blue-600 hover:underline">
+                    [[variant.develop]] {{ fmtSize(getV(arch, c.split('-')[0], c.split('-')[1]).assets.develop.size) }}
+                  </a>
+                </div>
               </template>
               <span v-else class="text-gray-200 dark:text-gray-800">—</span>
             </td>
@@ -231,70 +288,96 @@ function copyText(text: string) {
         <span class="text-[10px] font-medium uppercase tracking-widest text-gray-400">{{ filteredVariants.length }} / {{ release.variants?.length }} [[release.available]]</span>
       </div>
       
-      <!-- Metadata Filters (Single-select Toggle via Peer-checked Labels) -->
-      <div class="flex flex-wrap items-center gap-4">
+      <!-- Metadata Filters -->
+      <div class="flex flex-wrap items-center gap-3">
         <!-- Arch Filter -->
         <div class="flex flex-wrap gap-1.5">
-          <label v-for="a in availableArchs" :key="a" class="cursor-pointer" :title="tooltipMap[a]">
+          <label v-for="a in availableArchs" :key="a" class="cursor-pointer">
             <input type="checkbox" :checked="selectedArch === a" @change="toggleArch(a)" class="sr-only peer" />
-            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase block
-              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-              peer-checked:bg-purple-600 peer-checked:text-white peer-checked:border-purple-600
-              peer-hover:border-purple-400 dark:peer-hover:border-purple-400">
+            <TooltipTag :tooltip="tooltipMap[a]"
+              class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase
+                border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+                peer-checked:bg-purple-600 peer-checked:text-white peer-checked:border-purple-600
+                peer-hover:border-purple-400 dark:peer-hover:border-purple-400
+                hover:!bg-[inherit] hover:!ring-0">
               {{ a }}
-            </span>
+            </TooltipTag>
           </label>
         </div>
         <div class="h-4 w-px bg-gray-100 dark:bg-gray-800 hidden sm:block"></div>
         <!-- Linkage Filter -->
         <div class="flex flex-wrap gap-1.5">
-          <label v-for="l in linkages" :key="l" class="cursor-pointer" :title="tooltipMap[l]">
+          <label v-for="l in linkages" :key="l" class="cursor-pointer">
             <input type="checkbox" :checked="selectedLinkage === l" @change="toggleLinkage(l)" class="sr-only peer" />
-            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all lowercase block
-              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-              peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600
-              peer-hover:border-blue-400 dark:peer-hover:border-blue-400">
+            <TooltipTag :tooltip="tooltipMap[l]"
+              class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all lowercase
+                border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+                peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600
+                peer-hover:border-blue-400 dark:peer-hover:border-blue-400
+                hover:!bg-[inherit] hover:!ring-0">
               {{ l }}
-            </span>
+            </TooltipTag>
           </label>
         </div>
         <div class="h-4 w-px bg-gray-100 dark:bg-gray-800 hidden sm:block"></div>
         <!-- License Filter -->
         <div class="flex flex-wrap gap-1.5">
-          <label v-for="l in licenses" :key="l" class="cursor-pointer" :title="tooltipMap[l]">
+          <label v-for="l in licenses" :key="l" class="cursor-pointer">
             <input type="checkbox" :checked="selectedLicense === l" @change="toggleLicense(l)" class="sr-only peer" />
-            <span class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase block
-              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-              peer-checked:bg-amber-600 peer-checked:text-white peer-checked:border-amber-600
-              peer-hover:border-amber-400 dark:peer-hover:border-amber-400">
+            <TooltipTag :tooltip="tooltipMap[l]"
+              class="px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all uppercase
+                border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+                peer-checked:bg-amber-600 peer-checked:text-white peer-checked:border-amber-600
+                peer-hover:border-amber-400 dark:peer-hover:border-amber-400
+                hover:!bg-[inherit] hover:!ring-0">
               {{ l }}
-            </span>
+            </TooltipTag>
           </label>
+        </div>
+        <div class="h-4 w-px bg-gray-100 dark:bg-gray-800 hidden sm:block"></div>
+        <!-- Search -->
+        <div class="flex items-center gap-1.5">
+          <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-xs shrink-0" />
+          <input v-model="variantSearch" type="text" :placeholder="'[[filter.search]]'"
+            class="w-full sm:w-[160px] px-2 py-1.5 rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0c0c0e] text-xs placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white" />
         </div>
       </div>
     </div>
     
     <div class="space-y-6">
-      <div v-for="v in filteredVariants" :key="v.assets.binary.file" class="card p-5 space-y-5">
+      <div v-for="v in filteredVariants" :key="v.assets.binary.file" :id="variantId(v.assets.binary.file)" class="card p-5 space-y-5 scroll-mt-24 transition-all"
+        :class="highlightedVariant === variantId(v.assets.binary.file) ? 'ring-2 ring-blue-400/50 bg-blue-50/40 dark:bg-blue-900/10' : ''">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div class="space-y-2">
             <h3 class="text-sm font-bold m-0 text-gray-900 dark:text-white leading-tight">{{ v.assets.binary.file }}</h3>
             <div class="flex flex-wrap gap-1.5 pt-1">
-              <span class="badge badge-purple" :title="tooltipMap[v.arch]">{{ v.arch }}</span>
-              <span class="badge badge-outline lowercase" :title="tooltipMap[v.linkage]">{{ v.linkage }}</span>
-              <span class="badge badge-outline lowercase" :title="tooltipMap[v.license]">{{ v.license }}</span>
-              <span class="badge badge-outline font-mono text-[8px]">{{ v.triplet }}</span>
+              <TooltipTag :tooltip="tooltipMap[v.arch]">
+                <span class="badge badge-purple cursor-pointer" :class="selectedArch === v.arch ? 'ring-2 ring-purple-400' : ''" @click="toggleArch(v.arch)">{{ v.arch }}</span>
+              </TooltipTag>
+              <TooltipTag :tooltip="tooltipMap[v.linkage]">
+                <span class="badge badge-outline lowercase cursor-pointer" :class="selectedLinkage === v.linkage ? 'ring-2 ring-blue-400' : ''" @click="toggleLinkage(v.linkage)">{{ v.linkage }}</span>
+              </TooltipTag>
+              <TooltipTag :tooltip="tooltipMap[v.license]">
+                <span class="badge badge-outline lowercase cursor-pointer" :class="selectedLicense === v.license ? 'ring-2 ring-amber-400' : ''" @click="toggleLicense(v.license)">{{ v.license }}</span>
+              </TooltipTag>
+              <TooltipTag :tooltip="'[[release.tooltips.triplet]]'">
+                <span class="badge badge-outline font-mono text-[8px]">{{ v.triplet }}</span>
+              </TooltipTag>
             </div>
           </div>
-          <div class="space-x-2">
-            <a :href="v.download_url" class="btn-primary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
-              <Icon icon="fa6-solid:download" class="text-[10px]" />
-              [[variant.download]] ({{ fmtSize(v.assets.binary.size) }})
-            </a>
-            <a v-if="v.assets.develop" :href="v.download_url.replace(v.assets.binary.file, v.assets.develop.file)" class="btn-secondary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
-              <Icon icon="fa6-solid:download" class="text-[10px]" />
-              [[variant.develop]] ({{ fmtSize(v.assets.develop.size) }})
-            </a>
+          <div class="flex items-center gap-2">
+            <TooltipTag :tooltip="`[[variant.download]] ${v.triplet}`">
+              <a :href="v.download_url" class="btn-primary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
+                <Icon icon="fa6-solid:download" class="text-[10px]" />
+                [[variant.download]] ({{ fmtSize(v.assets.binary.size) }})
+              </a>
+            </TooltipTag>
+            <TooltipTag v-if="v.assets.develop" :tooltip="`[[variant.develop]] ${v.triplet}`">
+              <a :href="v.develop_download_url || v.download_url.replace(v.assets.binary.file, v.assets.develop.file)" class="btn-secondary h-7 px-3 text-[10px] gap-1.5 shrink-0 font-bold">
+                <Icon icon="fa6-solid:download" class="text-[10px]" />
+                [[variant.develop]] ({{ fmtSize(v.assets.develop.size) }})
+              </a>
+            </TooltipTag>
           </div>
         </div>
 
@@ -306,9 +389,11 @@ function copyText(text: string) {
               [[variant.features]]
             </h4>
             <div v-if="v.features?.length" class="flex flex-wrap gap-1 pt-4">
-              <span v-for="f in v.features" :key="f" class="px-1.5 py-0.5 text-[9px] font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded uppercase">
-                {{ f }}
-              </span>
+              <TooltipTag v-for="f in v.features" :key="f" :tooltip="compDesc[f] || f">
+                <span class="px-1.5 py-0.5 text-[9px] font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded">
+                  {{ f }}
+                </span>
+              </TooltipTag>
             </div>
             <div v-else class="text-[10px] text-gray-400 italic font-medium">[[release.noFeatures]]</div>
           </div>
@@ -320,33 +405,43 @@ function copyText(text: string) {
               [[variant.dependencies]]
             </h4>
             <div v-if="v.dependencies?.length" class="flex flex-wrap gap-1 pt-4">
-              <span v-for="d in v.dependencies" :key="d" class="px-1.5 py-0.5 text-[9px] font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded uppercase">
-                {{ d }}
-              </span>
+              <TooltipTag v-for="d in v.dependencies" :key="d" :tooltip="compDesc[d] || d">
+                <span class="px-1.5 py-0.5 text-[9px] font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded">
+                  {{ d }}
+                </span>
+              </TooltipTag>
             </div>
             <div v-else class="text-[10px] text-gray-400 italic font-medium">[[release.noDeps]]</div>
           </div>
         </div>
 
-        <!-- SHA256 -->
+        <!-- Checksum -->
         <div class="pt-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3">
-          <Icon icon="fa6-solid:fingerprint" class="text-gray-300 text-xs shrink-0" />
-          <code class="flex-1 text-[10px] font-mono text-gray-400 truncate" :title="v.assets.binary.digest">
-            {{ v.assets.binary.digest }}
-          </code>
-          <button @click="copyText(v.assets.binary.digest)" class="text-[9px] font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase shrink-0">[[release.copyHash]]</button>
+          <TooltipTag :tooltip="'[[release.tooltips.hash]]'">
+            <span class="font-mono text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ (v.assets.binary.digest || ':').split(':')[0].toUpperCase() }}</span>
+          </TooltipTag>
+          <code class="flex-1 text-[10px] font-mono text-gray-400 truncate">{{ (v.assets.binary.digest || ':').split(':').slice(1).join(':') }}</code>
+          <div class="relative">
+            <button @click="copyText(v.assets.binary.digest, v.assets.binary.file)" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 shrink-0 cursor-pointer" :title="'[[release.copyHash]]'">
+              <Icon icon="fa6-solid:copy" class="text-xs" />
+            </button>
+            <span v-if="copiedVariantId === v.assets.binary.file" class="absolute -top-7 right-0 whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-[9px] px-2 py-0.5 rounded shadow-lg z-50 pointer-events-none">
+              [[release.copied]]
+            </span>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <SiteFooter />
+  <SiteFooter class="mt-auto" />
+  <ScrollToTop />
 </div>
 
 <div v-else-if="error" class="text-center py-32 space-y-4">
   <Icon icon="fa6-solid:triangle-exclamation" class="text-3xl text-gray-200 mx-auto" />
   <h3 class="text-lg font-bold text-gray-900 dark:text-white m-0">[[release.notFound]]</h3>
-  <a href="./" class="btn-primary">[[release.backToCatalog]]</a>
+  <a :href="withBase(`/${localeIndex}/releases`)" class="btn-primary">[[release.backToCatalog]]</a>
 </div>
 
 <div v-else class="py-32 flex flex-col items-center justify-center space-y-2">

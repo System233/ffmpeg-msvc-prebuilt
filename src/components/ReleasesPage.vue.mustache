@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { releasesIndex } from '../../.vitepress/generated/releases-index'
 import { ref, computed } from 'vue'
+import { useData, withBase } from 'vitepress'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
+import ScrollToTop from './ScrollToTop.vue'
+import TooltipTag from './TooltipTag.vue'
+
+const { localeIndex } = useData()
 
 const search = ref('')
 const majorFilter = ref('all')
 const ltsOnly = ref(false)
-const completeOnly = ref(false)
-
 const filtered = computed(() => {
   return releasesIndex.filter(r => {
     if (search.value) {
@@ -17,7 +20,6 @@ const filtered = computed(() => {
     }
     if (majorFilter.value !== 'all' && r.major !== majorFilter.value) return false
     if (ltsOnly.value && !r.lts) return false
-    if (completeOnly.value && !r.complete) return false
     return true
   })
 })
@@ -84,70 +86,71 @@ function fmtDate(iso: string): string {
       <div class="flex items-center gap-4">
         <label class="cursor-pointer">
           <input type="checkbox" v-model="ltsOnly" class="sr-only peer" />
-          <span class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all
-            border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-            peer-checked:bg-green-600 peer-checked:text-white peer-checked:border-green-600">
-            <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-[10px]" />
-            [[filter.ltsOnly]]
-          </span>
-        </label>
-        
-        <label class="cursor-pointer">
-          <input type="checkbox" v-model="completeOnly" class="sr-only peer" />
-          <span class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all
-            border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-            peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600">
-            <Icon :icon="completeOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-[10px]" />
-            [[filter.completeOnly]]
-          </span>
+          <TooltipTag :tooltip="'[[release.tooltips.lts]]'">
+            <span class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all
+              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
+              peer-checked:bg-green-600 peer-checked:text-white peer-checked:border-green-600">
+              <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-[10px]" />
+              [[filter.ltsOnly]]
+            </span>
+          </TooltipTag>
         </label>
       </div>
     </div>
   </header>
 
   <!-- Releases Table -->
-  <div class="card overflow-hidden">
-    <table class="m-0 border-none">
-      <thead>
-        <tr>
-          <th class="w-[30%]">[[release.version]]</th>
-          <th class="hidden sm:table-cell">[[release.releasedOn]]</th>
-          <th class="hidden md:table-cell text-center">[[release.variants]]</th>
-          <th class="text-right">[[release.architectures]]</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in filtered" :key="r.id" class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
-          <td>
-            <div class="flex flex-col gap-1">
-              <div class="flex items-center gap-2">
-                <a :href="'./releases/' + r.id" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
-                <span v-if="r.lts" class="badge badge-green text-[9px] px-1.5 py-0">LTS</span>
-                <span v-if="r.major === 'master'" class="badge badge-blue text-[9px] px-1.5 py-0">Master</span>
+  <div class="min-h-[300px]">
+    <div v-if="filtered.length" class="card overflow-hidden">
+      <table class="m-0 border-none">
+        <thead>
+          <tr>
+            <th class="w-[30%]">[[release.version]]</th>
+            <th class="hidden sm:table-cell">[[release.releasedOn]]</th>
+            <th class="hidden md:table-cell text-center">[[release.variants]]</th>
+            <th class="text-right">[[release.architectures]]</th>
+            <th class="text-center w-24"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in filtered" :key="r.id" class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
+            <td>
+              <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                  <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
+                  <TooltipTag :tooltip="'[[release.tooltips.lts]]'"><span v-if="r.lts" class="badge badge-green text-[9px] px-1.5 py-0">LTS</span></TooltipTag>
+                  <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.ffmpeg_ref.includes('-dev')" class="badge badge-blue text-[9px] px-1.5 py-0">Dev</span></TooltipTag>
+                </div>
+                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-[10px] font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>
-              <span class="text-[10px] font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span>
-            </div>
-          </td>
-          <td class="hidden sm:table-cell text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
-          <td class="hidden md:table-cell text-center font-medium" :class="r.complete ? 'text-green-600' : 'text-amber-600'">
-            {{ r.variant_count }} / {{ r.total_variants }}
-          </td>
-          <td class="text-right">
-            <div class="flex flex-wrap justify-end gap-1">
-              <span v-for="a in r.archs" :key="a" class="badge badge-purple lowercase text-[8px] px-1.5 py-0">{{ a }}</span>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            </td>
+            <td class="hidden sm:table-cell text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
+            <td class="hidden md:table-cell text-center font-medium" :class="r.complete ? 'text-green-600' : 'text-amber-600'">
+              <TooltipTag :tooltip="'[[release.tooltips.progress]]'"><span>{{ r.variant_count }} / {{ r.total_variants }}</span></TooltipTag>
+            </td>
+            <td class="text-right">
+              <div class="flex flex-wrap justify-end gap-1">
+                <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-[8px] px-1.5 py-0">{{ a }}</span></TooltipTag>
+              </div>
+            </td>
+            <td class="text-center">
+              <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-[10px] font-bold mx-auto">
+                [[variant.download]]
+              </a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-else class="text-center py-24 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-md">
+      <Icon icon="fa6-solid:inbox" class="m-auto inline text-4xl text-gray-200 dark:text-gray-800 mb-4" />
+      <p class="text-gray-400 font-medium">[[releases.empty]]</p>
+      <button @click="search = ''; majorFilter = 'all'; ltsOnly = false" class="text-sm font-bold text-blue-600 hover:underline mt-2">[[releases.reset]]</button>
+    </div>
   </div>
 
-  <div v-if="!filtered.length" class="text-center py-24 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-md">
-    <Icon icon="fa6-solid:inbox" class="m-auto inline text-4xl text-gray-200 dark:text-gray-800 mb-4" />
-    <p class="text-gray-400 font-medium">[[releases.empty]]</p>
-    <button @click="search = ''; majorFilter = 'all'; ltsOnly = false; completeOnly = false" class="text-sm font-bold text-blue-600 hover:underline mt-2">[[releases.reset]]</button>
-  </div>
-
-  <SiteFooter />
+  <SiteFooter class="mt-auto" />
+  <ScrollToTop />
 </div>
 </template>

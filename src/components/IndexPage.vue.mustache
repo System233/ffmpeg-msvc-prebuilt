@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { useData, withBase } from 'vitepress'
 import { releasesIndex } from '../../.vitepress/generated/releases-index'
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
+import ScrollToTop from './ScrollToTop.vue'
+import TooltipTag from './TooltipTag.vue'
 import { GITHUB_REPO_URL } from '../constants'
+
+const { localeIndex } = useData()
 
 function fmtDate(iso: string): string {
   if (!iso) return ''
@@ -17,15 +22,15 @@ function fmtDate(iso: string): string {
 const featuredReleases = computed(() => {
   if (!releasesIndex.length) return []
   
-  // 1. Get Master
-  const master = releasesIndex.find(r => r.major === 'master')
+  // 1. Get Dev
+  const dev = releasesIndex.find(r => r.ffmpeg_ref.includes('-dev'))
   // 2. Get Absolute Latest
   const latest = releasesIndex[0]
   // 3. Get all LTS
   const lts = releasesIndex.filter(r => r.lts)
   
-  // Order: Master -> Latest -> LTS
-  const combined = [master, latest, ...lts].filter((r): r is any => !!r)
+  // Order: Dev -> Latest -> LTS
+  const combined = [dev, latest, ...lts].filter((r): r is any => !!r)
   
   // Deduplicate by ID while maintaining order
   const unique = Array.from(new Map(combined.map(r => [r.id, r])).values())
@@ -57,7 +62,7 @@ const localizedFeatures = [
     </div>
 
     <div class="flex flex-wrap justify-center gap-4">
-      <a href="./releases" class="btn-primary px-8 h-12 text-base font-bold">
+      <a :href="withBase(`/${localeIndex}/releases`)" class="btn-primary px-8 h-12 text-base font-bold">
         [[hero.viewAll]]
       </a>
       <a :href="GITHUB_REPO_URL" target="_blank" class="btn-secondary px-8 h-12 text-base font-bold">
@@ -71,7 +76,7 @@ const localizedFeatures = [
   <section v-if="featuredReleases.length" class="space-y-8">
     <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
       <h2 class="text-2xl font-bold tracking-tight m-0! text-gray-900 dark:text-white">[[hero.latestTitle]]</h2>
-      <a href="./releases" class="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline no-underline">[[hero.viewAll]] &rarr;</a>
+      <a :href="withBase(`/${localeIndex}/releases`)" class="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline no-underline">[[hero.viewAll]] &rarr;</a>
     </div>
 
     <div class="card overflow-hidden">
@@ -89,22 +94,22 @@ const localizedFeatures = [
             <td>
               <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2">
-                  <a :href="'./releases/' + r.id" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
-                  <span v-if="r.major === 'master'" class="badge badge-blue">Master</span>
-                  <span v-else-if="r.id === releasesIndex[0].id" class="badge bg-blue-600 text-white border-blue-600">Latest</span>
-                  <span v-if="r.lts" class="badge badge-green">LTS</span>
+                  <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
+                  <TooltipTag v-if="r.ffmpeg_ref.includes('-dev')" :tooltip="'[[release.tooltips.dev]]'"><span class="badge badge-blue">Dev</span></TooltipTag>
+                  <TooltipTag v-else-if="releasesIndex.length > 0 && r.id === releasesIndex[0].id" :tooltip="'[[release.tooltips.latest]]'"><span class="badge bg-blue-600 text-white border-blue-600">Latest</span></TooltipTag>
+                  <TooltipTag v-if="r.lts" :tooltip="'[[release.tooltips.lts]]'"><span class="badge badge-green">LTS</span></TooltipTag>
                 </div>
-                <span class="text-[10px] font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span>
+                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-[10px] font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>
             </td>
             <td class="hidden sm:table-cell text-xs text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
             <td class="hidden md:table-cell text-center">
               <div class="flex flex-wrap justify-center gap-1">
-                <span v-for="a in r.archs" :key="a" class="badge badge-purple lowercase text-[8px] px-1.5 py-0">{{ a }}</span>
+                <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-[8px] px-1.5 py-0">{{ a }}</span></TooltipTag>
               </div>
             </td>
             <td class="text-center">
-              <a :href="'./releases/' + r.id" class="btn-primary h-7 px-4 text-[10px] font-bold mx-auto">
+              <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-[10px] font-bold mx-auto">
                 [[variant.download]]
               </a>
             </td>
@@ -130,6 +135,7 @@ const localizedFeatures = [
     </div>
   </section>
 
-  <SiteFooter />
+  <SiteFooter class="mt-auto" />
+  <ScrollToTop />
 </div>
 </template>
