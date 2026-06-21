@@ -2,6 +2,6 @@ node_modules/
 .vitepress/dist/
 .vitepress/cache/
 .vitepress/generated/
-en/
-zh/
+/en/
+/zh/
 # pnpm-lock.yaml (committed for CI reproducibility)
