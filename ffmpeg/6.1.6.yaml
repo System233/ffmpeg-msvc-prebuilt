@@ -11,7 +11,6 @@ patches:
 - 6.x/0020-fix-aarch64-libswscale-6.1.patch
 - 6.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium-6.1.patch
 - 6.x/0041-add-const-for-opengl-definition.patch
-- 6.x/0042-fix-arm64-linux.patch
 - 6.x/0050-lensfun-0.3.4-compat-6.x.patch
 - 6.x/0052-svtav1-3.x-compat-6.x.patch
 revision: 0
