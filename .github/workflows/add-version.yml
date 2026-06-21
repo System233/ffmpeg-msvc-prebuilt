@@ -21,7 +21,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   add-version:
@@ -61,12 +60,30 @@ jobs:
           fi
           echo "Upstream tag ${TAG} verified"
 
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Get bot user ID
+        id: bot-user
+        run: |
+          ID=$(gh api /users/ffmpeg-dev[bot] --jq .id)
+          echo "user-id=$ID" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Create version branch and PR
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git config user.name "ffmpeg-dev[bot]"
+          git config user.email "${{ steps.bot-user.outputs.user-id }}+ffmpeg-dev[bot]@users.noreply.github.com"
 
           CLOSEST=$(python scripts/find_closest_yaml.py --version "${{ inputs.version }}")
           echo "Closest YAML: ${CLOSEST}"

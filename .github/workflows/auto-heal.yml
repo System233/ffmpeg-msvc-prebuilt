@@ -91,8 +91,9 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const author = '${{ steps.setup.outputs.pr_author }}';
+            const BOT_USERS = ['github-actions[bot]', 'ffmpeg-dev[bot]'];
 
-            if (author === 'github-actions[bot]') {
+            if (BOT_USERS.includes(author)) {
               console.log(`Authorized: ${author} (project automation bot)`);
               return;
             }
@@ -107,14 +108,14 @@ jobs:
               } else {
                 core.setFailed(
                   `PR author "${author}" has ${level} access. ` +
-                  `Only collaborators with admin/write permission or github-actions[bot] are allowed.`
+                  `Only collaborators with admin/write permission or bot users are allowed.`
                 );
               }
             } catch (err) {
               if (err.status === 404) {
                 core.setFailed(
                   `PR author "${author}" is not a collaborator. ` +
-                  `Auto-heal is restricted to maintainers and github-actions[bot].`
+                  `Auto-heal is restricted to maintainers and bot users.`
                 );
               } else {
                 throw err;
@@ -231,11 +232,11 @@ jobs:
       - name: Run opencode agent
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GIT_AUTHOR_NAME: "opencode-agent[bot]"
-          GIT_AUTHOR_EMAIL: "opencode-agent[bot]@users.noreply.github.com"
+          GIT_AUTHOR_NAME: "ffmpeg-dev[bot]"
+          GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
-          git config --global user.name "opencode-agent[bot]"
-          git config --global user.email "opencode-agent[bot]@users.noreply.github.com"
+          git config --global user.name "ffmpeg-dev[bot]"
+          git config --global user.email "ffmpeg-dev[bot]@users.noreply.github.com"
           opencode run --model "deepseek/deepseek-v4-flash" \
             --dangerously-skip-permissions \
             "$(cat prompt.txt)"
@@ -272,6 +273,7 @@ jobs:
         with:
           ref: ${{ needs.agent-repair.outputs.head_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download patch artifact
         uses: actions/download-artifact@v8
@@ -280,8 +282,24 @@ jobs:
           path: patch-input
         continue-on-error: true
 
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Get bot user ID
+        id: bot-user
+        run: |
+          ID=$(gh api /users/ffmpeg-dev[bot] --jq .id)
+          echo "user-id=$ID" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Apply patch and push
         env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ needs.agent-repair.outputs.head_ref }}
         run: |
           PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
@@ -290,8 +308,11 @@ jobs:
             exit 0
           fi
 
-          git config --global user.name "opencode-agent[bot]"
-          git config --global user.email "opencode-agent[bot]@users.noreply.github.com"
+          git config --global user.name "ffmpeg-dev[bot]"
+          git config --global user.email "${{ steps.bot-user.outputs.user-id }}+ffmpeg-dev[bot]@users.noreply.github.com"
+
+          git remote set-url origin \
+            "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}"
 
           git am "$PATCH"
 
