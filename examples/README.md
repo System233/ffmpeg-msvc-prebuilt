@@ -1,10 +1,22 @@
-# ffmeta - FFmpeg Linking Example
+# ffmeta — FFmpeg Linking Example
 
 ffmeta is a simple CLI tool that prints media file container format
 and stream information. It demonstrates how to link against a prebuilt
 FFmpeg distribution using three different build systems.
 
-[English](README.md) [简体中文](README_CN.md) 
+[English](README.md) | [简体中文](README_CN.md)
+
+## Prerequisites
+
+Download a **shared** prebuilt FFmpeg archive (binary or develop) from
+the [releases page](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
+or [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/).
+
+Extract the `.zip` — the resulting directory contains `bin/`, `lib/`,
+`include/`, and `share/ffmpeg/`. This path is your `FFMPEG_ROOT`.
+
+> **Note**: The static variant does not include headers or libraries
+> and cannot be used for development. Use a shared variant instead.
 
 ## Usage
 
@@ -35,11 +47,11 @@ cmake --build build
 Generated from `scripts/cmake/FindFFMPEG.cmake.in`, it supports three
 linking methods:
 
-| Method          | Command                                                      | Description                                           |
-| --------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
-| A (recommended) | `target_link_libraries(ffmeta PRIVATE FFMPEG::ffmpeg)`       | Umbrella target, includes all modules and system deps |
-| B               | `target_link_libraries(ffmeta PRIVATE FFMPEG::avformat ...)` | Per-module linking                                    |
-| C               | `target_link_libraries(ffmeta PRIVATE ${FFMPEG_LIBRARIES})`  | Legacy variable approach                              |
+| Method | Command | Description |
+|--------|---------|-------------|
+| A (recommended) | `target_link_libraries(ffmeta PRIVATE FFMPEG::ffmpeg)` | Umbrella target, includes all modules and system deps |
+| B | `target_link_libraries(ffmeta PRIVATE FFMPEG::avformat ...)` | Per-module linking |
+| C | `target_link_libraries(ffmeta PRIVATE ${FFMPEG_LIBRARIES})` | Legacy variable approach |
 
 ### Method 2: Meson + pkg-config
 
@@ -56,9 +68,9 @@ make PKG_CONFIG_PATH=<ffmpeg_prefix>/lib/pkgconfig
 
 ## Files
 
-| File             | Purpose                                              |
-| ---------------- | ---------------------------------------------------- |
-| `main.c`         | ffmeta source (libavutil + libavformat + libavcodec) |
-| `CMakeLists.txt` | CMake build                                          |
-| `meson.build`    | Meson build                                          |
-| `Makefile`       | GNU Make build                                       |
+| File | Purpose |
+|------|---------|
+| `main.c` | ffmeta source (libavutil + libavformat + libavcodec) |
+| `CMakeLists.txt` | CMake build |
+| `meson.build` | Meson build |
+| `Makefile` | GNU Make build |
