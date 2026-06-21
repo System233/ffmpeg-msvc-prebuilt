@@ -14,7 +14,7 @@ export default defineConfig({
   lastUpdated: true,
 
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${process.env.BASE_URL || ''}favicon.svg` }],
     ['meta', { name: 'og:title', content: 'FFmpeg MSVC Prebuilt' }],
     ['meta', { name: 'og:description', content: 'Prebuilt FFmpeg binaries for Windows with MSVC' }],
     ['meta', { name: 'og:type', content: 'website' }],
