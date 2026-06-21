@@ -171,8 +171,8 @@ if (FFMPEG_libavutil_FOUND)
     add_library(FFMPEG::ffmpeg INTERFACE IMPORTED)
     set_target_properties(FFMPEG::ffmpeg PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIRS}"
-      INTERFACE_LINK_LIBRARIES "${FFMPEG_LIBRARIES}"
     )
+    target_link_libraries(FFMPEG::ffmpeg INTERFACE "${FFMPEG_LIBRARIES}")
   endif()
 
   set(FFMPEG_FOUND TRUE CACHE BOOL "")
