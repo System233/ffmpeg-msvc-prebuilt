@@ -33,7 +33,7 @@ import yaml
 import os
 import subprocess
 from lts import is_lts
-from naming import parse_variant_id as naming_parse, major_version, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
+from naming import parse_variant_id as naming_parse, major_version, build_data_path, make_version_dir, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
 
 
 # ---------------------------------------------------------------------------
@@ -165,18 +165,20 @@ def cmd_import(args: argparse.Namespace) -> None:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    major = info["major"]
-    version_id = info["version_id"]
-    variant_key = info["variant_key"]
+    version = var_data.get("version", info["version"])
+    revision = var_data.get("revision", info["revision"])
+    version_id = make_version_dir(version=version, revision=revision)
 
-    target_dir = DATA_DIR / major / version_id / "variants"
-    target_path = target_dir / f"{variant_key}.yaml"
+    target_path = DATA_DIR / build_data_path(
+        version=version, revision=revision,
+        triplet=info["triplet"], linkage=info["linkage"], license=info["license"],
+    )
 
     if target_path.exists():
         print(f"SKIPPED (already exists): {target_path}")
         return
 
-    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     write_yaml_atomic(var_data, target_path)
     print(f"IMPORTED {target_path}")
 
@@ -198,9 +200,9 @@ def cmd_has(args: argparse.Namespace) -> None:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    variant_path = (
-        DATA_DIR / info["major"] / info["version_id"] / "variants"
-        / f"{info['variant_key']}.yaml"
+    variant_path = DATA_DIR / build_data_path(
+        version=info["version"], revision=info["revision"],
+        triplet=info["triplet"], linkage=info["linkage"], license=info["license"],
     )
 
     if variant_path.exists():
@@ -518,9 +520,9 @@ def cmd_remove(args: argparse.Namespace) -> None:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    variant_path = (
-        DATA_DIR / info["major"] / info["version_id"] / "variants"
-        / f"{info['variant_key']}.yaml"
+    variant_path = DATA_DIR / build_data_path(
+        version=info["version"], revision=info["revision"],
+        triplet=info["triplet"], linkage=info["linkage"], license=info["license"],
     )
 
     if not variant_path.exists():

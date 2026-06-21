@@ -62,18 +62,18 @@ jobs:
             https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
-      - name: Set up vcpkg cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-dep-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}
-          restore-keys: |
-            vcpkg-dep-${{ matrix.triplet }}-
-            vcpkg-dep-
+      # - name: Set up vcpkg cache
+      #   uses: actions/cache@v5
+      #   with:
+      #     path: ${{ runner.temp }}/vcpkg-cache
+      #     key: vcpkg-dep-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}
+      #     restore-keys: |
+      #       vcpkg-dep-${{ matrix.triplet }}-
+      #       vcpkg-dep-
 
       - name: Install overlay port dependencies (dry-run with SBOM)
         env:
-          VCPKG_BINARY_SOURCES: "files,${{ runner.temp }}/vcpkg-cache,readwrite"
+          # VCPKG_BINARY_SOURCES: "files,${{ runner.temp }}/vcpkg-cache,readwrite"
           VCPKG_OVERLAY_PORTS: ports
           VCPKG_OVERLAY_TRIPLETS: triplets
         run: |

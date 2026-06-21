@@ -81,6 +81,9 @@ on:
 env:
   VCPKG_TAG: 2026.06.01
   PYTHONIOENCODING: utf-8
+  TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
+  LICENSES: "lgpl gpl" #nonfree
+  LINKAGES: "shared static"
 
 
 # ─── Jobs ────────────────────────────────────────────────────────────────────
@@ -93,6 +96,7 @@ jobs:
       contents: read
     outputs:
       matrix: ${{ steps.scan.outputs.matrix }}
+      triplets: ${{ steps.scan.outputs.triplets }}
     steps:
       - uses: actions/checkout@v6
 
@@ -107,10 +111,6 @@ jobs:
 
       - name: Scan variants and output dynamic build matrix
         id: scan
-        env:
-            TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
-            LICENSES: "lgpl gpl" #nonfree
-            LINKAGES: "shared static"
         run: |
           ver="${{ inputs.version }}"
           rev="${{ inputs.revision }}"
@@ -149,21 +149,106 @@ jobs:
           done
 
           echo "matrix=$include" >> "$GITHUB_OUTPUT"
+          echo "triplets=$(echo "$TRIPLETS" | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
           echo "Build matrix: $(echo "$include" | jq -c '. | length') variant(s) to build"
+
+  # ── DL-Seed: download sources for all triplets ──────────────────────────────
+  # Single job that downloads source archives for every triplet × feature
+  # combination via --only-downloads, so builds never need to fetch from the
+  # internet (shared download cache for all architectures).
+  dl-seed:
+    runs-on: windows-2022
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Clone vcpkg at pinned tag
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generate ffmpeg-deps port
+        run: |
+          python scripts/ffport.py deps
+
+      - name: Compute port hash
+        id: porthash
+        shell: pwsh
+        run: |
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
+      - name: Restore vcpkg downloads cache (all triplets)
+        id: dl-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          restore-keys: |
+            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
+            vcpkg-dl-all-
+            vcpkg-dl-
+
+      - name: Bootstrap vcpkg
+        if: steps.dl-cache.outputs.cache-hit != 'true'
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Download sources for all triplets
+        if: steps.dl-cache.outputs.cache-hit != 'true'
+        env:
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        shell: pwsh
+        run: |
+          $triplets = $env:TRIPLETS.Split(' ')
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          $features = if ($json.features) { $json.features.PSObject.Properties.Name } else { @("all") }
+          if ($json.features) {
+            $allFeatures = $json.features.PSObject.Properties.Name -join ','
+            foreach ($triplet in $triplets) {
+              Write-Output "Downloading ffmpeg-deps[$allFeatures] for $triplet ..."
+              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$allFeatures]" `
+                --triplet=$triplet --recurse --only-downloads
+              if ($LASTEXITCODE -ne 0) {
+                throw "Failed to download ffmpeg-deps[$allFeatures] for $triplet"
+              }
+            }
+          } else {
+            Write-Host "No features found in ffmpeg-deps — nothing to submit"
+          }
+
+      - name: Upload build logs (dl-seed)
+        if: failure() && steps.dl-cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-dl-seed
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+          compression-level: 9
+          retention-days: 7
 
   # ── Seed: build base dependencies once per triplet ─────────────────────────
   # If both caches fully hit (primary key match), all heavy work is skipped.
+  # Needs dl-seed so the shared download cache is already populated on arrival.
   seed:
+    needs: [dl-seed, scan]
     runs-on: windows-2022
     permissions: {}
     strategy:
       fail-fast: false
       matrix:
-        triplet:
-          - arm-windows
-          - arm64-windows
-          - x86-windows
-          - x64-windows
+        triplet: ${{ fromJSON(needs.scan.outputs.triplets) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -193,10 +278,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
           restore-keys: |
-            vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
-            vcpkg-dl-${{ matrix.triplet }}-
+            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
+            vcpkg-dl-all-
             vcpkg-dl-
 
       - name: Restore vcpkg binary cache
@@ -334,12 +419,12 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
-          fail-on-cache-miss: true
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
           restore-keys: |
-            vcpkg-dl-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
-            vcpkg-dl-${{ matrix.triplet }}-
+            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
+            vcpkg-dl-all-
             vcpkg-dl-
+          fail-on-cache-miss: true
 
       - name: Restore vcpkg binary cache
         uses: actions/cache/restore@v5
@@ -369,8 +454,8 @@ jobs:
             throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
           }
 
-      # ── Step 3: Generate vcpkg port files ─────────────────────────────────
-      - name: Step 3 - Generate port files
+      # ── Generate vcpkg port files ─────────────────────────────────
+      - name: Generate port files
         run: |
           $yaml = "${{ inputs.yaml }}"
           if (-not $yaml) { $yaml = "${{ inputs.version }}" }
@@ -379,8 +464,8 @@ jobs:
           if ("${{ inputs.ffmpeg_ref }}") { $args += "--ref"; $args += "${{ inputs.ffmpeg_ref }}" }
           & python $args
 
-      # ── Step 4: Build FFmpeg via vcpkg ────────────────────────────────────
-      - name: Step 4 - Build FFmpeg
+      # ── Build FFmpeg via vcpkg ────────────────────────────────────
+      - name: Build FFmpeg
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
           VCPKG_OVERLAY_PORTS: ports
@@ -395,8 +480,8 @@ jobs:
             --triplet=${{ matrix.triplet }} `
             --recurse
 
-      # ── Step 5: Package release archive + generate variant YAML ───────────
-      - name: Step 5 - Package release archive
+      # ── Package release archive + generate variant YAML ───────────
+      - name: Package release archive
         run: |
           $vcpkg_root = "${{ runner.temp }}/vcpkg"
           $port = "${{ steps.vars.outputs.port_name }}"
@@ -408,8 +493,8 @@ jobs:
             --license $license `
             --ffmpeg-ref "${{ inputs.ffmpeg_ref }}"
 
-      # ── Step 6: Upload artifacts ──────────────────────────────────────────
-      - name: Step 6 - Upload artifacts
+      # ── Upload artifacts ──────────────────────────────────────────
+      - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.vars.outputs.variant_id }}
@@ -419,9 +504,9 @@ jobs:
           compression-level: 0
           retention-days: 5
 
-      # ── Step 7: Upload build logs for debugging ──────────────────────────
+      # ── Upload build logs for debugging ──────────────────────────
       # Always runs, even if Step 4 fails, so logs are available for triage.
-      - name: Step 7 - Upload build logs
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v6
         with:

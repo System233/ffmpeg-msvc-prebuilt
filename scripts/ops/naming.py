@@ -130,11 +130,15 @@ def build_data_path(
 def make_version_dir(*, version: str, revision: int = 0) -> str:
     """Build the version directory name used on the data branch.
 
+    Strips leading ``"n"`` if present (same as :func:`major_version`).
+
     ``{version}-r{rev}`` if revision is non-zero, otherwise just ``{version}``.
 
     Example: ``"8.1.1"``, ``revision=2`` → ``"8.1.1-r2"``
     Example: ``"7.1-20260101"``, ``revision=0`` → ``"7.1-20260101"``
+    Example: ``"n8.2-dev-10-gabc1234"``, ``revision=0`` → ``"8.2-dev-10-gabc1234"``
     """
+    version = version.lstrip("n")
     if revision:
         return f"{version}-r{revision}"
     return version
