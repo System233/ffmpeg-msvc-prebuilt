@@ -12,7 +12,6 @@ patches:
 - 5.x/0012-Fix-ssl-110-detection.patch
 - 5.x/0013-define-WINVER.patch
 - 5.x/0015-Fix-xml2-detection.patch
-- 5.x/0020-fix-aarch64-libswscale.patch
 - 5.x/0022-fix-iconv.patch
 - 5.x/0024-fix-gcc13-binutils.patch
 - 5.x/0050-lensfun-0.3.4-compat.patch
