@@ -47,8 +47,11 @@ jobs:
 
       - name: Create auto-merge PRs for new versions
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+
           if [ ! -s new_versions.txt ]; then
             echo "No new versions to process."
             exit 0

@@ -1,0 +1,304 @@
+# ---------------------------------------------------------------------------
+# auto-heal.yml — OpenCode autonomous repair for failed PR builds
+#
+# Two-job architecture:
+#   1. agent-repair  (read-only perms) — diagnose, fix, commit locally
+#   2. push-fixes    (write perms)     — push the agent's commit to the PR branch
+# ---------------------------------------------------------------------------
+
+name: OpenCode Auto-Heal
+
+on:
+  workflow_run:
+    workflows: ["PR Build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Failed PR Build run ID (from Actions page)"
+        required: true
+        type: string
+      branch:
+        description: "PR branch to checkout and fix"
+        required: true
+        type: string
+
+env:
+  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
+
+jobs:
+  # ── Job 1: Diagnose + fix + commit locally ──────────────────────────────
+  agent-repair:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'pull_request') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+
+    outputs:
+      head_ref: ${{ steps.setup.outputs.head_ref }}
+      base_ref: ${{ steps.setup.outputs.base_ref }}
+      pr_number: ${{ steps.setup.outputs.pr_number }}
+
+    steps:
+      - name: Checkout PR Branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Determine Run ID and PR Info
+        id: setup
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            let runId, prNumber;
+
+            if (context.payload.workflow_run) {
+              runId = context.payload.workflow_run.id;
+              prNumber = context.payload.workflow_run.pull_requests[0].number;
+              console.log(`Auto-trigger: run ${runId}, PR #${prNumber}`);
+            } else {
+              runId = parseInt(context.payload.inputs.run_id);
+              const run = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+              prNumber = run.data.pull_requests[0].number;
+              if (!prNumber) {
+                core.setFailed(`Workflow run ${runId} has no associated PR`);
+                return;
+              }
+              console.log(`Manual trigger: run ${runId}, PR #${prNumber}`);
+            }
+
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            const prData = pr.data;
+
+            core.setOutput('run_id', runId.toString());
+            core.setOutput('pr_number', prNumber.toString());
+            core.setOutput('pr_author', prData.user.login);
+            core.setOutput('base_sha', prData.base.sha);
+            core.setOutput('base_ref', prData.base.ref);
+            core.setOutput('head_sha', prData.head.sha);
+            core.setOutput('head_ref', prData.head.ref);
+
+      - name: Check PR Author Authorization
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const author = '${{ steps.setup.outputs.pr_author }}';
+
+            if (author === 'github-actions[bot]') {
+              console.log(`Authorized: ${author} (project automation bot)`);
+              return;
+            }
+
+            try {
+              const perm = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner, repo, username: author
+              });
+              const level = perm.data.permission;
+              if (level === 'admin' || level === 'write') {
+                console.log(`Authorized: ${author} (${level} access)`);
+              } else {
+                core.setFailed(
+                  `PR author "${author}" has ${level} access. ` +
+                  `Only collaborators with admin/write permission or github-actions[bot] are allowed.`
+                );
+              }
+            } catch (err) {
+              if (err.status === 404) {
+                core.setFailed(
+                  `PR author "${author}" is not a collaborator. ` +
+                  `Auto-heal is restricted to maintainers and github-actions[bot].`
+                );
+              } else {
+                throw err;
+              }
+            }
+
+      - name: Check Loop Count Limit
+        id: counter
+        run: |
+          BASE_SHA="${{ steps.setup.outputs.base_sha }}"
+          COMMIT_COUNT=$(git rev-list --count ${BASE_SHA}..HEAD)
+          echo "Total auto-fix commits: $COMMIT_COUNT"
+          if [ "$COMMIT_COUNT" -gt 10 ]; then
+            echo "::error::自动修复提交已达上限 (10次)。放弃修复。"
+            exit 1
+          fi
+          echo "current_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Download Build Log Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ steps.setup.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: build-logs-*
+          path: error_logs
+
+      - name: Generate Agent Context
+        uses: actions/github-script@v9
+        id: context
+        with:
+          script: |
+            const runId = parseInt('${{ steps.setup.outputs.run_id }}');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = parseInt('${{ steps.setup.outputs.pr_number }}');
+
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id: runId
+            });
+
+            const failedJobNames = jobs.data.jobs
+              .filter(j => j.conclusion === 'failure')
+              .map(j => j.name);
+
+            const fs = require('fs');
+            fs.writeFileSync('failed_steps_hint.txt', failedJobNames.join('\n'));
+
+            const contextPayload = {
+              pr_number: prNumber,
+              base_branch: '${{ steps.setup.outputs.base_ref }}',
+              base_sha: '${{ steps.setup.outputs.base_sha }}',
+              head_branch: '${{ steps.setup.outputs.head_ref }}',
+              head_sha: '${{ steps.setup.outputs.head_sha }}',
+              workflow_run_id: runId,
+              workflow_url: `https://github.com/${owner}/${repo}/actions/runs/${runId}`,
+              failed_jobs: failedJobNames,
+              log_directory: './error_logs',
+              hint_file: './failed_steps_hint.txt',
+              trigger: '${{ env.TRIGGER }}'
+            };
+
+            fs.writeFileSync('agent_context.json', JSON.stringify(contextPayload, null, 2));
+            console.log("Agent context generated.");
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch .opencode from opencode branch
+        run: |
+          git fetch origin opencode --depth 1
+          mkdir -p .opencode
+          git archive FETCH_HEAD | tar -x -C .opencode/
+
+      - name: Install opencode CLI
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+      - name: Write agent prompt
+        run: |
+          cat > prompt.txt <<'PROMPT_EOF'
+          你是 ffmpeg-msvc-prebuilt 项目的全自动修复 Agent。CI 构建失败了。
+
+          ## 知识来源
+          诊断知识库位于 `.opencode/skills/auto-heal/SKILL.md`，包含完整的决策树、修复策略和引用文件表。
+          第一步：先读取 SKILL.md，理解决策树和各文件的用途。
+
+          ## 上下文
+          - `agent_context.json` — PR 编号、失败的 Job 列表、日志路径
+          - `failed_steps_hint.txt` — 失败的 Job 名称
+          - `error_logs/build-logs-{triplet}-{license}-{linkage}/` — 构建日志目录
+
+          ## 约束
+          - 只修改 `ffmpeg/*.yaml` 和 `patches/*.x/*.patch`
+          - 禁止修改 `scripts/` `ports/` `.github/` `data/` `web/` `build/`
+          - 禁止运行 `vcpkg install`
+          - 大文件用 grep/tail，禁止完整读取
+
+          ## 任务
+          1. 读取 `agent_context.json` → 确定哪些矩阵变体失败
+          2. 读取 `.opencode/skills/auto-heal/SKILL.md` → 获取诊断知识
+          3. 在 `error_logs/` 下找到对应日志目录 → 按 SKILL 的决策树分析根因
+          4. 修改 `ffmpeg/*.yaml` 或 `patches/*.x/*.patch` 修复
+          5. 验证：
+             - 改 YAML → `python scripts/ffport.py generate <version>`
+             - 改 patch → 按 SKILL `patches/testing.md` 流程 `git apply --check`
+          6. 验证通过后提交到本地仓库：
+             git add ffmpeg/ patches/
+             git commit -m "fix(<version>): <简短、描述性的消息>"
+             提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
+          7. 退出
+          PROMPT_EOF
+
+      - name: Run opencode agent
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          opencode run --model "deepseek/deepseek-v4-flash" \
+            --dangerously-skip-permissions \
+            "$(cat prompt.txt)"
+
+      - name: Export agent commit as patch
+        run: |
+          BASE_SHA="${{ steps.setup.outputs.base_sha }}"
+          if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
+            mkdir -p patch-output
+            git format-patch -1 HEAD -o patch-output
+            echo "Patch exported."
+          else
+            echo "No new commit from agent."
+          fi
+
+      - name: Upload patch artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: auto-heal-patch-${{ github.run_id }}
+          path: patch-output/
+          retention-days: 1
+
+  # ── Job 2: Push agent's commit to PR branch ────────────────────────────
+  push-fixes:
+    needs: agent-repair
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR Branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.agent-repair.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Download patch artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: auto-heal-patch-${{ github.run_id }}
+          path: patch-input
+        continue-on-error: true
+
+      - name: Apply patch and push
+        env:
+          BOT_PAT: ${{ secrets.BOT_PAT }}
+          BRANCH: ${{ needs.agent-repair.outputs.head_ref }}
+        run: |
+          PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
+          if [ -z "$PATCH" ]; then
+            echo "No patch found. Agent made no changes."
+            exit 0
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git am "$PATCH"
+
+          git remote set-url origin \
+            "https://x-access-token:${BOT_PAT}@github.com/${{ github.repository }}"
+
+          git pull --rebase origin "$BRANCH" || true
+          git push origin HEAD:"$BRANCH"
+          echo "Fix pushed to $BRANCH"
