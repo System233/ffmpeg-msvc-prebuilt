@@ -75,6 +75,10 @@ def set_source_sha512_yaml(path: Path, sha512: str) -> None:
     if "source" not in data:
         data["source"] = {}
     data["source"]["sha512"] = sha512
+    # 用 master.yaml 做模板时，修正 source 区为 release 格式
+    if data["source"].get("ref") == "${FFMPEG_REF}":
+        data["source"]["ref"] = "n${VERSION}"
+        data["source"].pop("head_ref", None)
     with open(path, "w", encoding="utf-8") as fh:
         yaml.dump(data, fh, default_flow_style=False, allow_unicode=True)
     print(f"  Set source.sha512 in {path.name}")

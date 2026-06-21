@@ -300,21 +300,22 @@ def find_libs(
 def find_share_files(
     pkg_dir: Optional[Path],
 ) -> List[Tuple[Path, str]]:
-    """Discover usage / copyright files from share/ffmpeg/.
+    """Discover all files from share/ffmpeg/, including CMake find module,
+    presets, ffprobe XSD, examples, and SPDX metadata.
 
     Returns list of (source_path, arcname_in_zip) tuples.
     """
     found: List[Tuple[Path, str]] = []
-    wanted = ("usage", "copyright")
     share_dir = (pkg_dir / "share" / TOOL_DIR) if pkg_dir is not None else None
 
-    if share_dir is not None and share_dir.is_dir() and any((share_dir / f).is_file() for f in wanted):
-        for fname in wanted:
-            src = share_dir / fname
-            if src.is_file():
-                found.append((src, f"share/{TOOL_DIR}/{fname}"))
+    if share_dir is not None and share_dir.is_dir():
+        for src_path in sorted(share_dir.rglob("*")):
+            if not src_path.is_file():
+                continue
+            arcname = str(src_path.relative_to(pkg_dir))
+            found.append((src_path, arcname))
     else:
-        print("  WARNING: share directory with usage/copyright not found")
+        print("  WARNING: share directory not found")
 
     return found
 
@@ -469,12 +470,13 @@ def collect_files(
     else:
         print("  Static – executables only")
 
-    # 7. Share files (always included)
-    share_files = find_share_files(pkg_dir)
-    collected.extend(share_files)
-    if share_files:
-        share_names = [Path(a).name for _, a in share_files]
-        print(f"  Collected share files: {', '.join(share_names)}")
+    # 7. Share files (shared linkage only — static has no SDK to share)
+    if linkage == "shared":
+        share_files = find_share_files(pkg_dir)
+        collected.extend(share_files)
+        if share_files:
+            share_names = [Path(a).name for _, a in share_files]
+            print(f"  Collected share files: {', '.join(share_names)}")
 
     # 8. BUILD_INFO / CONTROL (all linkage types)
     if pkg_dir:

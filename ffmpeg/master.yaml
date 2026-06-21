@@ -15,7 +15,7 @@ source:
 # - microsoft/vcpkg-tool#538
 
 build:
-  base_options: "--enable-pic --disable-doc --enable-version3 --enable-runtime-cpudetect"
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect"
   host_deps:
     - name: ffmpeg-bin2c
       host: true
