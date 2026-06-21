@@ -1,0 +1,23 @@
+extends: '5.1'
+patches:
+- 5.x/0001-create-lib-libraries.patch
+- 5.x/0002-fix-msvc-link.patch
+- 5.x/0003-fix-windowsinclude.patch
+- 5.x/0004-fix-debug-build.patch
+- 5.x/0005-fix-nasm-5.1.patch
+- 5.x/0006-fix-StaticFeatures.patch
+- 5.x/0007-fix-lib-naming.patch
+- 5.x/0009-Fix-fdk-detection.patch
+- 5.x/0011-Fix-x265-detection-5.1.patch
+- 5.x/0012-Fix-ssl-110-detection.patch
+- 5.x/0013-define-WINVER.patch
+- 5.x/0015-Fix-xml2-detection.patch
+- 5.x/0020-fix-aarch64-libswscale.patch
+- 5.x/0022-fix-iconv.patch
+- 5.x/0024-fix-gcc13-binutils.patch
+- 5.x/0050-lensfun-0.3.4-compat.patch
+- 5.x/0051-libjxl-0.11-compat.patch
+- 5.x/0052-svtav1-3.x-compat.patch
+revision: 0
+source:
+  sha512: 2a4f3e6a69046e4d3ac57f2220d325622fc32ef10c055f715e56bc018b4fa034c617986a3164ccc8ee35bb7b225e9f700e4562a8c63b1663c9c28d67d2ed099e
