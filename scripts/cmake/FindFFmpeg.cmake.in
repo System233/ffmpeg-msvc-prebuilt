@@ -1,0 +1,265 @@
+# Distributed under the OSI-approved BSD 3-Clause License.
+#
+#.rst:
+# FindFFMPEG
+# --------
+#
+# Find the FFPMEG libraries
+#
+# Result Variables
+# ^^^^^^^^^^^^^^^^
+#
+# The following variables will be defined:
+#
+#  ``FFMPEG_FOUND``
+#    True if FFMPEG found on the local system
+#
+#  ``FFMPEG_INCLUDE_DIRS``
+#    Location of FFMPEG header files
+#
+#  ``FFMPEG_LIBRARY_DIRS``
+#    Location of FFMPEG libraries
+#
+#  ``FFMPEG_LIBRARIES``
+#    List of the FFMPEG libraries found
+#
+#
+
+include(FindPackageHandleStandardArgs)
+include(SelectLibraryConfigurations)
+include(CMakeFindDependencyMacro)
+
+# ============================================================================
+# Stage 1 - Computation (once, when not cached)
+# ============================================================================
+if(NOT FFMPEG_FOUND)
+
+if(FFMPEG_ROOT)
+  set(SEARCH_PATH "${FFMPEG_ROOT}")
+else()
+  # Compute the installation path relative to this file.
+  get_filename_component(SEARCH_PATH "${CMAKE_CURRENT_LIST_FILE}" PATH)
+  get_filename_component(SEARCH_PATH "${SEARCH_PATH}" PATH)
+  get_filename_component(SEARCH_PATH "${SEARCH_PATH}" PATH)
+  if(SEARCH_PATH STREQUAL "/")
+    set(SEARCH_PATH "")
+  endif()
+endif()
+
+set(FFMPEG_VERSION "@FFMPEG_VERSION@")
+
+
+function(append_dependencies out)
+    if(POLICY CMP0174)
+        cmake_policy(SET CMP0174 NEW)
+    endif()
+    cmake_parse_arguments(PARSE_ARGV 1 "arg" "DEBUG" "NAMES" "")
+    if(${arg_DEBUG})
+        set(config DEBUG)
+        set(path "${SEARCH_PATH}/debug/lib/")
+    else()
+        set(config RELEASE)
+        set(path "${SEARCH_PATH}/lib/")
+    endif()
+    if("${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES}" STREQUAL "")
+        enable_language(CXX)
+    endif()
+    set(pass_through
+        ${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES}
+        advapi32 bcrypt crypt32 gdi32 mfuuid ncrypt ole32 oleaut32 psapi secur32 shlwapi strmiids user32 uuid vfw32 ws2_32 usp10 cfgmgr32 rpcrt4
+        -pthread -pthreads pthread atomic m
+    )
+    cmake_policy(SET CMP0057 NEW)
+    foreach(lib_name IN LISTS arg_NAMES)
+        if(lib_name IN_LIST CMAKE_C_IMPLICIT_LINK_LIBRARIES)
+            continue()
+        elseif(lib_name IN_LIST pass_through)
+            list(APPEND ${out} "${lib_name}")
+        elseif(EXISTS "${lib_name}")
+            list(APPEND ${out} "${lib_name}")
+        else()
+            find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}" PATHS "${path}" NO_DEFAULT_PATH)
+            find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}" REQUIRED)
+            list(APPEND ${out} "${FFMPEG_DEPENDENCY_${lib_name}_${config}}")
+        endif()
+    endforeach()
+    set("${out}" "${${out}}" PARENT_SCOPE)
+endfunction()
+
+
+macro(FFMPEG_FIND varname shortname headername)
+  if(NOT FFMPEG_${varname}_INCLUDE_DIRS)
+    find_path(FFMPEG_${varname}_INCLUDE_DIRS NAMES lib${shortname}/${headername} ${headername} PATHS ${SEARCH_PATH}/include NO_DEFAULT_PATH)
+  endif()
+  if(NOT FFMPEG_${varname}_LIBRARY)
+    find_library(FFMPEG_${varname}_LIBRARY_RELEASE NAMES ${shortname} PATHS ${SEARCH_PATH}/lib/ NO_DEFAULT_PATH)
+    find_library(FFMPEG_${varname}_LIBRARY_DEBUG NAMES ${shortname}d ${shortname} PATHS ${SEARCH_PATH}/debug/lib/ NO_DEFAULT_PATH)
+    get_filename_component(FFMPEG_${varname}_LIBRARY_RELEASE_DIR ${FFMPEG_${varname}_LIBRARY_RELEASE} DIRECTORY)
+    get_filename_component(FFMPEG_${varname}_LIBRARY_DEBUG_DIR ${FFMPEG_${varname}_LIBRARY_DEBUG} DIRECTORY)
+    select_library_configurations(FFMPEG_${varname})
+    set(FFMPEG_${varname}_LIBRARY ${FFMPEG_${varname}_LIBRARY} CACHE STRING "")
+  endif()
+  if (FFMPEG_${varname}_LIBRARY AND FFMPEG_${varname}_INCLUDE_DIRS)
+    set(FFMPEG_${varname}_FOUND TRUE CACHE BOOL "")
+    list(APPEND FFMPEG_INCLUDE_DIRS ${FFMPEG_${varname}_INCLUDE_DIRS})
+    list(APPEND FFMPEG_LIBRARIES ${FFMPEG_${varname}_LIBRARY})
+    list(APPEND FFMPEG_LIBRARY_DIRS ${FFMPEG_${varname}_LIBRARY_RELEASE_DIR} ${FFMPEG_${varname}_LIBRARY_DEBUG_DIR})
+  endif()
+endmacro(FFMPEG_FIND)
+
+FFMPEG_FIND(libavdevice   avdevice   avdevice.h)
+FFMPEG_FIND(libavfilter   avfilter   avfilter.h)
+FFMPEG_FIND(libavformat   avformat   avformat.h)
+FFMPEG_FIND(libavcodec    avcodec    avcodec.h)
+FFMPEG_FIND(libswresample swresample swresample.h)
+FFMPEG_FIND(libswscale    swscale    swscale.h)
+FFMPEG_FIND(libavutil       avutil     avutil.h)
+
+if (FFMPEG_libavutil_FOUND)
+  list(REMOVE_DUPLICATES FFMPEG_INCLUDE_DIRS)
+  list(REMOVE_DUPLICATES FFMPEG_LIBRARY_DIRS)
+  set(FFMPEG_libavutil_VERSION "@LIBAVUTIL_VERSION@" CACHE STRING "")
+
+  if(FFMPEG_libavcodec_FOUND)
+    set(FFMPEG_libavcodec_VERSION "@LIBAVCODEC_VERSION@" CACHE STRING "")
+  endif()
+  if(FFMPEG_libavdevice_FOUND)
+    set(FFMPEG_libavdevice_VERSION "@LIBAVDEVICE_VERSION@" CACHE STRING "")
+  endif()
+  if(FFMPEG_libavfilter_FOUND)
+    set(FFMPEG_libavfilter_VERSION "@LIBAVFILTER_VERSION@" CACHE STRING "")
+  endif()
+  if(FFMPEG_libavformat_FOUND)
+    set(FFMPEG_libavformat_VERSION "@LIBAVFORMAT_VERSION@" CACHE STRING "")
+  endif()
+  if(FFMPEG_libswresample_FOUND)
+    set(FFMPEG_libswresample_VERSION "@LIBSWRESAMPLE_VERSION@" CACHE STRING "")
+  endif()
+  if(FFMPEG_libswscale_FOUND)
+    set(FFMPEG_libswscale_VERSION "@LIBSWSCALE_VERSION@" CACHE STRING "")
+  endif()
+
+  # Derive DLL paths from version numbers (deterministic, no glob needed)
+  if(WIN32 AND IS_DIRECTORY "${SEARCH_PATH}/bin")
+    foreach(_m libavcodec libavformat libavutil libavdevice libavfilter libswresample libswscale)
+      if(FFMPEG_${_m}_FOUND AND FFMPEG_${_m}_VERSION)
+        string(REGEX MATCH "^[0-9]+" _maj "${FFMPEG_${_m}_VERSION}")
+        string(REGEX REPLACE "^lib" "" _short "${_m}")
+        set(FFMPEG_${_m}_DLL_RELEASE "${SEARCH_PATH}/bin/${_short}-${_maj}.dll" CACHE STRING "")
+        set(FFMPEG_${_m}_DLL_DEBUG "${SEARCH_PATH}/debug/bin/${_short}-${_maj}.dll" CACHE STRING "")
+      endif()
+    endforeach()
+  endif()
+
+  append_dependencies(FFMPEG_DEPS_LIBRARY_RELEASE NAMES "@FFMPEG_DEPENDENCIES_RELEASE@")
+  append_dependencies(FFMPEG_DEPS_LIBRARY_DEBUG   NAMES "@FFMPEG_DEPENDENCIES_DEBUG@" DEBUG)
+  if(FFMPEG_DEPS_LIBRARY_RELEASE OR FFMPEG_DEPS_LIBRARY_DEBUG)
+    select_library_configurations(FFMPEG_DEPS)
+    list(APPEND FFMPEG_LIBRARIES ${FFMPEG_DEPS_LIBRARY})
+  endif()
+  set(FFMPEG_DEPS_LIBRARY_RELEASE "${FFMPEG_DEPS_LIBRARY_RELEASE}" CACHE STRING "")
+  set(FFMPEG_DEPS_LIBRARY_DEBUG "${FFMPEG_DEPS_LIBRARY_DEBUG}" CACHE STRING "")
+
+  set(FFMPEG_LIBRARY ${FFMPEG_LIBRARIES})
+
+  set(FFMPEG_FOUND TRUE CACHE BOOL "")
+  set(FFMPEG_LIBRARIES ${FFMPEG_LIBRARIES} CACHE STRING "")
+  set(FFMPEG_INCLUDE_DIRS ${FFMPEG_INCLUDE_DIRS} CACHE STRING "")
+  set(FFMPEG_LIBRARY_DIRS ${FFMPEG_LIBRARY_DIRS} CACHE STRING "")
+endif()
+
+endif() # NOT FFMPEG_FOUND
+
+
+# ============================================================================
+# Stage 2 - Imported targets (every configure run)
+# ============================================================================
+if(FFMPEG_FOUND)
+
+macro(FFMPEG_ADD_IMPORTED_TARGET varname shortname)
+  if(FFMPEG_${varname}_FOUND)
+    if(FFMPEG_${varname}_DLL_RELEASE)
+      add_library(FFmpeg::${shortname} SHARED IMPORTED GLOBAL)
+      set_target_properties(FFmpeg::${shortname} PROPERTIES
+        IMPORTED_LOCATION "${FFMPEG_${varname}_DLL_RELEASE}"
+        IMPORTED_LOCATION_DEBUG "${FFMPEG_${varname}_DLL_DEBUG}"
+        IMPORTED_IMPLIB "${FFMPEG_${varname}_LIBRARY_RELEASE}"
+        IMPORTED_IMPLIB_DEBUG "${FFMPEG_${varname}_LIBRARY_DEBUG}"
+        INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_${varname}_INCLUDE_DIRS}"
+      )
+    else()
+      add_library(FFmpeg::${shortname} UNKNOWN IMPORTED GLOBAL)
+      set_target_properties(FFmpeg::${shortname} PROPERTIES
+        IMPORTED_LOCATION "${FFMPEG_${varname}_LIBRARY_RELEASE}"
+        IMPORTED_LOCATION_DEBUG "${FFMPEG_${varname}_LIBRARY_DEBUG}"
+        INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_${varname}_INCLUDE_DIRS}"
+      )
+    endif()
+    add_library(FFMPEG::${shortname} ALIAS FFmpeg::${shortname})
+  endif()
+endmacro()
+
+FFMPEG_ADD_IMPORTED_TARGET(libavutil avutil)
+FFMPEG_ADD_IMPORTED_TARGET(libavdevice avdevice)
+FFMPEG_ADD_IMPORTED_TARGET(libavfilter avfilter)
+FFMPEG_ADD_IMPORTED_TARGET(libavformat avformat)
+FFMPEG_ADD_IMPORTED_TARGET(libavcodec avcodec)
+FFMPEG_ADD_IMPORTED_TARGET(libswresample swresample)
+FFMPEG_ADD_IMPORTED_TARGET(libswscale swscale)
+
+# Attach external system dependencies to root module avutil for transitive propagation
+if(TARGET FFmpeg::avutil AND (FFMPEG_DEPS_LIBRARY_RELEASE OR FFMPEG_DEPS_LIBRARY_DEBUG))
+  target_link_libraries(FFmpeg::avutil INTERFACE
+    "$<$<CONFIG:Debug>:${FFMPEG_DEPS_LIBRARY_DEBUG}>"
+    "$<$<NOT:$<CONFIG:Debug>>:${FFMPEG_DEPS_LIBRARY_RELEASE}>"
+  )
+endif()
+
+if(NOT TARGET FFmpeg::FFmpeg)
+  add_library(FFmpeg::FFmpeg INTERFACE IMPORTED)
+  set_target_properties(FFmpeg::FFmpeg PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIRS}"
+  )
+  foreach(_m avformat avcodec avutil avdevice avfilter swresample swscale)
+    if(TARGET FFmpeg::${_m})
+      target_link_libraries(FFmpeg::FFmpeg INTERFACE FFmpeg::${_m})
+    endif()
+  endforeach()
+endif()
+if(NOT TARGET FFMPEG::ffmpeg)
+  add_library(FFMPEG::ffmpeg ALIAS FFmpeg::FFmpeg)
+endif()
+
+# --- Set up inter-module dependencies ---
+if(TARGET FFmpeg::avcodec)
+  target_link_libraries(FFmpeg::avcodec INTERFACE FFmpeg::avutil FFmpeg::swresample)
+endif()
+if(TARGET FFmpeg::avformat)
+  target_link_libraries(FFmpeg::avformat INTERFACE FFmpeg::avcodec FFmpeg::avutil)
+endif()
+if(TARGET FFmpeg::avdevice)
+  target_link_libraries(FFmpeg::avdevice INTERFACE FFmpeg::avfilter FFmpeg::swscale FFmpeg::avformat FFmpeg::avcodec FFmpeg::swresample FFmpeg::avutil)
+endif()
+if(TARGET FFmpeg::avfilter)
+  target_link_libraries(FFmpeg::avfilter INTERFACE FFmpeg::swscale FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil)
+endif()
+if(TARGET FFmpeg::swresample)
+  target_link_libraries(FFmpeg::swresample INTERFACE FFmpeg::avutil)
+endif()
+if(TARGET FFmpeg::swscale)
+  target_link_libraries(FFmpeg::swscale INTERFACE FFmpeg::avutil)
+endif()
+
+endif() # FFMPEG_FOUND
+
+
+# ============================================================================
+# Stage 3 - Report (every configure run)
+# ============================================================================
+find_package_handle_standard_args(FFmpeg
+    FOUND_VAR FFMPEG_FOUND
+    REQUIRED_VARS FFMPEG_LIBRARIES FFMPEG_LIBRARY_DIRS FFMPEG_INCLUDE_DIRS
+    VERSION_VAR FFMPEG_VERSION
+)
+
+set(z_vcpkg_using_vcpkg_find_ffmpeg ${FFMPEG_FOUND})

@@ -35,12 +35,12 @@ Alternatively, download directly from **[GitHub Releases](https://github.com/Sys
 1. Open the [GitHub Pages site](https://system233.github.io/ffmpeg-msvc-prebuilt/) or [Releases](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
 2. Choose your variant:
 
-   | Decision | Options |
-   |---|---|
-   | **Version** | Stable release (7.x, 8.x) or **Master** (latest weekly build) |
-   | **License** | **GPL** (includes x264, x265) / **LGPL** (more permissive) |
+   | Decision    | Options                                                                  |
+   | ----------- | ------------------------------------------------------------------------ |
+   | **Version** | Stable release (7.x, 8.x) or **Master** (latest weekly build)            |
+   | **License** | **GPL** (includes x264, x265) / **LGPL** (more permissive)               |
    | **Linkage** | **Shared** (DLLs, for dev & runtime) / **Static** (single exe, portable) |
-   | **Arch** | x64, x86, ARM64, ARM |
+   | **Arch**    | x64, x86, ARM64, ARM                                                     |
 
 3. Download the `.zip` file and extract anywhere
 
@@ -70,24 +70,24 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 
 ### Binary vs Develop (shared only)
 
-| | Binary | Develop |
-|---|---|---|
-| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅ | ✅ |
-| Headers (`.h`) | ✅ | ✅ |
-| Import libraries (`.lib`) + DLLs | ✅ | ✅ |
-| pkg-config (`.pc`) + CMake module | ✅ | ✅ |
-| PDB debug symbols | ❌ | ✅ |
-| Debug libraries (`debug/lib/`) | ❌ | ✅ |
-| Archive size | Smaller | Larger |
+|                                       | Binary  | Develop |
+| ------------------------------------- | ------- | ------- |
+| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅       | ✅       |
+| Headers (`.h`)                        | ✅       | ✅       |
+| Import libraries (`.lib`) + DLLs      | ✅       | ✅       |
+| pkg-config (`.pc`) + CMake module     | ✅       | ✅       |
+| PDB debug symbols                     | ❌       | ✅       |
+| Debug libraries (`debug/lib/`)        | ❌       | ✅       |
+| Archive size                          | Smaller | Larger  |
 
 ### Which one to pick?
 
-| I want to... | Download |
-|---|---|
-| Run FFmpeg commands | **Static Binary** (single exe) or **Shared Binary** |
-| Build my own app with FFmpeg | **Shared Binary** (headers + libs) |
-| Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB) |
-| Carry one exe, no DLLs | **Static Binary** |
+| I want to...                     | Download                                            |
+| -------------------------------- | --------------------------------------------------- |
+| Run FFmpeg commands              | **Static Binary** (single exe) or **Shared Binary** |
+| Build my own app with FFmpeg     | **Shared Binary** (headers + libs)                  |
+| Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB)                   |
+| Carry one exe, no DLLs           | **Static Binary**                                   |
 
 **Static** variants contain only executables — no headers, no import libraries.
 
@@ -99,7 +99,7 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 
 - **CLI tools**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`
 - **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
-- **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFMPEG.cmake`
+- **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFmpeg.cmake`
 - **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
 - All dependencies are statically linked or bundled — **zero runtime DLLs to install**
 

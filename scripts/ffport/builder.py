@@ -8,7 +8,7 @@ BUILDER_SRC = REPO_ROOT / "scripts" / "cmake"
 BUILDER_FILES = [
     "ffmpeg-portfile.cmake",
     "build.sh.in",
-    "FindFFMPEG.cmake.in",
+    "FindFFmpeg.cmake.in",
     "vcpkg-cmake-wrapper.cmake",
 ]
 
@@ -21,3 +21,7 @@ def copy_builder_files(port_dir: Path):
         src = BUILDER_SRC / fname
         if src.is_file():
             shutil.copy2(str(src), str(builder_dst / fname))
+    # Copy usage file to port root (not builder/)
+    usage_src = BUILDER_SRC / "usage.in"
+    if usage_src.is_file():
+        shutil.copy2(str(usage_src), str(port_dir / "usage"))

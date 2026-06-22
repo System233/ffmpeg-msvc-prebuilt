@@ -22,7 +22,7 @@
 #
 # This base class handles: source download, toolchain config, configure flags,
 # Release+Debug dual build, DEF→LIB generation, pkgconfig fixup, install,
-# FindFFMPEG.cmake generation, and copyright.
+# FindFFmpeg.cmake generation, and copyright.
 
 if("static" IN_LIST FEATURES)
     set(VCPKG_LIBRARY_LINKAGE static)
@@ -761,13 +761,19 @@ else()
     message(FATAL_ERROR "Failed to identify license (${LICENSE_STRING})")
 endif()
 
-# ========== 26. FindFFMPEG.cmake + usage generation ==========
+# ========== 26. FindFFmpeg.cmake + usage generation ==========
 
 configure_file(
-    "${FFMPEG_SHARED_DIR}/FindFFMPEG.cmake.in"
-    "${CURRENT_PACKAGES_DIR}/share/ffmpeg/FindFFMPEG.cmake"
+    "${FFMPEG_SHARED_DIR}/FindFFmpeg.cmake.in"
+    "${CURRENT_PACKAGES_DIR}/share/ffmpeg/FindFFmpeg.cmake"
     @ONLY
 )
+# Backward compatibility wrapper for find_package(FFMPEG) on case-sensitive systems
+if(NOT WIN32)
+    file(WRITE "${CURRENT_PACKAGES_DIR}/share/ffmpeg/FindFFMPEG.cmake"
+        "include(\"${CMAKE_CURRENT_LIST_DIR}/FindFFmpeg.cmake\")\n"
+    )
+endif()
 
 configure_file(
     "${FFMPEG_SHARED_DIR}/vcpkg-cmake-wrapper.cmake"

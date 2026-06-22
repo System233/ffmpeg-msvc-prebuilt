@@ -119,34 +119,6 @@ def generate_features_cmake(feat_registry: dict, port_dir: Path,
     (port_dir / "features.cmake").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def generate_usage(port_dir: Path):
-    """Generate a concise vcpkg usage file with CMake targets."""
-    lines = [
-        "ffmpeg provides CMake targets:",
-        "",
-        "    # Modern imported targets (recommended)",
-        "    find_package(FFMPEG REQUIRED)",
-        "    target_link_libraries(main PRIVATE FFMPEG::ffmpeg)",
-        "",
-        "    # Or link individual modules",
-        "    target_link_libraries(main PRIVATE",
-        "        FFMPEG::avcodec",
-        "        FFMPEG::avformat",
-        "        FFMPEG::avutil",
-        "        FFMPEG::avfilter",
-        "        FFMPEG::avdevice",
-        "        FFMPEG::swresample",
-        "        FFMPEG::swscale",
-        "    )",
-        "",
-        "    # Legacy variable-based usage",
-        "    target_include_directories(main PRIVATE ${FFMPEG_INCLUDE_DIRS})",
-        "    target_link_libraries(main PRIVATE ${FFMPEG_LIBRARIES})",
-        "",
-    ]
-    (port_dir / "usage").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def _extract_major(version: str) -> str:
     """Extract major version number from a version string."""
     return version.split(".")[0].split("-")[0]

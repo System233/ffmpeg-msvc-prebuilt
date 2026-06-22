@@ -10,7 +10,11 @@
 static void print_metadata(const AVDictionary *metadata, const char *indent)
 {
     const AVDictionaryEntry *tag = NULL;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 0, 0)
     while ((tag = av_dict_iterate(metadata, tag)))
+#else
+    while ((tag = av_dict_get(metadata, "", tag, AV_DICT_IGNORE_SUFFIX)))
+#endif
         printf("%s  %s: %s\n", indent, tag->key, tag->value);
 }
 

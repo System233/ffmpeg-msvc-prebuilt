@@ -1,0 +1,43 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Debug (full link)",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "FFMPEG_LINK_MODE": "full"
+            }
+        },
+        {
+            "name": "debug-demand",
+            "displayName": "Debug (demand link)",
+            "inherits": "default",
+            "cacheVariables": {
+                "FFMPEG_LINK_MODE": "demand"
+            }
+        },
+        {
+            "name": "debug-legacy",
+            "displayName": "Debug (legacy link)",
+            "inherits": "default",
+            "cacheVariables": {
+                "FFMPEG_LINK_MODE": "legacy"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release (full link)",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default"
+        }
+    ]
+}

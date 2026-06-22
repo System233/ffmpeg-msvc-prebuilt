@@ -170,7 +170,6 @@ def _generate(yaml_name, version=None, sha512=None, build_date=None,
                                    host_deps_list, revision, merged, port_dir,
                                    port_name=port_name, display_ver=display_ver)
     templates.generate_features_cmake(merged.get("features", {}), port_dir, family)
-    templates.generate_usage(port_dir)
 
     file_count = len(list(port_dir.iterdir()))
     print(f"  Generated {port_dir}/ ({file_count} files)")
