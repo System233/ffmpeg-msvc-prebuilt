@@ -172,11 +172,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Clone vcpkg at pinned tag
-        run: |
-          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
-            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -197,7 +192,22 @@ jobs:
         run: |
           echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
 
+      - name: Quick cache check
+        id: dl-check
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          lookup-only: true
+
+      - name: Clone vcpkg at pinned tag
+        if: steps.dl-check.outputs.cache-hit != 'true'
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
       - name: Restore vcpkg downloads cache (all triplets)
+        if: steps.dl-check.outputs.cache-hit != 'true'
         id: dl-cache
         uses: actions/cache@v5
         with:
@@ -209,12 +219,12 @@ jobs:
             vcpkg-dl-
 
       - name: Bootstrap vcpkg
-        if: steps.dl-cache.outputs.cache-hit != 'true'
+        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
         run: |
           & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
       - name: Download sources for all triplets
-        if: steps.dl-cache.outputs.cache-hit != 'true'
+        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
         env:
           VCPKG_OVERLAY_PORTS: ports
           VCPKG_OVERLAY_TRIPLETS: triplets
@@ -238,7 +248,7 @@ jobs:
           }
 
       - name: Upload build logs (dl-seed)
-        if: failure() && steps.dl-cache.outputs.cache-hit != 'true'
+        if: failure() && steps.dl-check.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: build-logs-dl-seed
@@ -262,28 +272,60 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Clone vcpkg at pinned tag
-        run: |
-          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
-            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
       - name: Compute port hash
         id: porthash
         run: |
           python scripts/ffport.py deps
           echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
 
+      - name: Quick dl cache check
+        id: dl-check
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          lookup-only: true
+
+      - name: Quick bin cache check
+        id: bin-check
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          lookup-only: true
+
+      - name: Check cache status
+        id: cache-check
+        run: |
+          if ("${{ steps.dl-check.outputs.cache-hit }}" -eq "true" -and `
+              "${{ steps.bin-check.outputs.cache-hit }}" -eq "true") {
+            echo "Fully cached — skipping seed work"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=true"
+          } else {
+            echo "Cache miss — need to populate"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=false"
+          }
+
+      - name: Clone vcpkg at pinned tag
+        if: steps.cache-check.outputs.skip != 'true'
+        run: |
+          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
+            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Set up Python
+        if: steps.cache-check.outputs.skip != 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        if: steps.cache-check.outputs.skip != 'true'
+        run: |
+          pip install -r requirements.txt
+
       - name: Restore vcpkg downloads cache
+        if: steps.cache-check.outputs.skip != 'true'
         id: dl-cache
         uses: actions/cache@v5
         with:
@@ -295,6 +337,7 @@ jobs:
             vcpkg-dl-
 
       - name: Restore vcpkg binary cache
+        if: steps.cache-check.outputs.skip != 'true'
         id: bin-cache
         uses: actions/cache@v5
         with:
@@ -304,18 +347,6 @@ jobs:
             vcpkg-seed-${{ matrix.triplet }}-${{ env.VCPKG_TAG }}-
             vcpkg-seed-${{ matrix.triplet }}-
             vcpkg-seed-
-
-      - name: Check cache status
-        id: cache-check
-        run: |
-          if ("${{ steps.dl-cache.outputs.cache-hit }}" -eq "true" -and `
-              "${{ steps.bin-cache.outputs.cache-hit }}" -eq "true") {
-            echo "Fully cached — skipping seed work"
-            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=true"
-          } else {
-            echo "Cache miss — need to populate"
-            Add-Content -Path $env:GITHUB_OUTPUT -Value "skip=false"
-          }
 
       - name: Bootstrap vcpkg
         if: steps.cache-check.outputs.skip != 'true'
