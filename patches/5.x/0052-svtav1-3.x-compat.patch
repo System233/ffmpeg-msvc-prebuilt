@@ -4,14 +4,42 @@ Date: Sun, 14 Jun 2026 08:58:11 +0800
 Subject: [PATCH] svtav1: adapt to SVT-AV1 3.x API
 
 ---
- libavcodec/libsvtav1.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ libavcodec/libsvtav1.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
 
 diff --git a/libavcodec/libsvtav1.c b/libavcodec/libsvtav1.c
-index 0f9d455..34d3140 100644
+index 4001cf7..c009658 100644
 --- a/libavcodec/libsvtav1.c
 +++ b/libavcodec/libsvtav1.c
-@@ -360,7 +360,7 @@ static av_cold int eb_enc_init(AVCodecContext *avctx)
+@@ -125,7 +125,7 @@ static int svt_print_error(void *log_ctx, EbErrorType err,
+ static int alloc_buffer(EbSvtAv1EncConfiguration *config, SvtContext *svt_enc)
+ {
+     const int    pack_mode_10bit =
+-        (config->encoder_bit_depth > 8) && (config->compressed_ten_bit_format == 0) ? 1 : 0;
++        (config->encoder_bit_depth > 8) ? 1 : 0;
+     const size_t luma_size_8bit  =
+         config->source_width * config->source_height * (1 << pack_mode_10bit);
+     const size_t luma_size_10bit =
+@@ -183,7 +183,8 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
+         param->min_qp_allowed       = avctx->qmin;
+     }
+     param->max_bit_rate             = avctx->rc_max_rate;
+-    param->vbv_bufsize              = avctx->rc_buffer_size;
++    /* vbv_bufsize removed in SVT-AV1 3.x */
++    (void)avctx->rc_buffer_size;
+ 
+     if (svt_enc->crf > 0) {
+         param->qp                   = svt_enc->crf;
+@@ -300,7 +301,7 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
+     avctx->bit_rate       = param->rate_control_mode > 0 ?
+                             param->target_bit_rate : 0;
+     avctx->rc_max_rate    = param->max_bit_rate;
+-    avctx->rc_buffer_size = param->vbv_bufsize;
++    /* vbv_bufsize removed in SVT-AV1 3.x */
+ 
+     if (avctx->bit_rate || avctx->rc_max_rate || avctx->rc_buffer_size) {
+         AVCPBProperties *cpb_props = ff_add_cpb_side_data(avctx);
+@@ -360,7 +361,7 @@ static av_cold int eb_enc_init(AVCodecContext *avctx)
  
      svt_enc->eos_flag = EOS_NOT_REACHED;
  
@@ -22,3 +50,4 @@ index 0f9d455..34d3140 100644
      }
 -- 
 2.47.1.windows.2
+

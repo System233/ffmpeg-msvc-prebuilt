@@ -1,0 +1,24 @@
+From 444615c1a58b89af8b63c04f0972525cb547d471 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Sun, 14 Jun 2026 08:58:11 +0800
+Subject: [PATCH] svtav1: adapt to SVT-AV1 3.x API
+
+---
+ libavcodec/libsvtav1.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavcodec/libsvtav1.c b/libavcodec/libsvtav1.c
+index 0f9d455..34d3140 100644
+--- a/libavcodec/libsvtav1.c
++++ b/libavcodec/libsvtav1.c
+@@ -360,7 +360,7 @@ static av_cold int eb_enc_init(AVCodecContext *avctx)
+ 
+     svt_enc->eos_flag = EOS_NOT_REACHED;
+ 
+-    svt_ret = svt_av1_enc_init_handle(&svt_enc->svt_handle, svt_enc, &svt_enc->enc_params);
++    svt_ret = svt_av1_enc_init_handle(&svt_enc->svt_handle, &svt_enc->enc_params);
+     if (svt_ret != EB_ErrorNone) {
+         return svt_print_error(avctx, svt_ret, "Error initializing encoder handle");
+     }
+-- 
+2.47.1.windows.2
