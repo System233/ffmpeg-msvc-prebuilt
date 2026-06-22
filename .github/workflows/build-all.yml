@@ -6,7 +6,7 @@
 #   - Push to main with ffmpeg/*.yaml changes: detects changed versions, builds
 #   - Manual workflow_dispatch: same as schedule
 #
-# Uses concurrency: data-branch to serialize with other data-branch writers.
+# Serialization is handled by build-release.yml internally.
 # ---------------------------------------------------------------------------
 
 name: Build All FFmpeg Versions
@@ -20,9 +20,6 @@ on:
     paths:
       - 'ffmpeg/*.yaml'
   workflow_dispatch:
-
-concurrency:
-  group: data-branch
 
 jobs:
   scan:
