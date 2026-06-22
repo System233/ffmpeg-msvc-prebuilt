@@ -4,8 +4,6 @@
 # Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API, detects new
 # versions, copies the closest existing YAML, computes sha512, generates
 # port files, and opens an auto-merge PR on a ci/ffmpeg-{version} branch.
-#
-# Requires contents:write and pull-requests:write for git push + gh pr create.
 # ---------------------------------------------------------------------------
 
 name: Scan for new FFmpeg releases
@@ -17,7 +15,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   scan:
@@ -33,6 +30,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Get bot user ID
+        id: bot-user
+        run: |
+          ID=$(gh api /users/ffmpeg-dev[bot] --jq .id)
+          echo "user-id=$ID" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
       - name: Scan for new upstream releases
         run: |
           python scripts/ops/scan_updates.py 2>&1 | tee scan_output.txt
@@ -47,18 +60,17 @@ jobs:
 
       - name: Create auto-merge PRs for new versions
         env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git config user.name "ffmpeg-dev[bot]"
+          git config user.email "${{ steps.bot-user.outputs.user-id }}+ffmpeg-dev[bot]@users.noreply.github.com"
 
           if [ ! -s new_versions.txt ]; then
             echo "No new versions to process."
             exit 0
           fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           while IFS= read -r version; do
             [ -z "$version" ] && continue
