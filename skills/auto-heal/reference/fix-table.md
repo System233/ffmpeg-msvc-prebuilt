@@ -4,12 +4,12 @@
 
 | Error symptom | Root cause | Fix direction |
 |-------------|-----------|--------------|
-| `patch failed: configure: Hunk #N` | Dependency detection patch drifted across FFmpeg versions | Update `0004-dependencies-{ver}.patch` in the matching category |
-| `patch failed: libavfilter/vf_lensfun.c` | lensfun API changed | Update `0050-lensfun-*` patch |
-| `patch failed: libavcodec/libsvtav1.c` | SVT-AV1 API changed | Update `0052-svtav1-*` patch |
-| `patch failed: ffbuild/libversion.sh` | Shell script changed between versions | Update or remove `0042-fix-arm64-linux` patch |
-| `patch failed: ffbuild/common.mak` | Build system changed | Update `0045-use-prebuilt-bin2c-*` patch |
-| `patch failed: libavcodec/libx264.c` | x264 API/imports changed | Update `0019-libx264-*` patch |
+ | `patch failed: configure: Hunk #N` | Dependency detection patch drifted across FFmpeg versions | Remove from YAML `patches:` or add a version-specific replacement |
+| `patch failed: libavfilter/vf_lensfun.c` | lensfun API changed | Add a new version-specific `0050-lensfun-*` patch (never modify existing) |
+| `patch failed: libavcodec/libsvtav1.c` | SVT-AV1 API changed | Add a new version-specific `0052-svtav1-*` patch (never modify existing) |
+| `patch failed: ffbuild/libversion.sh` | Shell script changed between versions | Remove from YAML `patches:` (upstream already has it) |
+| `patch failed: ffbuild/common.mak` | Build system changed | Add a new version-specific `0045-use-prebuilt-bin2c-*` patch (never modify existing) |
+| `patch failed: libavcodec/libx264.c` | x264 API/imports changed | Add a new version-specific `0019-libx264-*` patch (never modify existing) |
 | Multiple hunks with large offset | Patch applied but context shifted significantly | Check if this is the right patch variant for the version |
 
 ## Configure/build failures
@@ -28,6 +28,8 @@
 | `LNK2019 unresolved external symbol` | Same as above | Check `0007-fix-lib-naming` patch |
 | `--toolchain=msvc` not set | MSVC not detected | Check `0046-fix-msvc-detection` + `0053-fix-host-cc-msvc` patches |
 | `Error: ffmpeg will not build with spaces in the path` | Source path has spaces | CI runner issue (not patch/YAML) |
+
+> **Note on existing patches**: If the failing patch is listed in agent_context.json's `new_patches`, you may modify it directly. Otherwise, remove it from the YAML `patches:` list to disable it for the failing version, or add a new replacement patch.
 
 ## YAML/Generation failures
 

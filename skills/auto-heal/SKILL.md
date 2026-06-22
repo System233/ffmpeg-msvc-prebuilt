@@ -28,7 +28,8 @@ I also handle YAML misconfiguration: read `yaml/` if the error is in the config 
 CRITICAL — I MUST follow these:
 
 - **MUST NOT** modify `scripts/`, `ports/`, `.github/`, `scripts/cmake/`, `data/`, `web/`, `build/`
-- **ONLY** modify `ffmpeg/*.yaml` and `patches/*.x/*.patch`
+- **ONLY** modify `ffmpeg/*.yaml` and `patches/*.x/*.patch`.
+- **NEVER** modify patches from the main branch. Only PR-added patches (listed in agent_context.json's `new_patches`) may be modified or deleted.
 - **MUST NOT** run `vcpkg install`, start servers, or execute commands lasting >30 seconds
 - When reading large files (>5MB), use `tail | grep` — never read the whole file
 - When testing patches, **MUST apply in YAML patch-list order** — never individually
@@ -63,6 +64,19 @@ CRITICAL — I MUST follow these:
 | `patches/index.md` | Need to see which patches exist per version |
 | `patches/categories/*.md` | Identified the failure category |
 | `patches/testing.md` | Need to reproduce patch failure locally |
+
+## Patch naming rules (for new patches)
+
+When you need to add a new patch:
+
+1. Find the highest existing number in the target version's patch directory
+   (e.g., `patches/8.x/` has `0042-xxx.patch` → next number is `0043`)
+2. Format: `{NNNN}-{description}-{version-suffix}.patch`
+   - `NNNN`: 4-digit zero-padded sequential number
+   - `description`: kebab-case description of the fix
+   - `version-suffix`: target version (e.g., `8.x`)
+3. Add the new patch filename to the version YAML's `patches:` list, in order
+4. **Never** reuse an existing number. PR-new patches (from agent_context.json's `new_patches`) can be modified; main branch patches are read-only.
 
 ## Auto-heal Mode
 
@@ -102,4 +116,8 @@ Also reads `failed_steps_hint.txt` for a quick list of failed step names.
 2. Find corresponding `error_logs/build-logs-{triplet}-{license}-{linkage}/`
 3. Examine `ffmpeg/stdout-{triplet}.log` for first error (as described in `logs/guide.md`)
 4. Follow the same decision tree under "## Quick Decision Tree"
-5. Fix → verify (YAML changed → `python scripts/ffport.py generate <version>`, patch changed → `git apply --check` in order) → exit
+5. Fix → verify:
+   - YAML changed → `python scripts/ffport.py generate <version>`
+   - Patches changed → `git apply --check` in YAML patch-list order
+   **Only `new_patches` from agent_context.json may be modified; main branch patches are read-only.**
+6. Exit
