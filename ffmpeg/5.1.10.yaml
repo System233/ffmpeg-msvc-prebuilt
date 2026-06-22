@@ -14,7 +14,6 @@ patches:
 - 5.x/0015-Fix-xml2-detection.patch
 - 5.x/0020-fix-aarch64-libswscale.patch
 - 5.x/0022-fix-iconv.patch
-- 5.x/0024-fix-gcc13-binutils.patch
 - 5.x/0050-lensfun-0.3.4-compat.patch
 - 5.x/0051-libjxl-0.11-compat.patch
 - 5.x/0052-svtav1-3.x-compat.patch
