@@ -34,6 +34,17 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml
 
+      - name: Check no existing patches modified
+        run: |
+          MODIFIED=$(git diff --name-only --diff-filter=M \
+            "${{ github.event.pull_request.base.sha }}".."${{ github.event.pull_request.head.sha }}" \
+            -- patches/)
+          if [ -n "$MODIFIED" ]; then
+            echo "::error::Modifying existing patches breaks compatibility with older versions. Only add new patches or remove them from YAML."
+            echo "$MODIFIED"
+            exit 1
+          fi
+
       - name: Detect changed versions
         id: detect
         run: |

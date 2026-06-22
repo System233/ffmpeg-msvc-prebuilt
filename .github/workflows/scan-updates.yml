@@ -3,7 +3,7 @@
 #
 # Runs daily at 06:00 UTC.  Queries the FFmpeg GitHub tags API, detects new
 # versions, copies the closest existing YAML, computes sha512, generates
-# port files, and opens an auto-merge PR on a ci/ffmpeg-{version} branch.
+# port files, and opens an auto-merge PR on a auto/ffmpeg-{version} branch.
 # ---------------------------------------------------------------------------
 
 name: Scan for new FFmpeg releases

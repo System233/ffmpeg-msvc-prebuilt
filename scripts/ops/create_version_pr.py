@@ -11,7 +11,7 @@ Steps:
    3. Set revision: 0 in the new YAML
    4. Compute sha512 from upstream tarball, write to YAML
    5. Run ffport.py generate to create port files
-   6. Create git branch ci/ffmpeg-{version}
+   6. Create git branch auto/ffmpeg-{version}
    7. git add + commit
    8. Push branch (skip if already exists on remote)
    9. Create PR via gh CLI with auto-merge enabled
@@ -143,7 +143,7 @@ def main() -> None:
 
     version = args.version
     closest_yaml = args.closest_yaml
-    branch = f"ci/ffmpeg-{version}"
+    branch = f"auto/ffmpeg-{version}"
     yaml_path = f"ffmpeg/{version}.yaml"
     src_yaml = REPO_ROOT / "ffmpeg" / f"{closest_yaml}.yaml"
     dst_yaml = REPO_ROOT / "ffmpeg" / f"{version}.yaml"

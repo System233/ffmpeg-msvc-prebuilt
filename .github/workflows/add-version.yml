@@ -2,7 +2,7 @@
 # add-version.yml — Manually add a new FFmpeg version and create a PR
 #
 # Workflow dispatch only.  Verifies the upstream tag exists, then creates
-# a ci/ffmpeg-{version} branch with the new YAML and opens an auto-merge PR.
+# a auto/ffmpeg-{version} branch with the new YAML and opens an auto-merge PR.
 # ---------------------------------------------------------------------------
 
 name: Add FFmpeg Version

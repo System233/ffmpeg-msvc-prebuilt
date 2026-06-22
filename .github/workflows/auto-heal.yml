@@ -25,6 +25,9 @@ on:
 
 env:
   TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
+  OPENCODE_VERSION: 1.17.9
+  OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
+  MAX_RETRY_ATTEMPTS: 3
 
 jobs:
   # ── Job 1: Diagnose + fix + commit locally ──────────────────────────────
@@ -129,10 +132,43 @@ jobs:
           COMMIT_COUNT=$(git rev-list --count ${BASE_SHA}..HEAD)
           echo "Total auto-fix commits: $COMMIT_COUNT"
           if [ "$COMMIT_COUNT" -gt 10 ]; then
-            echo "::error::自动修复提交已达上限 (10次)。放弃修复。"
+            echo "::error::Auto-fix commits exceed limit (10). Aborting."
             exit 1
           fi
           echo "current_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Check only allowed files modified
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const base = '${{ steps.setup.outputs.base_sha }}';
+            const head = '${{ steps.setup.outputs.head_sha }}';
+
+            const { data } = await github.rest.repos.compareCommits({
+              owner, repo, base, head
+            });
+
+            const ALLOWED = [
+              /^ffmpeg\/.*\.yaml$/,
+              /^patches\/.*\.patch$/,
+            ];
+
+            const violations = data.files
+              .filter(f => !ALLOWED.some(p => p.test(f.filename)))
+              .filter(f => !f.filename.startsWith('.opencode/'))
+              .map(f => f.filename);
+
+            if (violations.length > 0) {
+              console.log('PR modifies files outside allowed scope:');
+              violations.forEach(f => console.log(`  ${f}`));
+              core.setFailed(
+                'Auto-heal refused: PR modifies files outside ffmpeg/*.yaml and patches/*.x/*.patch'
+              );
+            } else {
+              console.log('All changed files are within allowed scope.');
+            }
 
       - name: Download Build Log Artifacts
         uses: actions/download-artifact@v8
@@ -151,6 +187,9 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const prNumber = parseInt('${{ steps.setup.outputs.pr_number }}');
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            const baseSha = '${{ steps.setup.outputs.base_sha }}';
 
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner, repo, run_id: runId
@@ -160,18 +199,25 @@ jobs:
               .filter(j => j.conclusion === 'failure')
               .map(j => j.name);
 
-            const fs = require('fs');
             fs.writeFileSync('failed_steps_hint.txt', failedJobNames.join('\n'));
+
+            const diff = execSync(
+              `git diff --name-only --diff-filter=A ${baseSha}..HEAD -- patches/`,
+              { encoding: 'utf-8' }
+            ).trim();
+            const newPatches = diff ? diff.split('\n') : [];
+            console.log('PR-new patches:', newPatches);
 
             const contextPayload = {
               pr_number: prNumber,
               base_branch: '${{ steps.setup.outputs.base_ref }}',
-              base_sha: '${{ steps.setup.outputs.base_sha }}',
+              base_sha: baseSha,
               head_branch: '${{ steps.setup.outputs.head_ref }}',
               head_sha: '${{ steps.setup.outputs.head_sha }}',
               workflow_run_id: runId,
               workflow_url: `https://github.com/${owner}/${repo}/actions/runs/${runId}`,
               failed_jobs: failedJobNames,
+              new_patches: newPatches,
               log_directory: './error_logs',
               hint_file: './failed_steps_hint.txt',
               trigger: '${{ env.TRIGGER }}'
@@ -191,7 +237,13 @@ jobs:
 
       - name: Install opencode CLI
         run: |
-          curl -fsSL https://opencode.ai/install | bash
+          curl -fsSL -o /tmp/opencode.tar.gz \
+            "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
+          echo "$OPENCODE_SHA256  /tmp/opencode.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/opencode.tar.gz -C /tmp
+          mkdir -p "$HOME/.opencode/bin"
+          mv /tmp/opencode "$HOME/.opencode/bin/opencode"
+          chmod 755 "$HOME/.opencode/bin/opencode"
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
 
       - name: Write agent prompt
@@ -208,48 +260,121 @@ jobs:
           - `failed_steps_hint.txt` — 失败的 Job 名称
           - `error_logs/build-logs-{triplet}-{license}-{linkage}/` — 构建日志目录
 
-          ## 约束
-          - 只修改 `ffmpeg/*.yaml` 和 `patches/*.x/*.patch`
-          - 禁止修改 `scripts/` `ports/` `.github/` `data/` `web/` `build/`
-          - 禁止运行 `vcpkg install`
-          - 大文件用 grep/tail，禁止完整读取
+           ## 约束
+           - 只修改 `ffmpeg/*.yaml`
+           - patches 规则：
+             - `agent_context.json` 的 `new_patches` 字段列出的是本 PR 新增的 patch，可以修改或删除
+             - 不在 `new_patches` 中的 patch 是 main 分支已有的，禁止修改
+             - 需要修正时应修改已有的 PR patch，而非重复新增
+           - 禁止修改 `scripts/` `ports/` `.github/` `data/` `web/` `build/`
+           - 禁止运行 `vcpkg install`
+           - 大文件用 grep/tail，禁止完整读取
 
-          ## 任务
-          1. 读取 `agent_context.json` → 确定哪些矩阵变体失败
-          2. 读取 `.opencode/skills/auto-heal/SKILL.md` → 获取诊断知识
-          3. 在 `error_logs/` 下找到对应日志目录 → 按 SKILL 的决策树分析根因
-          4. 修改 `ffmpeg/*.yaml` 或 `patches/*.x/*.patch` 修复
-          5. 验证：
-             - 改 YAML → `python scripts/ffport.py generate <version>`
-             - 改 patch → 按 SKILL `patches/testing.md` 流程 `git apply --check`
-          6. 验证通过后提交到本地仓库：
-             git add ffmpeg/ patches/
-             git commit -m "fix(<version>): <简短、描述性的消息>"
-             提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
-          7. 退出
+           ## 任务
+           1. 读取 `agent_context.json` → 确定哪些矩阵变体失败
+           2. 读取 `.opencode/skills/auto-heal/SKILL.md` → 获取诊断知识
+           3. 在 `error_logs/` 下找到对应日志目录 → 按 SKILL 的决策树分析根因
+           4. 修改 `ffmpeg/*.yaml` 或 patches 修复（new_patches 中的可修改，其余的仅可移除或新增）
+           5. 验证：
+              - 改 YAML → `python scripts/ffport.py generate <version>`
+              - 改 patch → `git apply --check` 按 YAML 顺序应用
+           6. 将修复摘要写入 `fix_report.md`：
+              ## Fix Summary
+              - Root cause: <一句话说明>
+              - Files changed:
+                - 列出修改的文件
+              - Verification: <验证命令的输出>
+           7. 验证通过后提交到本地仓库：
+              git add ffmpeg/ patches/
+              git commit -m "fix(<version>): <简短、描述性的消息>"
+              提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
+           8. 退出
           PROMPT_EOF
 
-      - name: Run opencode agent
+      - name: Agent repair loop
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GIT_AUTHOR_NAME: "ffmpeg-dev[bot]"
           GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
+          set -euo pipefail
+
           git config --global user.name "ffmpeg-dev[bot]"
           git config --global user.email "ffmpeg-dev[bot]@users.noreply.github.com"
-          opencode run --model "deepseek/deepseek-v4-flash" \
-            --dangerously-skip-permissions \
-            "$(cat prompt.txt)"
 
-      - name: Export agent commit as patch
-        run: |
           BASE_SHA="${{ steps.setup.outputs.base_sha }}"
-          if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
+          attempt=0
+
+          while [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; do
+            attempt=$((attempt + 1))
+            echo "=== Agent repair attempt $attempt/$MAX_RETRY_ATTEMPTS ==="
+
+            git reset --hard "$BASE_SHA"
+
+            if [ -f feedback.txt ]; then
+              cat feedback.txt >> prompt.txt
+            fi
+
+            opencode run --model "deepseek/deepseek-v4-flash" \
+              --dangerously-skip-permissions \
+              "$(cat prompt.txt)"
+
+            if ! git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
+              echo "No changes on attempt $attempt"
+              break
+            fi
+
+            COMMIT_COUNT=$(git rev-list --count "${BASE_SHA}..HEAD")
+            if [ "$COMMIT_COUNT" -gt 1 ]; then
+              echo "Squashing $COMMIT_COUNT commits into one"
+              MSG=$(git log --format=%B "${BASE_SHA}..HEAD" | tail -1)
+              git reset --soft "$BASE_SHA"
+              git commit -m "$MSG"
+            fi
+
             mkdir -p patch-output
             git format-patch -1 HEAD -o patch-output
-            echo "Patch exported."
-          else
-            echo "No new commit from agent."
+            PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
+            [ -z "$PATCH" ] && continue
+
+            FILES=$(grep '^--- ' "$PATCH" | sed 's/^--- a\///' | sort -u)
+            VIOLATIONS=$(echo "$FILES" \
+              | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
+              | grep -vE '^\.opencode/' || true)
+
+            if [ -n "$VIOLATIONS" ]; then
+              echo "::warning::Scope violation on attempt $attempt:"
+              echo "$VIOLATIONS"
+              if [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; then
+                {
+                  echo ""
+                  echo "## 第 ${attempt} 次尝试反馈"
+                  echo "违反了范围约束，修改了以下禁止文件："
+                  echo "$VIOLATIONS" | sed 's/^/- /'
+                  echo ""
+                  echo "你只能修改 ffmpeg/*.yaml 和 patches/*.patch 文件（仅限 new_patches 中的 patch）。"
+                } > feedback.txt
+                continue
+              fi
+            fi
+
+            echo "All checks passed on attempt $attempt"
+            break
+          done
+
+          if [ "$attempt" -ge "$MAX_RETRY_ATTEMPTS" ]; then
+            if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
+              PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
+              if [ -n "$PATCH" ]; then
+                FILES=$(grep '^--- ' "$PATCH" | sed 's/^--- a\///' | sort -u)
+                VIOLATIONS=$(echo "$FILES" \
+                  | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
+                  | grep -vE '^\.opencode/' || true)
+                [ -z "$VIOLATIONS" ] && exit 0
+              fi
+            fi
+            echo "::error::Max retries exhausted with violations"
+            exit 1
           fi
 
       - name: Upload patch artifact
@@ -257,6 +382,13 @@ jobs:
         with:
           name: auto-heal-patch-${{ github.run_id }}
           path: patch-output/
+          retention-days: 1
+
+      - name: Upload fix report
+        uses: actions/upload-artifact@v6
+        with:
+          name: fix-report-${{ github.run_id }}
+          path: fix_report.md
           retention-days: 1
 
   # ── Job 2: Push agent's commit to PR branch ────────────────────────────
@@ -280,6 +412,13 @@ jobs:
         with:
           name: auto-heal-patch-${{ github.run_id }}
           path: patch-input
+        continue-on-error: true
+
+      - name: Download fix report
+        uses: actions/download-artifact@v8
+        with:
+          name: fix-report-${{ github.run_id }}
+          path: fix-report
         continue-on-error: true
 
       - uses: actions/create-github-app-token@v3
@@ -316,6 +455,30 @@ jobs:
 
           git am "$PATCH"
 
+          VIOLATIONS=$(git diff HEAD~1..HEAD --name-only \
+            | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
+            | grep -vE '^\.opencode/' || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Agent modified files outside allowed scope:"
+            echo "$VIOLATIONS"
+            git reset --hard HEAD~1
+            exit 1
+          fi
+          echo "All modified files are within allowed scope."
+
           git pull --rebase origin "$BRANCH" || true
           git push origin HEAD:"$BRANCH"
           echo "Fix pushed to $BRANCH"
+
+      - name: Post fix report as PR comment
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if [ -f fix-report/fix_report.md ]; then
+            gh pr comment "${{ needs.agent-repair.outputs.pr_number }}" \
+              --repo "${{ github.repository }}" \
+              --body-file fix-report/fix_report.md
+            echo "Comment posted on PR #${{ needs.agent-repair.outputs.pr_number }}"
+          else
+            echo "No fix report found. Skipping comment."
+          fi

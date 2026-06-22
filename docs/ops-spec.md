@@ -31,12 +31,12 @@ vcpkg-config.json          ffmpeg-n8.2-dev-1-gabc1234.yaml
 .github/workflows/
 ```
 
-| 分支 | 内容 | 写权限 |
-|------|------|--------|
-| `main` | YAML 规格、ports、patches、scripts、workflows | 人工 + CI PR |
-| `data` | 构建元数据 (version YAML + build-index) | CI finalize job |
-| `web` | Vitepress SSG 源码 | 人工 |
-| `gh-pages` | 部署产物 | GitHub Actions 自动 |
+| 分支       | 内容                                          | 写权限              |
+| ---------- | --------------------------------------------- | ------------------- |
+| `main`     | YAML 规格、ports、patches、scripts、workflows | 人工 + CI PR        |
+| `data`     | 构建元数据 (version YAML + build-index)       | CI finalize job     |
+| `web`      | Vitepress SSG 源码                            | 人工                |
+| `gh-pages` | 部署产物                                      | GitHub Actions 自动 |
 
 ---
 
@@ -142,42 +142,42 @@ master 分支的 build-index 路径：`data/master/build-index.yaml`
 
 ### 3.1 Variant ID
 
-| 类型 | 格式 | 示例 |
-|------|------|------|
-| 正式版 | `ffmpeg-{ver}-r{rev}-{triplet}-{link}-{license}` | `ffmpeg-8.1.1-r2-x64-windows-shared-gpl` |
-| Master | `ffmpeg-{describe}-{triplet}-{link}-{license}` | `ffmpeg-n8.2-dev-1-gabc1234-x64-windows-shared-gpl` |
+| 类型   | 格式                                             | 示例                                                |
+| ------ | ------------------------------------------------ | --------------------------------------------------- |
+| 正式版 | `ffmpeg-{ver}-r{rev}-{triplet}-{link}-{license}` | `ffmpeg-8.1.1-r2-x64-windows-shared-gpl`            |
+| Master | `ffmpeg-{describe}-{triplet}-{link}-{license}`   | `ffmpeg-n8.2-dev-1-gabc1234-x64-windows-shared-gpl` |
 
 Master 的 `{describe}` 来自 `git describe --tags --abbrev=7`（在 FFmpeg 仓库中执行）。
 
 ### 3.2 Release Tag
 
-| 类型 | 格式 | 示例 |
-|------|------|------|
-| 正式版 | `ffmpeg-{version}-r{revision}` | `ffmpeg-8.1.1-r2` |
-| Master | `ffmpeg-{describe}` | `ffmpeg-n8.2-dev-1-gabc1234` |
+| 类型   | 格式                           | 示例                         |
+| ------ | ------------------------------ | ---------------------------- |
+| 正式版 | `ffmpeg-{version}-r{revision}` | `ffmpeg-8.1.1-r2`            |
+| Master | `ffmpeg-{describe}`            | `ffmpeg-n8.2-dev-1-gabc1234` |
 
 ### 3.3 Asset 文件名
 
-| 类型 | 格式 | 示例 |
-|------|------|------|
-| 正式版 | `ffmpeg-{version}-{triplet}-{linkage}-{license}.zip` | `ffmpeg-8.1.1-x64-windows-mixed-shared-gpl.zip` |
+| 类型   | 格式                                                  | 示例                                                          |
+| ------ | ----------------------------------------------------- | ------------------------------------------------------------- |
+| 正式版 | `ffmpeg-{version}-{triplet}-{linkage}-{license}.zip`  | `ffmpeg-8.1.1-x64-windows-mixed-shared-gpl.zip`               |
 | Master | `ffmpeg-{describe}-{triplet}-{linkage}-{license}.zip` | `ffmpeg-n8.2-dev-1-gabc1234-x64-windows-mixed-shared-gpl.zip` |
 
 ### 3.4 PR 分支
 
-| 格式 | 示例 |
-|------|------|
-| `ci/ffmpeg-{version}` | `ci/ffmpeg-6.5` |
+| 格式                    | 示例              |
+| ----------------------- | ----------------- |
+| `auto/ffmpeg-{version}` | `auto/ffmpeg-6.5` |
 
 ---
 
 ## 4. 构建矩阵
 
-| 维度 | 值 |
-|------|-----|
+| 维度    | 值                                                           |
+| ------- | ------------------------------------------------------------ |
 | Triplet | `arm-windows`, `arm64-windows`, `x86-windows`, `x64-windows` |
-| License | `lgpl`, `gpl`, `nonfree` |
-| Linkage | `shared`, `static` |
+| License | `lgpl`, `gpl`, `nonfree`                                     |
+| Linkage | `shared`, `static`                                           |
 
 总计：4 × 3 × 2 = 24 variants / version
 
@@ -193,12 +193,12 @@ Master 的 `{describe}` 来自 `git describe --tags --abbrev=7`（在 FFmpeg 仓
 
 ### 5.2 Master 版本
 
-| 时间段 | 策略 |
-|--------|------|
-| < 7 天 | 全部保留 |
-| 7~30 天 | 每自然周保留最新 1 个 |
-| 30 天 ~ 1 年 | 每自然月保留最新 1 个 |
-| > 1 年 | 每自然季度保留最新 1 个 |
+| 时间段       | 策略                    |
+| ------------ | ----------------------- |
+| < 7 天       | 全部保留                |
+| 7~30 天      | 每自然周保留最新 1 个   |
+| 30 天 ~ 1 年 | 每自然月保留最新 1 个   |
+| > 1 年       | 每自然季度保留最新 1 个 |
 
 ### 5.3 执行
 
@@ -244,13 +244,13 @@ CI 中额外锁定 vcpkg 工具自身版本：
 
 **输入：**
 
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `version` | string | ✅ | 版本号（`8.1.1` 或 `master`） |
-| `revision` | number | 正式版必需 | YAML 中定义的 revision 值 |
-| `ffmpeg_ref` | string | master 必需 | `git describe --tags --abbrev=7` 输出 |
-| `target_arch` | string | ❌ | 限制构建架构 |
-| `target_license` | string | ❌ | 限制许可证类型 |
+| 参数             | 类型   | 必需        | 说明                                  |
+| ---------------- | ------ | ----------- | ------------------------------------- |
+| `version`        | string | ✅           | 版本号（`8.1.1` 或 `master`）         |
+| `revision`       | number | 正式版必需  | YAML 中定义的 revision 值             |
+| `ffmpeg_ref`     | string | master 必需 | `git describe --tags --abbrev=7` 输出 |
+| `target_arch`    | string | ❌           | 限制构建架构                          |
+| `target_license` | string | ❌           | 限制许可证类型                        |
 
 **作业：**
 
@@ -319,9 +319,9 @@ if variant_id in data/{major}.x/build-index.yaml.variants:
 │                                                               │
 │    d. generate.py → 生成 ports/ffmpeg-{X}-{Y}/                │
 │                                                               │
-│    e. git checkout -b ci/ffmpeg-{version}                     │
+│    e. git checkout -b auto/ffmpeg-{version}                     │
 │       git add ffmpeg/                                        │
-│       git push origin ci/ffmpeg-{version}                     │
+│       git push origin auto/ffmpeg-{version}                     │
 │                                                               │
 │    f. 检查分支是否已存在 → 是则跳过                            │
 │                                                               │
@@ -547,7 +547,7 @@ finalize:
 │  新上游 tag (n6.5)                                                    │
 │       │ scan-updates.yml                                              │
 │       ▼                                                               │
-│  创建 ci/ffmpeg-6.5 PR                                                │
+│  创建 auto/ffmpeg-6.5 PR                                                │
 │       │ 人工审查                                                      │
 │       ▼                                                               │
 │  合并 → rev-update.yml 检测 → dispatch build-release                  │
@@ -599,11 +599,11 @@ finalize:
 
 ## 11. 实施清单
 
-| Phase | 内容 | 新建 | 修改 |
-|-------|------|------|------|
-| **1** | `revision` 字段 + `generate.py` | — | `generate.py`, YAML files, `SPEC.md` |
-| **2** | vcpkg baseline 锁定 | `vcpkg-configuration.json` | CI workflows |
-| **3** | `build-release.yml` 重写 | — | `build-release.yml`, `package_release.py` |
-| **4** | data 分支脚本 | `import_yaml.py`, `retention_policy.py`, `get_features_for_version.py` | — |
-| **5** | 工作流 | `rev-update.yml`, `master-build.yml`, `retention-cleanup.yml` | `scan-updates.yml`, `ci_detect_changes.py`, `scan_updates.py` |
-| **6** | 辅助 + 前端 | `find_closest_yaml.py`, `web/` 全部源文件 | `pages.yml` |
+| Phase | 内容                            | 新建                                                                   | 修改                                                          |
+| ----- | ------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **1** | `revision` 字段 + `generate.py` | —                                                                      | `generate.py`, YAML files, `SPEC.md`                          |
+| **2** | vcpkg baseline 锁定             | `vcpkg-configuration.json`                                             | CI workflows                                                  |
+| **3** | `build-release.yml` 重写        | —                                                                      | `build-release.yml`, `package_release.py`                     |
+| **4** | data 分支脚本                   | `import_yaml.py`, `retention_policy.py`, `get_features_for_version.py` | —                                                             |
+| **5** | 工作流                          | `rev-update.yml`, `master-build.yml`, `retention-cleanup.yml`          | `scan-updates.yml`, `ci_detect_changes.py`, `scan_updates.py` |
+| **6** | 辅助 + 前端                     | `find_closest_yaml.py`, `web/` 全部源文件                              | `pages.yml`                                                   |

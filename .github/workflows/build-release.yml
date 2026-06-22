@@ -374,7 +374,7 @@ jobs:
     runs-on: windows-2022
     permissions: {}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ inputs.dry_run }}
       matrix:
         include: ${{ fromJSON(needs.scan.outputs.matrix) }}
     steps:
