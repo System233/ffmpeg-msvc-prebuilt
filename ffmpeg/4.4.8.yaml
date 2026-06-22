@@ -1,0 +1,26 @@
+extends: '4.4'
+patches:
+- 4.x/0001-create-lib-libraries.patch
+- 4.x/0003-fix-windowsinclude.patch
+- 4.x/0004-fix-debug-build.patch
+- 4.x/0006-fix-StaticFeatures.patch
+- 4.x/0007-fix-lib-naming.patch
+- 4.x/0009-Fix-fdk-detection.patch
+- 4.x/0010-Fix-x264-detection.patch
+- 4.x/0011-Fix-x265-detection.patch
+- 4.x/0012-Fix-ssl-110-detection-4.4.7.patch
+- 4.x/0013-define-WINVER.patch
+- 4.x/0014-avfilter-dependency-fix.patch
+- 4.x/0015-Fix-xml2-detection.patch
+- 4.x/0017-Patch-for-ticket-9019-CUDA-Compile-Broken-Using-MSVC.patch
+- 4.x/0018-libaom-Dont-use-aom_codec_av1_dx_algo.patch
+- 4.x/0019-libx264-Do-not-explicitly-set-X264_API_IMPORTS.patch
+- 4.x/0020-fix-aarch64-libswscale-4.4.7.patch
+- 4.x/0022-fix-m1-hardware-decode-nal-bits.patch
+- 4.x/0023-fix-qsv-init.patch
+- 4.x/0050-lensfun-0.3.4-compat-4.4.7.patch
+- 4.x/0052-svtav1-3.x-compat-4.4.7.patch
+- 4.x/0001-fix-iconv-link.patch
+revision: 0
+source:
+  sha512: 79ef89decbec39c2de2d2b98a7b3307b5788805a07a15116a31b6d6fe35e75745a956efcf5215e96928f3cce8f0b465a5d157448efa37be3602a8eea74cab966
