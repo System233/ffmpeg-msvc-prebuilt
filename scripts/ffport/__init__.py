@@ -18,24 +18,39 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 YAML_DIR = REPO_ROOT / "ffmpeg"
 
 
+def list_version_stems() -> list[str]:
+    """Return sorted list of version YAML stems, excluding base/master."""
+    stems = []
+    for f in sorted(YAML_DIR.glob("*.yaml")):
+        if f.stem not in ("base", "master"):
+            stems.append(f.stem)
+    return stems
+
+
 def cmd_generate(args):
-    """Generate vcpkg port for a specific version."""
-    if not args.yaml:
-        print("error: specify a YAML name", file=sys.stderr)
+    """Generate vcpkg port for a specific version, or all if --all."""
+    if args.all:
+        stems = list_version_stems()
+        dummy_sha512 = "0" * 128
+        for stem in stems:
+            print(f"--- {stem} ---")
+            _generate(stem, args.version, args.sha512 or dummy_sha512,
+                      args.build_date, args.port_name, args.output, args.ref)
+        print(f"Generated {len(stems)} port(s)")
+    elif not args.yaml:
+        print("error: specify a YAML name or --all", file=sys.stderr)
         sys.exit(1)
-    _generate(args.yaml, args.version, args.sha512, args.build_date,
-              args.port_name, args.output, args.ref)
+    else:
+        _generate(args.yaml, args.version, args.sha512, args.build_date,
+                  args.port_name, args.output, args.ref)
 
 
 def cmd_list(args):
     """List available version YAML files."""
-    found = False
-    for f in sorted(YAML_DIR.glob("*.yaml")):
-        if f.stem in ("base", "master"):
-            continue
-        print(f.stem)
-        found = True
-    if not found:
+    stems = list_version_stems()
+    for s in stems:
+        print(s)
+    if not stems:
         print("(no version YAML files found)", file=sys.stderr)
 
 
@@ -168,7 +183,9 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     gen = sub.add_parser("generate", help="Generate vcpkg port")
-    gen.add_argument("yaml", help="YAML config name (e.g. 8.1.1, master)")
+    gen.add_argument("yaml", nargs="?", help="YAML config name (e.g. 8.1.1, master)")
+    gen.add_argument("--all", action="store_true",
+                     help="Generate ports for all available versions")
     gen.add_argument("--version", default=None, help="Version override")
     gen.add_argument("-n", "--port-name", default="ffmpeg",
                      help="Port name (default: ffmpeg)")

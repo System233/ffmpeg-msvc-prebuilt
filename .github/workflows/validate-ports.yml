@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# validate-ports.yml — Verify all YAML specs generate valid port files
+#
+# Triggered on push to main that touches YAML specs or patches.  Runs
+# `ffport generate --all` which quickly validates that every version YAML
+# can produce a complete port directory without building anything.
+# ---------------------------------------------------------------------------
+
+name: Validate Port Generation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ffmpeg/*.yaml'
+      - 'patches/**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate all ports
+        run: python scripts/ffport.py generate --all
