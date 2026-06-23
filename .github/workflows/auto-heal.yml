@@ -1,18 +1,37 @@
 # ---------------------------------------------------------------------------
-# auto-heal.yml — OpenCode autonomous repair for failed PR builds
+# auto-heal.yml — OpenCode autonomous repair for failed builds
 #
-# Two-job architecture:
-#   1. agent-repair  (read-only perms) — diagnose, fix, commit locally
-#   2. push-fixes    (write perms)     — push the agent's commit to the PR branch
+# Three-job architecture:
+#   1. check         — decode trigger, decide action (push/pr), check PR
+#   2. agent-repair  — diagnose, fix, commit locally (read-only perms)
+#   3. fix-and-push  — apply patch, bump revision, push/Create PR (write perms)
+#
+# Drive logic: check.outputs. action / branch / bump_revision controls
+# downstream behavior without any event type branching.
 # ---------------------------------------------------------------------------
 
 name: OpenCode Auto-Heal
 
-concurrency:
-  group: auto-heal-${{ github.event.workflow_run.pull_requests[0].number || github.event.inputs.run_id }}
-  cancel-in-progress: true
-
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: "FFmpeg version that failed to build"
+        required: true
+        type: string
+      yaml:
+        description: "YAML config name"
+        required: true
+        type: string
+      run_id:
+        description: "Failed build run ID"
+        required: true
+        type: string
+      base_ref:
+        description: "Branch to base the fix on"
+        required: false
+        type: string
+        default: main
   workflow_run:
     workflows: ["PR Build"]
     types: [completed]
@@ -22,162 +41,219 @@ on:
         description: "Failed PR Build run ID (from Actions page)"
         required: true
         type: string
-      branch:
-        description: "PR branch to checkout and fix"
-        required: true
-        type: string
 
 env:
-  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
+  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || github.event_name == 'workflow_call' && 'call' || 'auto' }}
   OPENCODE_VERSION: 1.17.9
   OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
   MAX_RETRY_ATTEMPTS: 3
 
 jobs:
-  # ── Job 1: Diagnose + fix + commit locally ──────────────────────────────
-  agent-repair:
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'pull_request') }}
+  # == Job 0: Decide strategy ==============================================
+  # Converts trigger event into actionable data for downstream jobs.
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
       pull-requests: read
-
     outputs:
-      head_ref: ${{ steps.setup.outputs.head_ref }}
-      base_ref: ${{ steps.setup.outputs.base_ref }}
-      pr_number: ${{ steps.setup.outputs.pr_number }}
-
+      skip: ${{ steps.decide.outputs.skip }}
+      action: ${{ steps.decide.outputs.action }}
+      branch: ${{ steps.decide.outputs.branch }}
+      checkout_ref: ${{ steps.decide.outputs.checkout_ref }}
+      bump_revision: ${{ steps.decide.outputs.bump_revision }}
+      run_id: ${{ steps.decide.outputs.run_id }}
+      pr_number: ${{ steps.decide.outputs.pr_number }}
+      pr_author: ${{ steps.decide.outputs.pr_author }}
+      base_sha: ${{ steps.decide.outputs.base_sha }}
+      base_ref: ${{ steps.decide.outputs.base_ref }}
+      head_sha: ${{ steps.decide.outputs.head_sha }}
+      head_ref: ${{ steps.decide.outputs.head_ref }}
     steps:
-      - name: Checkout PR Branch
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
-      - name: Determine Run ID and PR Info
-        id: setup
+      - name: Decide
+        id: decide
         uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const eventName = context.eventName;
 
-            let runId, prNumber;
+            let skip = 'false', action = '', branch = '', checkoutRef = '', bumpRevision = 'false';
+            let runId = '', prNumber = '', prAuthor = '', baseSha = '', baseRef = '', headSha = '', headRef = '';
 
             if (context.payload.workflow_run) {
-              runId = context.payload.workflow_run.id;
-              prNumber = context.payload.workflow_run.pull_requests[0].number;
-              console.log(`Auto-trigger: run ${runId}, PR #${prNumber}`);
+              // == PR Build failure ======================================
+              const wf = context.payload.workflow_run;
+              if (wf.conclusion !== 'failure' || wf.event !== 'pull_request') {
+                skip = 'true';
+                console.log('Skipping: not a PR Build failure');
+              } else {
+                runId = wf.id.toString();
+                prNumber = wf.pull_requests[0].number;
+                const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+                action = 'push';
+                branch = pr.data.head.ref;
+                checkoutRef = branch;
+                prAuthor = pr.data.user.login;
+                baseSha = pr.data.base.sha;
+                baseRef = pr.data.base.ref;
+                headSha = pr.data.head.sha;
+                headRef = pr.data.head.ref;
+                console.log(`push mode: branch ${branch}, PR #${prNumber}`);
+              }
+            } else if (eventName === 'workflow_call') {
+              // == Release/Master failure ================================
+              runId = context.payload.inputs.run_id;
+              const yaml = context.payload.inputs.yaml;
+              const yamlPath = `ffmpeg/${yaml}.yaml`;
+              const fs = require('fs');
+              const content = fs.readFileSync(yamlPath, 'utf-8');
+              const revMatch = content.match(/^revision:\s*(\d+)/m);
+              const rev = revMatch ? parseInt(revMatch[1]) : null;
+
+              const branchName = rev !== null
+                ? `fix/ffmpeg-${yaml}-r${rev + 1}`
+                : `fix/ffmpeg-${yaml}`;
+              bumpRevision = rev !== null ? 'true' : 'false';
+              action = 'pr';
+              branch = branchName;
+              checkoutRef = 'main';
+              baseRef = context.payload.inputs.base_ref || 'main';
+
+              const { execSync } = require('child_process');
+              const exists = execSync(`git ls-remote --heads origin "${branchName}"`, { encoding: 'utf-8' }).trim();
+              if (exists) {
+                const prState = execSync(`gh pr list --head "${branchName}" --json state -q '.[0].state'`, { encoding: 'utf-8' }).trim();
+                if (prState === 'OPEN') {
+                  skip = 'true';
+                  console.log(`PR already open for ${branchName} — skipping`);
+                }
+              }
+              console.log(`pr mode: branch ${branchName}, bump ${bumpRevision}`);
             } else {
-              runId = parseInt(context.payload.inputs.run_id);
-              const run = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
-              prNumber = run.data.pull_requests[0].number;
+              // == workflow_dispatch =====================================
+              runId = context.payload.inputs.run_id;
+              const run = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: parseInt(runId) });
+              prNumber = run.data.pull_requests[0]?.number;
               if (!prNumber) {
                 core.setFailed(`Workflow run ${runId} has no associated PR`);
                 return;
               }
-              console.log(`Manual trigger: run ${runId}, PR #${prNumber}`);
+              const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              action = 'push';
+              branch = pr.data.head.ref;
+              checkoutRef = branch;
+              prAuthor = pr.data.user.login;
+              baseSha = pr.data.base.sha;
+              baseRef = pr.data.base.ref;
+              headSha = pr.data.head.sha;
+              headRef = pr.data.head.ref;
+              console.log(`push mode: branch ${branch} (from PR #${prNumber})`);
             }
 
-            const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-            const prData = pr.data;
-
-            core.setOutput('run_id', runId.toString());
+            core.setOutput('skip', skip);
+            core.setOutput('action', action);
+            core.setOutput('branch', branch);
+            core.setOutput('checkout_ref', checkoutRef);
+            core.setOutput('bump_revision', bumpRevision);
+            core.setOutput('run_id', runId);
             core.setOutput('pr_number', prNumber.toString());
-            core.setOutput('pr_author', prData.user.login);
-            core.setOutput('base_sha', prData.base.sha);
-            core.setOutput('base_ref', prData.base.ref);
-            core.setOutput('head_sha', prData.head.sha);
-            core.setOutput('head_ref', prData.head.ref);
+            core.setOutput('pr_author', prAuthor);
+            core.setOutput('base_sha', baseSha);
+            core.setOutput('base_ref', baseRef);
+            core.setOutput('head_sha', headSha);
+            core.setOutput('head_ref', headRef);
 
       - name: Check PR Author Authorization
+        if: steps.decide.outputs.action == 'push'
         uses: actions/github-script@v9
         with:
           script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const author = '${{ steps.setup.outputs.pr_author }}';
+            const author = '${{ steps.decide.outputs.pr_author }}';
             const BOT_USERS = ['github-actions[bot]', 'ffmpeg-dev[bot]'];
-
             if (BOT_USERS.includes(author)) {
               console.log(`Authorized: ${author} (project automation bot)`);
               return;
             }
-
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
             try {
-              const perm = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner, repo, username: author
-              });
+              const perm = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: author });
               const level = perm.data.permission;
               if (level === 'admin' || level === 'write') {
                 console.log(`Authorized: ${author} (${level} access)`);
               } else {
-                core.setFailed(
-                  `PR author "${author}" has ${level} access. ` +
-                  `Only collaborators with admin/write permission or bot users are allowed.`
-                );
+                core.setFailed(`PR author "${author}" has ${level} access. Only collaborators with admin/write permission or bot users are allowed.`);
               }
             } catch (err) {
               if (err.status === 404) {
-                core.setFailed(
-                  `PR author "${author}" is not a collaborator. ` +
-                  `Auto-heal is restricted to maintainers and bot users.`
-                );
-              } else {
-                throw err;
-              }
+                core.setFailed(`PR author "${author}" is not a collaborator. Auto-heal is restricted to maintainers and bot users.`);
+              } else throw err;
             }
 
+      - name: Check only allowed files modified
+        if: steps.decide.outputs.action == 'push'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const base = '${{ steps.decide.outputs.base_sha }}';
+            const head = '${{ steps.decide.outputs.head_sha }}';
+            const { data } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner, repo: context.repo.repo, base, head
+            });
+            const ALLOWED = [/^ffmpeg\/.*\.yaml$/, /^patches\/.*\.patch$/];
+            const violations = data.files
+              .filter(f => !ALLOWED.some(p => p.test(f.filename)))
+              .filter(f => !f.filename.startsWith('.opencode/'))
+              .map(f => f.filename);
+            if (violations.length > 0) {
+              console.log('PR modifies files outside allowed scope:');
+              violations.forEach(f => console.log(`  ${f}`));
+              core.setFailed('Auto-heal refused: PR modifies files outside ffmpeg/*.yaml and patches/*.x/*.patch');
+            } else {
+              console.log('All changed files are within allowed scope.');
+            }
+
+  # == Job 1: Diagnose + fix + commit locally ==============================
+  agent-repair:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
+    concurrency:
+      group: auto-heal-repair-${{ needs.check.outputs.branch }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.check.outputs.checkout_ref }}
+          fetch-depth: 0
+
       - name: Check Loop Count Limit
+        if: needs.check.outputs.action == 'push'
         id: counter
         run: |
-          BASE_SHA="${{ steps.setup.outputs.base_sha }}"
+          BASE_SHA="${{ needs.check.outputs.base_sha }}"
           COMMIT_COUNT=$(git rev-list --count ${BASE_SHA}..HEAD)
           echo "Total auto-fix commits: $COMMIT_COUNT"
           if [ "$COMMIT_COUNT" -gt 10 ]; then
             echo "::error::Auto-fix commits exceed limit (10). Aborting."
             exit 1
           fi
-          echo "current_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check only allowed files modified
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const base = '${{ steps.setup.outputs.base_sha }}';
-            const head = '${{ steps.setup.outputs.head_sha }}';
-
-            const { data } = await github.rest.repos.compareCommits({
-              owner, repo, base, head
-            });
-
-            const ALLOWED = [
-              /^ffmpeg\/.*\.yaml$/,
-              /^patches\/.*\.patch$/,
-            ];
-
-            const violations = data.files
-              .filter(f => !ALLOWED.some(p => p.test(f.filename)))
-              .filter(f => !f.filename.startsWith('.opencode/'))
-              .map(f => f.filename);
-
-            if (violations.length > 0) {
-              console.log('PR modifies files outside allowed scope:');
-              violations.forEach(f => console.log(`  ${f}`));
-              core.setFailed(
-                'Auto-heal refused: PR modifies files outside ffmpeg/*.yaml and patches/*.x/*.patch'
-              );
-            } else {
-              console.log('All changed files are within allowed scope.');
-            }
 
       - name: Download Build Log Artifacts
         uses: actions/download-artifact@v8
         with:
-          run-id: ${{ steps.setup.outputs.run_id }}
+          run-id: ${{ needs.check.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: build-logs-*
           path: error_logs
@@ -187,13 +263,13 @@ jobs:
         id: context
         with:
           script: |
-            const runId = parseInt('${{ steps.setup.outputs.run_id }}');
+            const runId = parseInt('${{ needs.check.outputs.run_id }}');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const prNumber = parseInt('${{ steps.setup.outputs.pr_number }}');
+            const prNumber = '${{ needs.check.outputs.pr_number }}' || null;
             const { execSync } = require('child_process');
             const fs = require('fs');
-            const baseSha = '${{ steps.setup.outputs.base_sha }}';
+            const baseSha = '${{ needs.check.outputs.base_sha }}';
 
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner, repo, run_id: runId
@@ -205,19 +281,22 @@ jobs:
 
             fs.writeFileSync('failed_steps_hint.txt', failedJobNames.join('\n'));
 
-            const diff = execSync(
-              `git diff --name-only --diff-filter=A ${baseSha}..HEAD -- patches/`,
-              { encoding: 'utf-8' }
-            ).trim();
-            const newPatches = diff ? diff.split('\n') : [];
-            console.log('PR-new patches:', newPatches);
+            let newPatches = [];
+            if (baseSha) {
+              const diff = execSync(
+                `git diff --name-only --diff-filter=A ${baseSha}..HEAD -- patches/`,
+                { encoding: 'utf-8' }
+              ).trim();
+              newPatches = diff ? diff.split('\n') : [];
+            }
+            console.log('New patches:', newPatches);
 
             const contextPayload = {
-              pr_number: prNumber,
-              base_branch: '${{ steps.setup.outputs.base_ref }}',
-              base_sha: baseSha,
-              head_branch: '${{ steps.setup.outputs.head_ref }}',
-              head_sha: '${{ steps.setup.outputs.head_sha }}',
+              pr_number: prNumber ? parseInt(prNumber) : null,
+              base_branch: '${{ needs.check.outputs.base_ref }}',
+              base_sha: baseSha || '',
+              head_branch: '${{ needs.check.outputs.head_ref }}',
+              head_sha: '${{ needs.check.outputs.head_sha }}',
               workflow_run_id: runId,
               workflow_url: `https://github.com/${owner}/${repo}/actions/runs/${runId}`,
               failed_jobs: failedJobNames,
@@ -306,7 +385,8 @@ jobs:
           git config --global user.name "ffmpeg-dev[bot]"
           git config --global user.email "ffmpeg-dev[bot]@users.noreply.github.com"
 
-          BASE_SHA="${{ steps.setup.outputs.base_sha }}"
+          BASE_SHA="${{ needs.check.outputs.base_sha }}"
+          [ -z "$BASE_SHA" ] && BASE_SHA="$(git rev-parse HEAD)"
           attempt=0
 
           while [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; do
@@ -395,19 +475,20 @@ jobs:
           path: fix_report.md
           retention-days: 1
 
-  # ── Job 2: Push agent's commit to PR branch ────────────────────────────
-  push-fixes:
-    needs: agent-repair
-    if: success()
+  # == Job 2: Apply fix and push/create PR ===============================
+  fix-and-push:
+    needs: [agent-repair, check]
+    concurrency:
+      group: auto-heal-push-${{ needs.check.outputs.branch }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
+      pull-requests: write
     steps:
-      - name: Checkout PR Branch
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.agent-repair.outputs.head_ref }}
+          ref: ${{ needs.check.outputs.checkout_ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -431,6 +512,7 @@ jobs:
           client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
           private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
           permission-contents: write
+          permission-pull-requests: write
 
       - name: Get bot user ID
         id: bot-user
@@ -440,10 +522,9 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Apply patch and push
+      - name: Apply patch
         env:
           TOKEN: ${{ steps.app-token.outputs.token }}
-          BRANCH: ${{ needs.agent-repair.outputs.head_ref }}
         run: |
           PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
           if [ -z "$PATCH" ]; then
@@ -470,19 +551,49 @@ jobs:
           fi
           echo "All modified files are within allowed scope."
 
-          git pull --rebase origin "$BRANCH" || true
-          git push origin HEAD:"$BRANCH"
-          echo "Fix pushed to $BRANCH"
+      - name: Bump revision
+        if: needs.check.outputs.bump_revision == 'true'
+        run: |
+          YAML="${{ inputs.yaml }}"
+          YAML_PATH="ffmpeg/${YAML}.yaml"
+          REV=$(grep '^revision:' "$YAML_PATH" | awk '{print $2}')
+          NEW_REV=$((REV + 1))
+          sed -i "s/^revision:.*/revision: ${NEW_REV}/" "$YAML_PATH"
+          echo "Bumped revision: $REV -> $NEW_REV"
+          git add "$YAML_PATH"
+          git commit -m "fix($YAML): bump revision to $NEW_REV"
 
-      - name: Post fix report as PR comment
+      - name: Push
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if [ "${{ needs.check.outputs.action }}" = "push" ]; then
+            git pull --rebase origin "${{ needs.check.outputs.branch }}" || true
+          fi
+          git push origin HEAD:"${{ needs.check.outputs.branch }}"
+
+      - name: Create PR
+        if: needs.check.outputs.action == 'pr'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "${{ needs.check.outputs.branch }}" \
+            --title "fix(${{ inputs.yaml }}): auto-fix build failure" \
+            --body "Auto-fix for build failure of \`${{ inputs.version }}\` ([run #${{ inputs.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}))"
+
+      - name: Post fix report
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ -f fix-report/fix_report.md ]; then
-            gh pr comment "${{ needs.agent-repair.outputs.pr_number }}" \
+            if [ "${{ needs.check.outputs.action }}" = "pr" ]; then
+              PR_NUMBER=$(gh pr list --head "${{ needs.check.outputs.branch }}" --json number -q '.[0].number')
+            else
+              PR_NUMBER="${{ needs.check.outputs.pr_number }}"
+            fi
+            [ -n "$PR_NUMBER" ] && gh pr comment "$PR_NUMBER" \
               --repo "${{ github.repository }}" \
               --body-file fix-report/fix_report.md
-            echo "Comment posted on PR #${{ needs.agent-repair.outputs.pr_number }}"
-          else
-            echo "No fix report found. Skipping comment."
           fi

@@ -1,6 +1,11 @@
 name: Build FFmpeg Master
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ffmpeg/master.yaml'
   schedule:
     - cron: '0 12 * * 5'
   workflow_dispatch:

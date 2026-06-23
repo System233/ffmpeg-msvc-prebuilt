@@ -1,4 +1,5 @@
 extends: "8.1"
+revision: 0
 
 source:
   method: git

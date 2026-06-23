@@ -750,3 +750,14 @@ jobs:
     needs: finalize
     if: inputs.dry_run != true
     uses: ./.github/workflows/pages.yml
+
+  # == Auto-heal: diagnose and create fix PR on build failure ==============─
+  trigger-auto-heal:
+    needs: finalize
+    if: ${{ failure() && !inputs.dry_run }}
+    uses: ./.github/workflows/auto-heal.yml
+    with:
+      version: ${{ inputs.version }}
+      yaml: ${{ inputs.yaml || inputs.version }}
+      run_id: ${{ github.run_id }}
+    secrets: inherit
