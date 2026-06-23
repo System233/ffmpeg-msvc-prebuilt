@@ -338,7 +338,7 @@ features:
     description: "Build FFmpeg as static libraries instead of shared"
   ffplay:
     flag: "--enable-ffplay"
-    depends: ["@base"]
+    depends: ["@base", "@sdl2"]
     description: "Build the ffplay application"
   ffmpeg:
     flag: "--enable-ffmpeg"

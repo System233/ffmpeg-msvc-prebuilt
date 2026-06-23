@@ -61,27 +61,15 @@ function(append_dependencies out)
         set(config RELEASE)
         set(path "${SEARCH_PATH}/lib/")
     endif()
-    if("${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES}" STREQUAL "")
-        enable_language(CXX)
-    endif()
-    set(pass_through
-        ${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES}
-        advapi32 bcrypt crypt32 gdi32 mfuuid ncrypt ole32 oleaut32 psapi secur32 shlwapi strmiids user32 uuid vfw32 ws2_32 usp10 cfgmgr32 rpcrt4
-        -pthread -pthreads pthread atomic m
-    )
-    cmake_policy(SET CMP0057 NEW)
     foreach(lib_name IN LISTS arg_NAMES)
-        if(lib_name IN_LIST CMAKE_C_IMPLICIT_LINK_LIBRARIES)
-            continue()
-        elseif(lib_name IN_LIST pass_through)
-            list(APPEND ${out} "${lib_name}")
-        elseif(EXISTS "${lib_name}")
+        find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}" PATHS "${path}" NO_DEFAULT_PATH)
+        find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}")
+        if(FFMPEG_DEPENDENCY_${lib_name}_${config} MATCHES "-NOTFOUND$")
             list(APPEND ${out} "${lib_name}")
         else()
-            find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}" PATHS "${path}" NO_DEFAULT_PATH)
-            find_library(FFMPEG_DEPENDENCY_${lib_name}_${config} NAMES "${lib_name}" REQUIRED)
             list(APPEND ${out} "${FFMPEG_DEPENDENCY_${lib_name}_${config}}")
         endif()
+        unset(FFMPEG_DEPENDENCY_${lib_name}_${config} CACHE)
     endforeach()
     set("${out}" "${${out}}" PARENT_SCOPE)
 endfunction()
@@ -151,14 +139,26 @@ if (FFMPEG_libavutil_FOUND)
     endforeach()
   endif()
 
-  append_dependencies(FFMPEG_DEPS_LIBRARY_RELEASE NAMES "@FFMPEG_DEPENDENCIES_RELEASE@")
-  append_dependencies(FFMPEG_DEPS_LIBRARY_DEBUG   NAMES "@FFMPEG_DEPENDENCIES_DEBUG@" DEBUG)
-  if(FFMPEG_DEPS_LIBRARY_RELEASE OR FFMPEG_DEPS_LIBRARY_DEBUG)
-    select_library_configurations(FFMPEG_DEPS)
-    list(APPEND FFMPEG_LIBRARIES ${FFMPEG_DEPS_LIBRARY})
-  endif()
-  set(FFMPEG_DEPS_LIBRARY_RELEASE "${FFMPEG_DEPS_LIBRARY_RELEASE}" CACHE STRING "")
-  set(FFMPEG_DEPS_LIBRARY_DEBUG "${FFMPEG_DEPS_LIBRARY_DEBUG}" CACHE STRING "")
+  # Per-module external dependencies
+  macro(FFMPEG_ATTACH_MODULE_DEPS varname deps_release deps_debug)
+    if(NOT "${deps_release}${deps_debug}" STREQUAL "")
+      append_dependencies(FFMPEG_${varname}_DEPS_LIBRARY_RELEASE NAMES "${deps_release}")
+      append_dependencies(FFMPEG_${varname}_DEPS_LIBRARY_DEBUG   NAMES "${deps_debug}" DEBUG)
+    endif()
+    if(FFMPEG_${varname}_DEPS_LIBRARY_RELEASE OR FFMPEG_${varname}_DEPS_LIBRARY_DEBUG)
+      select_library_configurations(FFMPEG_${varname}_DEPS)
+      list(APPEND FFMPEG_LIBRARIES ${FFMPEG_${varname}_DEPS_LIBRARY})
+    endif()
+    set(FFMPEG_${varname}_DEPS_LIBRARY "${FFMPEG_${varname}_DEPS_LIBRARY}" CACHE STRING "" FORCE)
+  endmacro()
+
+  FFMPEG_ATTACH_MODULE_DEPS(libavutil   "@FFMPEG_DEP_AVUTIL_RELEASE_LIST@"   "@FFMPEG_DEP_AVUTIL_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libavcodec  "@FFMPEG_DEP_AVCODEC_RELEASE_LIST@"  "@FFMPEG_DEP_AVCODEC_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libavformat "@FFMPEG_DEP_AVFORMAT_RELEASE_LIST@" "@FFMPEG_DEP_AVFORMAT_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libavfilter "@FFMPEG_DEP_AVFILTER_RELEASE_LIST@" "@FFMPEG_DEP_AVFILTER_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libavdevice "@FFMPEG_DEP_AVDEVICE_RELEASE_LIST@" "@FFMPEG_DEP_AVDEVICE_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libswresample "@FFMPEG_DEP_SWRESAMPLE_RELEASE_LIST@" "@FFMPEG_DEP_SWRESAMPLE_DEBUG_LIST@")
+  FFMPEG_ATTACH_MODULE_DEPS(libswscale  "@FFMPEG_DEP_SWSCALE_RELEASE_LIST@"  "@FFMPEG_DEP_SWSCALE_DEBUG_LIST@")
 
   set(FFMPEG_LIBRARY ${FFMPEG_LIBRARIES})
 
@@ -176,9 +176,17 @@ endif() # NOT FFMPEG_FOUND
 # ============================================================================
 if(FFMPEG_FOUND)
 
+if(NOT TARGET FFmpeg::FFmpeg)
+  add_library(FFmpeg::FFmpeg INTERFACE IMPORTED)
+  set_target_properties(FFmpeg::FFmpeg PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIRS}"
+  )
+  add_library(FFMPEG::ffmpeg ALIAS FFmpeg::FFmpeg)
+endif()
+
 macro(FFMPEG_ADD_IMPORTED_TARGET varname shortname)
   if(FFMPEG_${varname}_FOUND)
-    if(FFMPEG_${varname}_DLL_RELEASE)
+    if("@VCPKG_LIBRARY_LINKAGE@" STREQUAL "dynamic")
       add_library(FFmpeg::${shortname} SHARED IMPORTED GLOBAL)
       set_target_properties(FFmpeg::${shortname} PROPERTIES
         IMPORTED_LOCATION "${FFMPEG_${varname}_DLL_RELEASE}"
@@ -188,7 +196,7 @@ macro(FFMPEG_ADD_IMPORTED_TARGET varname shortname)
         INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_${varname}_INCLUDE_DIRS}"
       )
     else()
-      add_library(FFmpeg::${shortname} UNKNOWN IMPORTED GLOBAL)
+      add_library(FFmpeg::${shortname} STATIC IMPORTED GLOBAL)
       set_target_properties(FFmpeg::${shortname} PROPERTIES
         IMPORTED_LOCATION "${FFMPEG_${varname}_LIBRARY_RELEASE}"
         IMPORTED_LOCATION_DEBUG "${FFMPEG_${varname}_LIBRARY_DEBUG}"
@@ -196,9 +204,31 @@ macro(FFMPEG_ADD_IMPORTED_TARGET varname shortname)
       )
     endif()
     add_library(FFMPEG::${shortname} ALIAS FFmpeg::${shortname})
+    
+    # Link external system LIBRARIES
+    if(FFMPEG_${varname}_DEPS_LIBRARY)
+      target_link_libraries(FFmpeg::${shortname} INTERFACE
+        ${FFMPEG_${varname}_DEPS_LIBRARY}
+      )
+    endif()
+    
+    target_link_libraries(FFmpeg::FFmpeg INTERFACE FFmpeg::${shortname})
   endif()
 endmacro()
 
+macro(FFMPEG_LINK_INTERNAL_DEPS varname shortname deps)
+  if(FFMPEG_${varname}_FOUND AND TARGET FFmpeg::${shortname})
+    if(NOT deps STREQUAL "")
+      foreach(_dep ${deps})
+        if(TARGET FFmpeg::${_dep})
+          target_link_libraries(FFmpeg::${shortname} INTERFACE FFmpeg::${_dep})
+        endif()
+      endforeach()
+    endif()
+  endif()
+endmacro()
+
+# create all targets
 FFMPEG_ADD_IMPORTED_TARGET(libavutil avutil)
 FFMPEG_ADD_IMPORTED_TARGET(libavdevice avdevice)
 FFMPEG_ADD_IMPORTED_TARGET(libavfilter avfilter)
@@ -207,51 +237,16 @@ FFMPEG_ADD_IMPORTED_TARGET(libavcodec avcodec)
 FFMPEG_ADD_IMPORTED_TARGET(libswresample swresample)
 FFMPEG_ADD_IMPORTED_TARGET(libswscale swscale)
 
-# Attach external system dependencies to root module avutil for transitive propagation
-if(TARGET FFmpeg::avutil AND (FFMPEG_DEPS_LIBRARY_RELEASE OR FFMPEG_DEPS_LIBRARY_DEBUG))
-  target_link_libraries(FFmpeg::avutil INTERFACE
-    "$<$<CONFIG:Debug>:${FFMPEG_DEPS_LIBRARY_DEBUG}>"
-    "$<$<NOT:$<CONFIG:Debug>>:${FFMPEG_DEPS_LIBRARY_RELEASE}>"
-  )
-endif()
-
-if(NOT TARGET FFmpeg::FFmpeg)
-  add_library(FFmpeg::FFmpeg INTERFACE IMPORTED)
-  set_target_properties(FFmpeg::FFmpeg PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIRS}"
-  )
-  foreach(_m avformat avcodec avutil avdevice avfilter swresample swscale)
-    if(TARGET FFmpeg::${_m})
-      target_link_libraries(FFmpeg::FFmpeg INTERFACE FFmpeg::${_m})
-    endif()
-  endforeach()
-endif()
-if(NOT TARGET FFMPEG::ffmpeg)
-  add_library(FFMPEG::ffmpeg ALIAS FFmpeg::FFmpeg)
-endif()
-
-# --- Set up inter-module dependencies ---
-if(TARGET FFmpeg::avcodec)
-  target_link_libraries(FFmpeg::avcodec INTERFACE FFmpeg::avutil FFmpeg::swresample)
-endif()
-if(TARGET FFmpeg::avformat)
-  target_link_libraries(FFmpeg::avformat INTERFACE FFmpeg::avcodec FFmpeg::avutil)
-endif()
-if(TARGET FFmpeg::avdevice)
-  target_link_libraries(FFmpeg::avdevice INTERFACE FFmpeg::avfilter FFmpeg::swscale FFmpeg::avformat FFmpeg::avcodec FFmpeg::swresample FFmpeg::avutil)
-endif()
-if(TARGET FFmpeg::avfilter)
-  target_link_libraries(FFmpeg::avfilter INTERFACE FFmpeg::swscale FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil)
-endif()
-if(TARGET FFmpeg::swresample)
-  target_link_libraries(FFmpeg::swresample INTERFACE FFmpeg::avutil)
-endif()
-if(TARGET FFmpeg::swscale)
-  target_link_libraries(FFmpeg::swscale INTERFACE FFmpeg::avutil)
-endif()
+# link inter-module deps (all targets now exist)
+FFMPEG_LINK_INTERNAL_DEPS(libavutil avutil "@FFMPEG_DEP_AVUTIL_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libavdevice avdevice "@FFMPEG_DEP_AVDEVICE_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libavfilter avfilter "@FFMPEG_DEP_AVFILTER_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libavformat avformat "@FFMPEG_DEP_AVFORMAT_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libavcodec avcodec "@FFMPEG_DEP_AVCODEC_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libswresample swresample "@FFMPEG_DEP_SWRESAMPLE_DEPS_LIST@")
+FFMPEG_LINK_INTERNAL_DEPS(libswscale swscale "@FFMPEG_DEP_SWSCALE_DEPS_LIST@")
 
 endif() # FFMPEG_FOUND
-
 
 # ============================================================================
 # Stage 3 - Report (every configure run)
