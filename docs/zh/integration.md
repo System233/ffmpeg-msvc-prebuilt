@@ -2,12 +2,10 @@
 title: 开发集成
 ---
 
-# 开发集成 — ffmeta 示例
+# 将 FFmpeg 集成到你的 CMake 项目
 
-`ffmeta` 是一个简单的命令行工具，用于查看媒体文件的容器格式和流信息。
-它演示了如何通过三种构建系统正确链接预编译的 FFmpeg 库。
-
-源码位于仓库中的 [`examples/`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples) 目录。
+本文档说明如何通过 `FindFFmpeg.cmake` 将预构建的 FFmpeg 共享库
+（MSVC）链接到你自己的 CMake 项目。
 
 ## 前置条件
 
@@ -16,62 +14,123 @@ title: 开发集成
 或 [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/) 获取。
 
 解压后得到包含 `bin/`、`lib/`、`include/`、`share/ffmpeg/` 的目录，
-该目录路径即为 `FFMPEG_ROOT`。
+该目录路径即为 **`FFMPEG_ROOT`**。
 
 > **注意**: Static 变体不包含头文件和库，无法用于开发。请使用 shared 变体。
 
-## 功能
+## 工作原理
 
 ```
-$ ffmeta input.mp4
-=== input.mp4 ===
-  Format: QuickTime / MOV (mov,mp4,m4a,3gp,3g2,mj2)
-  Duration: 00:02:33.45
-  Bitrate: 1256 kb/s
-  Streams: 2
-  Stream #0: Video h264 (High), yuv420p, 1920x1080, 1200 kb/s
-  Stream #1: Audio aac (LC), 48000 Hz, 2 ch (fltp), 128 kb/s
-    language: eng
-  major_brand: isom
-  encoder: Lavf60.0.100
+用户传入 FFMPEG_ROOT
+         │
+         ▼
+CMakeLists.txt 追加 CMAKE_MODULE_PATH
+  → list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+         │
+         ▼
+find_package(FFmpeg MODULE) 加载 FindFFmpeg.cmake
+  → 扫描 FFMPEG_ROOT/include 和 FFMPEG_ROOT/lib
+  → 结果缓存到 CMakeCache.txt（下次不重复扫描）
+  → Windows 共享构建下自动检测 DLL
+  → 创建导入目标，正确设置路径
+         │
+         ▼
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
+  → CMake 自动处理：头文件路径、导入库、DLL 路径、Debug/Release 切换
 ```
 
-## 构建
+## 快速开始代码片段
 
-### 方式 1: CMake + FindFFMPEG.cmake
+将以下代码复制到你的 `CMakeLists.txt` 中，
+配置时传入 `-DFFMPEG_ROOT=<绝对路径>`。
 
-```bash
-cmake -B build -DFFMPEG_ROOT=<ffmpeg_prefix绝对路径>
-cmake --build build
+### 最小版本
+
+```cmake
+cmake_minimum_required(VERSION 3.21)
+project(myapp C)
+
+# ---- 必需：指向解压后的 FFmpeg 目录 ----
+if(NOT DEFINED FFMPEG_ROOT)
+    message(FATAL_ERROR "\n  请在 cmake 命令中传入 -DFFMPEG_ROOT=<绝对路径>\n")
+endif()
+list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
 ```
 
-`FindFFMPEG.cmake` 会在 `FFMPEG_ROOT/share/ffmpeg/` 下查找。
-该文件支持三种链接方式：
+### 带 DLL 自动部署（Windows 共享构建）
 
-| 方式 | 命令 | 说明 |
-|------|------|------|
-| A (推荐) | `target_link_libraries(ffmeta PRIVATE FFMPEG::ffmpeg)` | umbrella 目标，自动包含所有模块和系统依赖 |
-| B | `target_link_libraries(ffmeta PRIVATE FFMPEG::avformat ...)` | 按需链接各模块 |
-| C | `target_link_libraries(ffmeta PRIVATE ${FFMPEG_LIBRARIES})` | 传统变量方式 |
+构建时和安装时自动复制 DLL。
 
-### 方式 2: Meson + pkg-config
+```cmake
+cmake_minimum_required(VERSION 3.21)
+project(myapp C)
 
-```bash
-PKG_CONFIG_PATH=<ffmpeg_prefix>/lib/pkgconfig meson setup build
-meson compile -C build
+if(NOT DEFINED FFMPEG_ROOT)
+    message(FATAL_ERROR "\n  请在 cmake 命令中传入 -DFFMPEG_ROOT=<绝对路径>\n")
+endif()
+list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
+
+# 构建后自动复制 DLL 到输出目录
+add_custom_command(TARGET myapp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_RUNTIME_DLLS:myapp>" "$<TARGET_FILE_DIR:myapp>"
+    COMMAND_EXPAND_LISTS
+)
+
+# 安装可执行文件 + DLL
+install(TARGETS myapp RUNTIME DESTINATION bin)
+install(FILES $<TARGET_RUNTIME_DLLS:myapp> DESTINATION bin)
 ```
 
-### 方式 3: GNU Make + pkg-config
+### 传统变量方式
 
-```bash
-make PKG_CONFIG_PATH=<ffmpeg_prefix>/lib/pkgconfig
+适用于无法使用 CMake 目标的旧项目。
+
+```cmake
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_include_directories(myapp PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(myapp PRIVATE ${FFMPEG_LIBRARIES})
 ```
 
-## 文件说明
+### 按需链接各模块（不使用 umbrella）
 
-| 文件 | 用途 |
-|------|------|
-| `main.c` | ffmeta 源码 (libavutil + libavformat + libavcodec) |
-| `CMakeLists.txt` | CMake 构建 |
-| `meson.build` | Meson 构建 |
-| `Makefile` | GNU Make 构建 |
+```cmake
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE
+    FFmpeg::avformat
+    FFmpeg::avcodec
+    FFmpeg::avutil
+)
+```
+
+## 兼容性
+
+旧名称 `FFMPEG::ffmpeg` / `FFMPEG::avformat` 等仍可作为别名使用：
+
+```cmake
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)   # 新名称（推荐）
+target_link_libraries(myapp PRIVATE FFMPEG::ffmpeg)    # 旧名称（兼容）
+```
+
+## 示例：ffmeta
+
+一个完整的可运行示例位于仓库的
+[`examples/`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
+目录。它演示了所有三种链接方式，并包含 `CMakePresets.json` 用于快速配置。
+
+构建说明请参见
+[`examples/README_CN.md`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)。

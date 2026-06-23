@@ -2,14 +2,10 @@
 title: Integration
 ---
 
-# Integration — ffmeta Example
+# Integrating FFmpeg into Your CMake Project
 
-`ffmeta` is a simple CLI tool that prints media file container format
-and stream information. It demonstrates how to link against a prebuilt
-FFmpeg distribution using three different build systems.
-
-The source code is available under [`examples/`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
-in the repository.
+This guide explains how to link a prebuilt FFmpeg distribution
+(shared, MSVC) into your own CMake project using `FindFFmpeg.cmake`.
 
 ## Prerequisites
 
@@ -18,63 +14,127 @@ the [releases page](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
 or [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/).
 
 Extract the `.zip` — the resulting directory contains `bin/`, `lib/`,
-`include/`, and `share/ffmpeg/`. This path is your `FFMPEG_ROOT`.
+`include/`, and `share/ffmpeg/`. This path is your **`FFMPEG_ROOT`**.
 
 > **Note**: The static variant does not include headers or libraries
 > and cannot be used for development. Use a shared variant instead.
 
-## Usage
+## How It Works
 
 ```
-$ ffmeta input.mp4
-=== input.mp4 ===
-  Format: QuickTime / MOV (mov,mp4,m4a,3gp,3g2,mj2)
-  Duration: 00:02:33.45
-  Bitrate: 1256 kb/s
-  Streams: 2
-  Stream #0: Video h264 (High), yuv420p, 1920x1080, 1200 kb/s
-  Stream #1: Audio aac (LC), 48000 Hz, 2 ch (fltp), 128 kb/s
-    language: eng
-  major_brand: isom
-  encoder: Lavf60.0.100
+User passes FFMPEG_ROOT
+         │
+         ▼
+CMakeLists.txt appends to CMAKE_MODULE_PATH
+  → list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+         │
+         ▼
+find_package(FFmpeg MODULE) loads FindFFmpeg.cmake
+  → scans FFMPEG_ROOT/include and FFMPEG_ROOT/lib
+  → caches results (re-configure skips scan)
+  → detects DLLs on Windows shared builds
+  → creates imported targets with proper locations
+         │
+         ▼
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
+  → CMake wires up include dirs, import libs, DLL paths,
+    and per-config (Debug/Release) switching
 ```
 
-## Build
+## Quick Start Snippets
 
-### Method 1: CMake + FindFFMPEG.cmake
+Copy one of the following into your own `CMakeLists.txt` and
+pass `-DFFMPEG_ROOT=<absolute_path>` at configure time.
 
-```bash
-cmake -B build -DFFMPEG_ROOT=<absolute_path_to_ffmpeg_prefix>
-cmake --build build
+### Minimal version
+
+```cmake
+cmake_minimum_required(VERSION 3.21)
+project(myapp C)
+
+# ---- Required: point to the extracted FFmpeg archive ----
+if(NOT DEFINED FFMPEG_ROOT)
+    message(FATAL_ERROR "\n  Pass -DFFMPEG_ROOT=<absolute_path> to cmake\n")
+endif()
+list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
 ```
 
-`FindFFMPEG.cmake` is located under `FFMPEG_ROOT/share/ffmpeg/`.
-It supports three linking methods:
+### With DLL deployment (Windows shared builds)
 
-| Method | Command | Description |
-|--------|---------|-------------|
-| A (recommended) | `target_link_libraries(ffmeta PRIVATE FFMPEG::ffmpeg)` | Umbrella target, includes all modules and system deps |
-| B | `target_link_libraries(ffmeta PRIVATE FFMPEG::avformat ...)` | Per-module linking |
-| C | `target_link_libraries(ffmeta PRIVATE ${FFMPEG_LIBRARIES})` | Legacy variable approach |
+Adds automatic DLL copying at build time and install time.
 
-### Method 2: Meson + pkg-config
+```cmake
+cmake_minimum_required(VERSION 3.21)
+project(myapp C)
 
-```bash
-PKG_CONFIG_PATH=<ffmpeg_prefix>/lib/pkgconfig meson setup build
-meson compile -C build
+if(NOT DEFINED FFMPEG_ROOT)
+    message(FATAL_ERROR "\n  Pass -DFFMPEG_ROOT=<absolute_path> to cmake\n")
+endif()
+list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
+
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
+
+# Copy DLLs to the build output directory
+add_custom_command(TARGET myapp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_RUNTIME_DLLS:myapp>" "$<TARGET_FILE_DIR:myapp>"
+    COMMAND_EXPAND_LISTS
+)
+
+# Install executable + DLLs
+install(TARGETS myapp RUNTIME DESTINATION bin)
+install(FILES $<TARGET_RUNTIME_DLLS:myapp> DESTINATION bin)
 ```
 
-### Method 3: GNU Make + pkg-config
+### Legacy variable approach
 
-```bash
-make PKG_CONFIG_PATH=<ffmpeg_prefix>/lib/pkgconfig
+If you cannot use CMake targets.
+
+```cmake
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_include_directories(myapp PRIVATE ${FFMPEG_INCLUDE_DIRS})
+target_link_libraries(myapp PRIVATE ${FFMPEG_LIBRARIES})
 ```
 
-## Files
+### Linking individual modules (without umbrella)
 
-| File | Purpose |
-|------|---------|
-| `main.c` | ffmeta source (libavutil + libavformat + libavcodec) |
-| `CMakeLists.txt` | CMake build |
-| `meson.build` | Meson build |
-| `Makefile` | GNU Make build |
+```cmake
+find_package(FFmpeg 5.0 MODULE REQUIRED)
+
+add_executable(myapp main.c)
+target_link_libraries(myapp PRIVATE
+    FFmpeg::avformat
+    FFmpeg::avcodec
+    FFmpeg::avutil
+)
+```
+
+## Compatibility
+
+The old `FFMPEG::ffmpeg` / `FFMPEG::avformat` names are kept as
+aliases. Both naming schemes work:
+
+```cmake
+target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)   # new (recommended)
+target_link_libraries(myapp PRIVATE FFMPEG::ffmpeg)    # old (compat)
+```
+
+## Example: ffmeta
+
+A complete runnable example is available under
+[`examples/`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
+in the repository. It demonstrates all three linking methods and
+includes a CMakePresets.json for quick configuration.
+
+See [`examples/README.md`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
+for build instructions.
