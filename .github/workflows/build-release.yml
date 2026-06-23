@@ -517,7 +517,7 @@ jobs:
           if ("${{ matrix.linkage }}" -eq "static") {
             $features = "$features,static"
           }
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" `
+          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" ffmpeg-tester `
             --triplet=${{ matrix.triplet }} `
             --recurse
 

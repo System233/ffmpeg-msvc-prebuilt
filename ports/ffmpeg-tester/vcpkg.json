@@ -1,0 +1,24 @@
+{
+  "name": "ffmpeg-tester",
+  "version": "1.0.0",
+  "port-version": 0,
+  "description": [
+    "Compilation and linking test suite for FFmpeg libraries.",
+    "Validates that FFmpeg headers are reachable, symbols link correctly,",
+    "CMake target dependencies propagate properly, and external system",
+    "libraries are resolved across demand/full/legacy CMake integration modes."
+  ],
+  "homepage": "https://github.com/System233/ffmpeg-msvc-prebuilt",
+  "license": null,
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": ["base"]
+    }
+  ]
+}
