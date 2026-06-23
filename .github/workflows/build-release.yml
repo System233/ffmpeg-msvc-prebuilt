@@ -744,5 +744,5 @@ jobs:
   # == Trigger pages rebuild ================================================─
   trigger-pages:
     needs: finalize
-    if: (success() || failure()) &&inputs.dry_run != true
+    if: inputs.dry_run != true
     uses: ./.github/workflows/pages.yml
