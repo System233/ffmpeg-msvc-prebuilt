@@ -11,26 +11,18 @@
 name: Build FFmpeg Release
 
 concurrency:
-  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || format('release-{0}-{1}', inputs.version, inputs.revision || 'master') }}
+  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || format('release-{0}', inputs.ref || inputs.yaml) }}
   cancel-in-progress: false
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version number; passed as --version to ffport generate"
+      yaml:
+        description: "YAML config name (e.g. 8.1.1, master)"
         required: true
         type: string
-      yaml:
-        description: "YAML config name (defaults to version value)"
-        required: false
-        type: string
-      revision:
-        description: "Revision value from YAML (required for release builds)"
-        required: false
-        type: number
-      ffmpeg_ref:
-        description: "git describe --tags --abbrev=7 output (required for master)"
+      ref:
+        description: "Git describe string for snapshot builds (e.g. n8.0-1234-gabc). Omit for tagged releases."
         required: false
         type: string
       target_arch:
@@ -49,19 +41,17 @@ on:
         description: 'Skip release creation and data branch push'
         type: boolean
         default: false
+      pr_number:
+        description: 'Pull request number (for PR Build failures)'
+        type: string
+        required: false
 
   workflow_call:
     inputs:
-      version:
-        type: string
-        required: true
       yaml:
         type: string
-        required: false
-      revision:
-        type: number
-        required: false
-      ffmpeg_ref:
+        required: true
+      ref:
         type: string
         required: false
       target_arch:
@@ -77,6 +67,9 @@ on:
         type: boolean
         required: false
         default: false
+      pr_number:
+        type: string
+        required: false
 
 # ==─ Global environment ======================================================
 env:
@@ -111,19 +104,24 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Validate ref format
+        if: inputs.ref != ''
+        run: |
+          if ! echo "${{ inputs.ref }}" | grep -qP '^n\d+\.\d+(\.\d+)?(-\w+)*-\d+-g[0-9a-f]+$'; then
+            echo "::error::ref must be a git describe string (nX.Y.Z-N-gCOMMIT), got '${{ inputs.ref }}'"
+            exit 1
+          fi
+
       - name: Resolve revision
         id: rev
         run: |
-          rev="${{ inputs.revision }}"
-          if [ -z "$rev" ]; then
-            rev=$(python scripts/ffport.py get-revision "${{ inputs.version }}")
-          fi
+          rev=$(python scripts/ffport.py get-revision "${{ inputs.yaml }}")
           echo "value=$rev" >> "$GITHUB_OUTPUT"
 
       - name: Scan variants and output dynamic build matrix
         id: scan
         run: |
-          ver="${{ inputs.version }}"
+          ver="${{ inputs.ref || inputs.yaml }}"
           rev="${{ steps.rev.outputs.value }}"
           target_arch="${{ inputs.target_arch }}"
           target_license="${{ inputs.target_license }}"
@@ -450,7 +448,7 @@ jobs:
       - name: Resolve variant metadata
         id: vars
         run: |
-          $ver = "${{ inputs.version }}"
+          $ver = "${{ inputs.ref || inputs.yaml }}"
           $rev = "${{ needs.scan.outputs.revision }}"
           $triplet = "${{ matrix.triplet }}"
           $license = "${{ matrix.license }}"
@@ -517,11 +515,9 @@ jobs:
       # == Generate vcpkg port files ================================─
       - name: Generate port files
         run: |
-          $yaml = "${{ inputs.yaml }}"
-          if (-not $yaml) { $yaml = "${{ inputs.version }}" }
-          $args = @("scripts/ffport.py", "generate", $yaml, "--version", "${{ inputs.version }}")
+          $args = @("scripts/ffport.py", "generate", "${{ inputs.yaml }}")
+          if ("${{ inputs.ref }}") { $args += "--ref"; $args += "${{ inputs.ref }}" }
           if ("${{ inputs.sha512 }}") { $args += "--sha512"; $args += "${{ inputs.sha512 }}" }
-          if ("${{ inputs.ffmpeg_ref }}") { $args += "--ref"; $args += "${{ inputs.ffmpeg_ref }}" }
           & python $args
 
       # == Build FFmpeg via vcpkg ====================================
@@ -548,10 +544,14 @@ jobs:
           $triplet = "${{ matrix.triplet }}"
           $license = "${{ matrix.license }}"
 
-          python scripts/package_release.py `
-            --port-dir ${vcpkg_root}/packages/${port}_${triplet} `
-            --license $license `
-            --ffmpeg-ref "${{ inputs.ffmpeg_ref }}"
+          $pkgArgs = @(
+            "--port-dir", "${vcpkg_root}/packages/${port}_${triplet}",
+            "--license", $license
+          )
+          if ("${{ inputs.ref }}") {
+            $pkgArgs += "--ref"; $pkgArgs += "${{ inputs.ref }}"
+          }
+          & python scripts/package_release.py @pkgArgs
 
       # == Upload artifacts ==========================================
       - name: Upload artifacts
@@ -671,7 +671,7 @@ jobs:
             echo "No changes to commit on data branch"
             exit 0
           fi
-          git commit -m "Build artifacts for ${{ inputs.version }}"
+          git commit -m "Build artifacts for ${{ inputs.ref || inputs.yaml }}"
           # Push with rebase retry to handle concurrent runs
           for i in 1 2 3; do
             git pull --rebase origin data && git push origin data && break
@@ -717,15 +717,16 @@ jobs:
             gh release upload "$TAG" "$ARTIFACTS_DIR"/*.zip --clobber
           else
             echo "Creating release $TAG"
-            if [ "${{ inputs.version }}" = "master" ]; then
-              TITLE="FFmpeg ${{ inputs.ffmpeg_ref }} (MSVC Prebuilt, Master)"
+            TITLE_VER="${{ inputs.ref || inputs.yaml }}"
+            if [ -n "${{ inputs.ref }}" ]; then
+              TITLE="FFmpeg ${TITLE_VER} (MSVC Prebuilt, Snapshot)"
             else
-              TITLE="FFmpeg ${{ inputs.version }} (MSVC Prebuilt)"
+              TITLE="FFmpeg ${TITLE_VER} (MSVC Prebuilt)"
             fi
             gh release create "$TAG" \
               "$ARTIFACTS_DIR"/*.zip \
               --title "$TITLE" \
-              --notes "Automated build of FFmpeg ${{ inputs.version }} using MSVC via vcpkg."
+              --notes "Automated build of FFmpeg ${{ inputs.ref || inputs.yaml }} using MSVC via vcpkg."
           fi
         shell: bash
 
@@ -748,16 +749,17 @@ jobs:
   # == Trigger pages rebuild ================================================─
   trigger-pages:
     needs: finalize
-    if: inputs.dry_run != true
+    if: ${{ success() && !inputs.dry_run }}
     uses: ./.github/workflows/pages.yml
 
   # == Auto-heal: diagnose and create fix PR on build failure ==============─
   trigger-auto-heal:
     needs: finalize
-    if: ${{ failure() && !inputs.dry_run }}
+    if: ${{ failure() && (!inputs.dry_run || inputs.pr_number != '') }}
     uses: ./.github/workflows/auto-heal.yml
     with:
-      version: ${{ inputs.version }}
-      yaml: ${{ inputs.yaml || inputs.version }}
+      ref: ${{ inputs.ref }}
+      yaml: ${{ inputs.yaml }}
       run_id: ${{ github.run_id }}
+      pr_number: ${{ inputs.pr_number }}
     secrets: inherit

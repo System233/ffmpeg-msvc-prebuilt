@@ -80,26 +80,33 @@ def _generate(yaml_name, version=None, sha512=None, build_date=None,
     for doc in docs:
         merged = merge.deep_merge(merged, doc)
 
-    # 3. Version resolution (--version takes precedence, otherwise derive from YAML filename)
+    # 3. Version resolution (--version > --ref > yaml filename)
     import re as _re
 
     parsed = None
     if version:
         parsed = ver_mod.parse_version(version)
         final_ver = parsed["version"]
+    elif ref:
+        parsed = ver_mod.parse_version(ref)
+        final_ver = parsed["version"]
     elif _re.match(r'^\d+\.\d+(?:\.\d+)?$', yaml_name):
         final_ver = yaml_name
     else:
-        print("error: cannot determine version, use --version", file=sys.stderr)
+        print("error: cannot determine version, use --version or --ref", file=sys.stderr)
         sys.exit(1)
 
     display_ver = (parsed.get("display_ver") if parsed else None)
     if not display_ver:
         display_ver = f"n{final_ver}"
 
-    # 4. REF resolution (priority: --ref > commit from describe > n{base_version} > n{final_ver})
+    # 4. REF resolution (priority: --ref[commit] > --ref > commit from describe > n{base_version} > n{final_ver})
     if ref:
-        source_ref = ref
+        try:
+            parsed_ref = ver_mod.parse_version(ref)
+            source_ref = parsed_ref.get("commit", ref)
+        except ValueError:
+            source_ref = ref
     elif parsed and parsed.get("commit"):
         source_ref = parsed["commit"]
     elif parsed:

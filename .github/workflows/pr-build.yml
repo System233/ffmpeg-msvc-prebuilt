@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      pr_number: ${{ steps.fork.outputs.pr_number }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,6 +48,16 @@ jobs:
             echo "::error::Modifying existing patches breaks compatibility with older versions. Only add new patches or remove them from YAML."
             echo "$MODIFIED"
             exit 1
+          fi
+
+      - name: Detect fork PR
+        id: fork
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "pr_number=" >> $GITHUB_OUTPUT
+            echo "Fork PR — auto-heal will be skipped"
+          else
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Detect changed versions
@@ -80,9 +91,9 @@ jobs:
         include: ${{ fromJSON(needs.detect.outputs.matrix) }}
     uses: ./.github/workflows/build-release.yml
     with:
-      version: ${{ matrix.version }}
-      revision: ${{ matrix.revision }}
+      yaml: ${{ matrix.version }}
       dry_run: true
+      pr_number: ${{ needs.detect.outputs.pr_number }}
     secrets: inherit
 
   all-checks-passed:

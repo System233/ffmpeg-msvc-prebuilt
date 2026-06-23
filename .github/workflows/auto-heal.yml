@@ -15,9 +15,9 @@ name: OpenCode Auto-Heal
 on:
   workflow_call:
     inputs:
-      version:
-        description: "FFmpeg version that failed to build"
-        required: true
+      ref:
+        description: "Git ref that failed to build (optional, describe string for snapshot)"
+        required: false
         type: string
       yaml:
         description: "YAML config name"
@@ -27,14 +27,15 @@ on:
         description: "Failed build run ID"
         required: true
         type: string
+      pr_number:
+        description: "Pull request number (for PR Build failures)"
+        required: false
+        type: string
       base_ref:
         description: "Branch to base the fix on"
         required: false
         type: string
         default: main
-  workflow_run:
-    workflows: ["PR Build"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
@@ -43,7 +44,7 @@ on:
         type: string
 
 env:
-  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || github.event_name == 'workflow_call' && 'call' || 'auto' }}
+  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'call' }}
   OPENCODE_VERSION: 1.17.9
   OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
   MAX_RETRY_ATTEMPTS: 3
@@ -87,26 +88,20 @@ jobs:
             let skip = 'false', action = '', branch = '', checkoutRef = '', bumpRevision = 'false';
             let runId = '', prNumber = '', prAuthor = '', baseSha = '', baseRef = '', headSha = '', headRef = '';
 
-            if (context.payload.workflow_run) {
-              // == PR Build failure ======================================
-              const wf = context.payload.workflow_run;
-              if (wf.conclusion !== 'failure' || wf.event !== 'pull_request') {
-                skip = 'true';
-                console.log('Skipping: not a PR Build failure');
-              } else {
-                runId = wf.id.toString();
-                prNumber = wf.pull_requests[0].number;
-                const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-                action = 'push';
-                branch = pr.data.head.ref;
-                checkoutRef = branch;
-                prAuthor = pr.data.user.login;
-                baseSha = pr.data.base.sha;
-                baseRef = pr.data.base.ref;
-                headSha = pr.data.head.sha;
-                headRef = pr.data.head.ref;
-                console.log(`push mode: branch ${branch}, PR #${prNumber}`);
-              }
+            if (context.payload.inputs?.pr_number) {
+              // == PR Build failure: pr_number from caller =================
+              prNumber = parseInt(context.payload.inputs.pr_number);
+              const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              runId = context.payload.inputs.run_id;
+              action = 'push';
+              branch = pr.data.head.ref;
+              checkoutRef = branch;
+              prAuthor = pr.data.user.login;
+              baseSha = pr.data.base.sha;
+              baseRef = pr.data.base.ref;
+              headSha = pr.data.head.sha;
+              headRef = pr.data.head.ref;
+              console.log(`push mode: branch ${branch}, PR #${prNumber}`);
             } else if (eventName === 'workflow_call') {
               // == Release/Master failure ================================
               runId = context.payload.inputs.run_id;
@@ -581,7 +576,7 @@ jobs:
             --base main \
             --head "${{ needs.check.outputs.branch }}" \
             --title "fix(${{ inputs.yaml }}): auto-fix build failure" \
-            --body "Auto-fix for build failure of \`${{ inputs.version }}\` ([run #${{ inputs.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}))"
+            --body "Auto-fix for build failure of \`${{ inputs.ref || inputs.yaml }}\` ([run #${{ inputs.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}))"
 
       - name: Post fix report
         env:

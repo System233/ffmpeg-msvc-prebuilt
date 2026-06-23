@@ -72,5 +72,5 @@ jobs:
         config: ${{ fromJSON(needs.scan.outputs.matrix) }}
     uses: ./.github/workflows/build-release.yml
     with:
-      version: ${{ matrix.config.version }}
+      yaml: ${{ matrix.config.version }}
     secrets: inherit

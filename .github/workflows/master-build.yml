@@ -37,8 +37,6 @@ jobs:
     uses: ./.github/workflows/build-release.yml
     with:
       yaml: master
-      version: ${{ needs.get-metadata.outputs.describe }}
-      revision: 0
-      ffmpeg_ref: ${{ needs.get-metadata.outputs.describe }}
+      ref: ${{ needs.get-metadata.outputs.describe }}
       sha512: ${{ needs.get-metadata.outputs.sha512 }}
     secrets: inherit

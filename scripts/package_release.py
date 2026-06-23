@@ -38,6 +38,8 @@ from typing import List, Optional, Set, Tuple
 import yaml
 from datetime import datetime, timezone
 
+from ffport.version import parse_version
+
 from ops.lts import is_lts
 
 from ops.naming import (
@@ -366,9 +368,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate variant .var.yaml alongside the zip (default: true)",
     )
     parser.add_argument(
-        "--ffmpeg-ref",
+        "--ref",
         default=None,
-        help="FFmpeg git describe ref (for master builds)",
+        help="Git ref (e.g. n8.1.1, n8.0-1234-gabc). Used as-is for ffmpeg_ref; version parsed from it.",
+    )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Pure version string (e.g. 8.1.1). Prepended 'n' for ffmpeg_ref. Overrides CONTROL.",
     )
     return parser.parse_args(argv)
 
@@ -379,34 +386,38 @@ def main(argv: Optional[List[str]] = None) -> None:
     pkg_dir = Path(args.port_dir).resolve()
     output_dir = Path(args.output_dir)
     generate_var_yaml = args.generate_var_yaml
-    ffmpeg_ref = args.ffmpeg_ref
-
     if not pkg_dir.is_dir():
         print(f"ERROR: port directory not found at {pkg_dir}", file=sys.stderr)
         sys.exit(1)
 
     # ---- Auto-detect from CONTROL + BUILD_INFO + dirname ----
     ctrl = parse_control(pkg_dir)
-    version = ctrl["version"]
+    control_version = ctrl["version"]
     revision = ctrl["revision"]
     license_variant = args.license or detect_license(ctrl["features"])
     linkage = parse_build_info(pkg_dir)
     triplet = triplet_from_dirname(pkg_dir)
 
     in_license = f" (auto: {license_variant})" if not args.license else ""
-    print(f"Packaging FFmpeg {version} ({triplet}, {linkage}, {license_variant}{in_license})")
+    print(f"Packaging FFmpeg {control_version} ({triplet}, {linkage}, {license_variant}{in_license})")
     print(f"  Package dir: {pkg_dir}")
     print(f"  Revision: {revision}")
     print()
 
-    # ---- Build ZIP basename ----
-    # version is always the actual version number (never "master").
-    # ffmpeg_ref is always set (tag like "n8.1.1" or git describe).
-    # revision is always an int (0 for master builds).
-    ffmpeg_ref_val = ffmpeg_ref or f"n{version}"
+    # ---- Version resolution (priority: --version > --ref > CONTROL) ----
+    if args.ref:
+        parsed = parse_version(args.ref)
+        version_final = parsed["version"]
+        ffmpeg_ref_val = args.ref
+    elif args.version:
+        version_final = args.version
+        ffmpeg_ref_val = f"n{args.version}"
+    else:
+        version_final = control_version
+        ffmpeg_ref_val = f"n{control_version}"
+
     revision_val = revision if revision is not None else 0
-    version_final = version
-    clean_ver = clean_version(version)
+    clean_ver = clean_version(version_final)
     zip_base = build_variant_id(
         version=clean_ver, revision=revision_val,
         triplet=triplet, linkage=linkage, license=license_variant,
