@@ -77,7 +77,7 @@ on:
         required: false
         default: false
 
-# ─── Global environment ──────────────────────────────────────────────────────
+# ==─ Global environment ======================================================
 env:
   VCPKG_TAG: 2026.06.01
   PYTHONIOENCODING: utf-8
@@ -86,10 +86,10 @@ env:
   LINKAGES: "shared static"
 
 
-# ─── Jobs ────────────────────────────────────────────────────────────────────
+# ==─ Jobs ====================================================================
 
 jobs:
-  # ── Scan: check which variants need building, output dynamic matrix ───────
+  # == Scan: check which variants need building, output dynamic matrix ======─
   scan:
     runs-on: ubuntu-latest
     permissions:
@@ -162,7 +162,7 @@ jobs:
           echo "triplets=$(echo "$TRIPLETS" | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
           echo "Build matrix: $(echo "$include" | jq -c '. | length') variant(s) to build"
 
-  # ── DL-Seed: download sources for all triplets ──────────────────────────────
+  # == DL-Seed: download sources for all triplets ==============================
   # Single job that downloads source archives for every triplet × feature
   # combination via --only-downloads, so builds never need to fetch from the
   # internet (shared download cache for all architectures).
@@ -258,7 +258,7 @@ jobs:
           compression-level: 9
           retention-days: 7
 
-  # ── Seed: build base dependencies once per triplet ─────────────────────────
+  # == Seed: build base dependencies once per triplet ========================─
   # If both caches fully hit (primary key match), all heavy work is skipped.
   # Needs dl-seed so the shared download cache is already populated on arrival.
   seed:
@@ -271,6 +271,20 @@ jobs:
         triplet: ${{ fromJSON(needs.scan.outputs.triplets) }}
     steps:
       - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generate ffmpeg-deps port
+        run: |
+          python scripts/ffport.py deps
 
       - name: Compute port hash
         id: porthash
@@ -397,7 +411,7 @@ jobs:
           compression-level: 9
           retention-days: 7
 
-  # ── Build: compile FFmpeg for triplets × licenses × linkages ──────────────
+  # == Build: compile FFmpeg for triplets × licenses × linkages ==============
   # Matrix is dynamically populated by the scan job — only unbuilt variants.
   build:
     needs: [seed, scan]
@@ -411,7 +425,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # ── Setup steps ─────────────────────────────────────────────────────
+      # == Setup steps ====================================================─
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -421,7 +435,17 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          
+
+      - name: Generate ffmpeg-deps port
+        run: |
+          python scripts/ffport.py deps
+
+      - name: Compute port hash
+        id: porthash
+        run: |
+          python scripts/ffport.py deps
+          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
+
       - name: Resolve variant metadata
         id: vars
         run: |
@@ -440,12 +464,6 @@ jobs:
           echo "linkage_name=$linkage" >> $env:GITHUB_OUTPUT
           echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
           echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
-
-      - name: Compute port hash
-        id: porthash
-        run: |
-          python scripts/ffport.py deps
-          echo "port_hash=$(python scripts/porthash.py ffmpeg-deps)" >> $env:GITHUB_OUTPUT
 
       - name: Clone vcpkg at pinned tag
         run: |
@@ -495,7 +513,7 @@ jobs:
             throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
           }
 
-      # ── Generate vcpkg port files ─────────────────────────────────
+      # == Generate vcpkg port files ================================─
       - name: Generate port files
         run: |
           $yaml = "${{ inputs.yaml }}"
@@ -505,7 +523,7 @@ jobs:
           if ("${{ inputs.ffmpeg_ref }}") { $args += "--ref"; $args += "${{ inputs.ffmpeg_ref }}" }
           & python $args
 
-      # ── Build FFmpeg via vcpkg ────────────────────────────────────
+      # == Build FFmpeg via vcpkg ====================================
       - name: Build FFmpeg
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
@@ -521,7 +539,7 @@ jobs:
             --triplet=${{ matrix.triplet }} `
             --recurse
 
-      # ── Package release archive + generate variant YAML ───────────
+      # == Package release archive + generate variant YAML ==========─
       - name: Package release archive
         run: |
           $vcpkg_root = "${{ runner.temp }}/vcpkg"
@@ -534,7 +552,7 @@ jobs:
             --license $license `
             --ffmpeg-ref "${{ inputs.ffmpeg_ref }}"
 
-      # ── Upload artifacts ──────────────────────────────────────────
+      # == Upload artifacts ==========================================
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -545,7 +563,7 @@ jobs:
           compression-level: 0
           retention-days: 5
 
-      # ── Upload build logs for debugging ──────────────────────────
+      # == Upload build logs for debugging ==========================
       # Always runs, even if Step 4 fails, so logs are available for triage.
       - name: Upload build logs
         if: always()
@@ -558,7 +576,7 @@ jobs:
           compression-level: 9
           retention-days: 7
 
-  # ── Finalize: merge variants into data branch, create/update release ──────
+  # == Finalize: merge variants into data branch, create/update release ======
   finalize:
     needs: build
     if: success() || failure()
@@ -659,7 +677,7 @@ jobs:
         working-directory: data
         shell: bash
 
-      # ── Release tag ──────────────────────────────────────────────────────
+      # == Release tag ======================================================
       - name: Determine release tag
         id: release_tag
         run: |
@@ -674,7 +692,7 @@ jobs:
           echo "tag=ffmpeg-${ver}" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      # ── Create or append GitHub Release ───────────────────────────────────
+      # == Create or append GitHub Release ==================================─
       - name: Create or append GitHub Release
         if: inputs.dry_run != true && steps.release_tag.outputs.tag != ''
         env:
@@ -718,16 +736,12 @@ jobs:
           run: |
             if [ "${{ needs.build.result }}" != "success" ]; then
               echo "Matrix builds failed!"
-              if [ "${{inputs.dry_run}}" == "true" ]; then
-                exit 1
-              else
-                exit 0
-              fi
+              exit 1
             else
               echo "All Matrix builds passed successfully!"
             fi
 
-  # ── Trigger pages rebuild ─────────────────────────────────────────────────
+  # == Trigger pages rebuild ================================================─
   trigger-pages:
     needs: finalize
     if: (success() || failure()) &&inputs.dry_run != true
