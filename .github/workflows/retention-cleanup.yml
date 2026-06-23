@@ -12,6 +12,7 @@ name: Retention Cleanup
 
 concurrency:
   group: data-branch
+  cancel-in-progress: false
 
 on:
   schedule:

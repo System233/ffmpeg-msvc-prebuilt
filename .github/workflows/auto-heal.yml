@@ -8,6 +8,10 @@
 
 name: OpenCode Auto-Heal
 
+concurrency:
+  group: auto-heal-${{ github.event.workflow_run.pull_requests[0].number || github.event.inputs.run_id }}
+  cancel-in-progress: true
+
 on:
   workflow_run:
     workflows: ["PR Build"]

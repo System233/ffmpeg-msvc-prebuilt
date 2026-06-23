@@ -11,7 +11,8 @@
 name: Build FFmpeg Release
 
 concurrency:
-  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || 'data-branch' }}
+  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || format('release-{0}-{1}', inputs.version, inputs.revision || 'master') }}
+  cancel-in-progress: false
 
 on:
   workflow_dispatch:
@@ -580,6 +581,9 @@ jobs:
   finalize:
     needs: build
     if: success() || failure()
+    concurrency:
+      group: data-branch
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
