@@ -76,6 +76,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check build log artifacts exist
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const runId = parseInt('${{ inputs.run_id }}');
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              { owner: context.repo.owner, repo: context.repo.repo, run_id: runId }
+            );
+            const hasBuildLogs = artifacts.some(a => a.name.startsWith('build-logs-'));
+            if (!hasBuildLogs) {
+              core.setFailed('No build log artifacts found — FFmpeg build never started, skipping auto-heal');
+            }
+
       - name: Decide
         id: decide
         uses: actions/github-script@v9
@@ -219,7 +233,7 @@ jobs:
   # == Job 1: Diagnose + fix + commit locally ==============================
   agent-repair:
     needs: check
-    if: needs.check.outputs.skip != 'true'
+    if: success() && needs.check.outputs.skip != 'true'
     concurrency:
       group: auto-heal-repair-${{ needs.check.outputs.branch }}
       cancel-in-progress: true
