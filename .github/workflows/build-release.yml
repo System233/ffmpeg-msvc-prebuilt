@@ -210,11 +210,30 @@ jobs:
           key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
           lookup-only: true
 
-      - name: Clone vcpkg at pinned tag
-        if: steps.dl-check.outputs.cache-hit != 'true'
+      - name: Restore vcpkg root cache
+        id: vcpkg-root-restore
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg
+          key: vcpkg-root-${{ env.VCPKG_TAG }}
+
+      - name: Clone vcpkg at pinned tag (fallback)
+        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
         run: |
           git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
             https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+
+      - name: Bootstrap vcpkg (fallback)
+        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
+        run: |
+          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+
+      - name: Save vcpkg root cache (fallback)
+        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg
+          key: vcpkg-root-${{ env.VCPKG_TAG }}
 
       - name: Restore vcpkg downloads cache (all triplets)
         if: steps.dl-check.outputs.cache-hit != 'true'
@@ -225,11 +244,6 @@ jobs:
           key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
           restore-keys: |
             vcpkg-dl-all-${{ env.VCPKG_TAG }}-
-
-      - name: Bootstrap vcpkg
-        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
-        run: |
-          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
       - name: Download sources for all triplets
         if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
@@ -294,10 +308,12 @@ jobs:
         run: |
           python scripts/ffport.py deps
 
-      - name: Clone vcpkg at pinned tag
-        run: |
-          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
-            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
+      - name: Restore vcpkg root cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg
+          key: vcpkg-root-${{ env.VCPKG_TAG }}
+          fail-on-cache-miss: true
 
       - name: Restore vcpkg downloads cache
         id: dl-cache
@@ -316,10 +332,6 @@ jobs:
           key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-restore
           restore-keys: |
             vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-
-
-      - name: Bootstrap vcpkg
-        run: |
-          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
 
       - name: Patch vcvarsall.bat for ARM Windows SDK
         if: matrix.triplet == 'arm-windows'
@@ -462,14 +474,12 @@ jobs:
           echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
           echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
 
-      - name: Clone vcpkg at pinned tag
-        run: |
-          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
-            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
-
-      - name: Bootstrap vcpkg
-        run: |
-          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
+      - name: Restore vcpkg root cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg
+          key: vcpkg-root-${{ env.VCPKG_TAG }}
+          fail-on-cache-miss: true
 
       - name: Restore vcpkg downloads cache
         uses: actions/cache/restore@v5
