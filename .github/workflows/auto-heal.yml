@@ -423,7 +423,7 @@ jobs:
             COMMIT_COUNT=$(git rev-list --count "${BASE_SHA}..HEAD")
             if [ "$COMMIT_COUNT" -gt 1 ]; then
               echo "Squashing $COMMIT_COUNT commits into one"
-              MSG=$(git log --format=%B "${BASE_SHA}..HEAD" | tail -1)
+              MSG=$(git log --format=%s -1 "${BASE_SHA}..HEAD")
               git reset --soft "$BASE_SHA"
               git commit -m "$MSG"
             fi
@@ -440,7 +440,9 @@ jobs:
 
             if [ -n "$VIOLATIONS" ]; then
               echo "::warning::Scope violation on attempt $attempt:"
-              echo "$VIOLATIONS"
+              echo "$VIOLATIONS" | while IFS= read -r f; do
+                echo "::warning::  $f"
+              done
               if [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; then
                 {
                   echo ""
