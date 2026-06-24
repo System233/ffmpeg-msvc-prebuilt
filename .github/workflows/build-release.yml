@@ -78,6 +78,8 @@ env:
   TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
   LICENSES: "lgpl gpl" #nonfree
   LINKAGES: "shared static"
+  VCPKG_FORCE_DOWNLOADED_BINARIES: 1
+  VCPKG_INSTALL_OPTIONS: --x-abi-tools-use-exact-versions
 
 
 # ==─ Jobs ====================================================================
@@ -260,7 +262,7 @@ jobs:
             foreach ($triplet in $triplets) {
               Write-Output "Downloading ffmpeg-deps[$allFeatures] for $triplet ..."
               & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$allFeatures]" `
-                --triplet=$triplet --recurse --only-downloads
+                --triplet=$triplet --recurse --only-downloads ${{ env.VCPKG_INSTALL_OPTIONS }}
               if ($LASTEXITCODE -ne 0) {
                 throw "Failed to download ffmpeg-deps[$allFeatures] for $triplet"
               }
@@ -364,7 +366,8 @@ jobs:
               & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
                 --triplet=${{ matrix.triplet }} `
                 --recurse `
-                --x-install-root=${{ runner.temp }}/vcpkg_installed
+                --x-install-root=${{ runner.temp }}/vcpkg_installed `
+                ${{ env.VCPKG_INSTALL_OPTIONS }}
               $abiFile = "${{ runner.temp }}/vcpkg_installed/${{ matrix.triplet }}/share/ffmpeg-deps/vcpkg_abi_info.txt"
               Write-Output "=== ABI info for ffmpeg-deps[$f] (${{ matrix.triplet }}) ==="
               Get-Content $abiFile | ForEach-Object { Write-Output $_ }
@@ -538,7 +541,8 @@ jobs:
           }
           & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" ffmpeg-tester `
             --triplet=${{ matrix.triplet }} `
-            --recurse
+            --recurse `
+            ${{ env.VCPKG_INSTALL_OPTIONS }}
 
       # == Package release archive + generate variant YAML ==========─
       - name: Package release archive
