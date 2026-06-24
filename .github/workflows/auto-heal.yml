@@ -433,7 +433,7 @@ jobs:
             PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
             [ -z "$PATCH" ] && continue
 
-            FILES=$(grep '^--- ' "$PATCH" | sed 's/^--- a\///' | sort -u)
+            FILES=$(git diff HEAD~1..HEAD --name-only)
             VIOLATIONS=$(echo "$FILES" \
               | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
               | grep -vE '^\.opencode/' || true)
@@ -464,7 +464,7 @@ jobs:
             if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
               PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
               if [ -n "$PATCH" ]; then
-                FILES=$(grep '^--- ' "$PATCH" | sed 's/^--- a\///' | sort -u)
+                FILES=$(git diff HEAD~1..HEAD --name-only)
                 VIOLATIONS=$(echo "$FILES" \
                   | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
                   | grep -vE '^\.opencode/' || true)
