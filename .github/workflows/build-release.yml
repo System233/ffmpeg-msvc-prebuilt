@@ -368,10 +368,16 @@ jobs:
               Remove-Item -Recurse -Force "${{ runner.temp }}/vcpkg_installed"
             }
           }
+          $hashes = $hashes | Sort-Object -Unique
+          Write-Output "=== Merged ABI hashes (${{ matrix.triplet }}) ==="
+          $hashes | ForEach-Object { Write-Output $_ }
+          Write-Output "---"
           $bytes = [System.Text.Encoding]::UTF8.GetBytes(($hashes -join '|'))
           $merged = [System.BitConverter]::ToString(
             [System.Security.Cryptography.SHA256]::HashData($bytes)
           ) -replace '-', ''
+          Write-Output "Merged: $merged"
+          Write-Output "=== END ==="
           Add-Content -Path $env:GITHUB_OUTPUT -Value "value=$merged"
 
       - name: Check if exact binary cache already exists
