@@ -57,7 +57,7 @@ jobs:
               end
             ' changes.json)
           else
-            include=$(python scripts/ffport.py list | jq -R -s '
+            include=$(python scripts/ffport.py list | jq -R -s -c '
               split("\n") | map(select(length > 0)) | map({version: .})
             ')
           fi

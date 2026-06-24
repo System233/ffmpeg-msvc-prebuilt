@@ -93,21 +93,26 @@ jobs:
       - name: Decide
         id: decide
         uses: actions/github-script@v9
+        env:
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+          INPUT_YAML: ${{ inputs.yaml }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const eventName = context.eventName;
-            const inputs = context.payload.inputs || {};
+            const runId = process.env.INPUT_RUN_ID;
+            const yaml = process.env.INPUT_YAML;
+            let prNumber = process.env.INPUT_PR_NUMBER;
+            let baseRef = process.env.INPUT_BASE_REF;
 
             let skip = 'false', action = '', branch = '', checkoutRef = '', bumpRevision = 'false';
-            let runId = '', prNumber = '', prAuthor = '', baseSha = '', baseRef = '', headSha = '', headRef = '';
+            let prAuthor = '', baseSha = '', headSha = '', headRef = '';
 
-            if (inputs.pr_number) {
+            if (prNumber) {
               // == PR Build failure: pr_number from caller =================
-              prNumber = parseInt(inputs.pr_number);
-              const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-              runId = inputs.run_id;
+              const pr = await github.rest.pulls.get({ owner, repo, pull_number: parseInt(prNumber) });
               action = 'push';
               branch = pr.data.head.ref;
               checkoutRef = branch;
@@ -117,10 +122,8 @@ jobs:
               headSha = pr.data.head.sha;
               headRef = pr.data.head.ref;
               console.log(`push mode: branch ${branch}, PR #${prNumber}`);
-            } else if (eventName === 'workflow_call') {
+            } else if (yaml) {
               // == Release/Master failure ================================
-              runId = inputs.run_id;
-              const yaml = inputs.yaml;
               const yamlPath = `ffmpeg/${yaml}.yaml`;
               const fs = require('fs');
               const content = fs.readFileSync(yamlPath, 'utf-8');
@@ -134,7 +137,7 @@ jobs:
               action = 'pr';
               branch = branchName;
               checkoutRef = 'main';
-              baseRef = inputs.base_ref || 'main';
+              baseRef = baseRef || 'main';
 
               const { execSync } = require('child_process');
               const exists = execSync(`git ls-remote --heads origin "${branchName}"`, { encoding: 'utf-8' }).trim();
@@ -148,7 +151,6 @@ jobs:
               console.log(`pr mode: branch ${branchName}, bump ${bumpRevision}`);
             } else {
               // == workflow_dispatch =====================================
-              runId = inputs.run_id;
               const run = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: parseInt(runId) });
               prNumber = run.data.pull_requests[0]?.number;
               if (!prNumber) {

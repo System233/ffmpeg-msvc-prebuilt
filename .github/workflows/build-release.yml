@@ -399,7 +399,7 @@ jobs:
         id: bin-save-check
         uses: actions/cache/restore@v5
         with:
-          path: ${{ runner.temp }}/vcpkg-cache-check
+          path: ${{ runner.temp }}/vcpkg-cache
           key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
           lookup-only: true
 
