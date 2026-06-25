@@ -9,7 +9,8 @@ patch-output/ directory with git format-patch output.
 
 Usage
 -----
-  export DEEPSEEK_API_KEY="sk-..."
+  export OPCODE_MODEL="opencode/deepseek-v4-flash-free"
+  export OPCODE_KEY_ENV="DEEPSEEK_API_KEY" && export "$OPCODE_KEY_ENV"="sk-..."
   python scripts/ci/agent_repair.py [--max-retries 3]
 """
 
@@ -55,12 +56,11 @@ def _git_check(*args: str) -> str:
 
 # ── OpenCode execution ────────────────────────────────────────────────────────
 
-def _run_opencode(prompt_text: str) -> int:
+def _run_opencode(prompt_text: str, model: str) -> int:
     """Run opencode with the given prompt as a single argument.
     Returns the process exit code."""
     result = subprocess.run(
-        ["opencode", "run", "--model",
-         "deepseek/deepseek-v4-flash",
+        ["opencode", "run", "--model", model,
          "--dangerously-skip-permissions",
          prompt_text],
     )
@@ -102,9 +102,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # ── Validate DEEPSEEK_API_KEY (bash: ${DEEPSEEK_API_KEY:?...}) ────────────
-    if "DEEPSEEK_API_KEY" not in os.environ:
-        print("ERROR: DEEPSEEK_API_KEY is required", file=sys.stderr)
+    # ── Read OPCODE_MODEL (full model string with provider prefix) ────────────
+    model = os.environ.get("OPCODE_MODEL")
+    if not model:
+        print("ERROR: OPCODE_MODEL is required (set in workflow env)", file=sys.stderr)
         sys.exit(1)
 
     # ── Validate opencode in PATH (bash: command -v opencode) ──────────────────
@@ -173,7 +174,7 @@ def main() -> None:
 
         # Run opencode with accumulated prompt (bash: opencode run ... "$(cat prompt.txt)" &)
         prompt_text = Path("prompt.txt").read_text(encoding="utf-8")
-        oc_rc = _run_opencode(prompt_text)
+        oc_rc = _run_opencode(prompt_text, model)
         if oc_rc != 0:
             print(f"[WARNING] opencode failed (exit {oc_rc})", file=sys.stderr)
             continue

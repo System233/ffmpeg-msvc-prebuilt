@@ -196,10 +196,13 @@ jobs:
 
       - name: Agent repair loop
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPCODE_MODEL: ${{ secrets.OPCODE_MODEL || 'opencode/deepseek-v4-flash-free' }}
+          OPCODE_KEY_ENV: ${{ secrets.OPCODE_KEY_ENV || 'OPENCODE_API_KEY' }}
+          OPCODE_API_KEY: ${{ secrets.OPCODE_API_KEY }}
           GIT_AUTHOR_NAME: "ffmpeg-dev[bot]"
           GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
+          export "$OPCODE_KEY_ENV"="$OPCODE_API_KEY"
           python scripts/ci/agent_repair.py \
             --action "${{ needs.check.outputs.action }}" \
             --base-sha "${{ needs.check.outputs.base_sha }}" \

@@ -45,7 +45,7 @@ def _make_run_side_effect(responses=None):
         "git rev-list --count": (0, "1\n"),
         "git commit": (0, ""),
         "git format-patch": (0, "patch-output/0001-fix.patch\n"),
-        "git diff": (0, "ffmpeg/8.1.1.yaml\npatches/8.x/fix.patch\n.opencode/config.json\n"),
+        "git diff": (0, "ffmpeg/8.1.1.yaml\npatches/8.x/fix.patch\n"),
     }
     defaults.update(responses)
 
@@ -71,9 +71,10 @@ class TestAgentRepair(unittest.TestCase):
     """All 10 required test scenarios for agent_repair.py."""
 
     def setUp(self):
-        # Ensure DEEPSEEK_API_KEY is set (most tests need it)
         self._saved_environ = os.environ.copy()
-        os.environ["DEEPSEEK_API_KEY"] = "sk-test"
+        os.environ["OPCODE_MODEL"] = "opencode/deepseek-v4-flash-free"
+        os.environ["OPCODE_KEY_ENV"] = "OPENCODE_API_KEY"
+        os.environ["OPENCODE_API_KEY"] = "sk-test"
         os.environ.pop("GIT_AUTHOR_NAME", None)
         os.environ.pop("GIT_AUTHOR_EMAIL", None)
 
@@ -100,11 +101,11 @@ class TestAgentRepair(unittest.TestCase):
             agent_repair.main()
         self.assertEqual(ctx.exception.code, 1)
 
-    # ── 3. DEEPSEEK_API_KEY not set → error ──────────────────────────────────
+    # ── 3. OPCODE_MODEL not set → error ──────────────────────────────────────
 
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    def test_3_deepseek_api_key_not_set(self, _parse_args):
-        del os.environ["DEEPSEEK_API_KEY"]
+    def test_3_opcode_model_not_set(self, _parse_args):
+        del os.environ["OPCODE_MODEL"]
         with self.assertRaises(SystemExit) as ctx:
             agent_repair.main()
         self.assertEqual(ctx.exception.code, 1)
@@ -115,7 +116,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -130,7 +131,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         _parse_args,
         _copy,
@@ -237,7 +237,7 @@ class TestAgentRepair(unittest.TestCase):
         ),
     )
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -252,7 +252,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         _parse_args,
         _copy,
@@ -272,7 +271,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -287,7 +286,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         _parse_args,
         _copy,
@@ -327,7 +325,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch("agent_repair.subprocess.run")
@@ -336,7 +334,6 @@ class TestAgentRepair(unittest.TestCase):
         mock_run,
         _read_text,
         _exists,
-        _is_file,
         _which,
         _parse_args,
         _copy,
@@ -366,7 +363,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -381,7 +378,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         _parse_args,
         _copy,
@@ -421,7 +417,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args")
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -436,7 +432,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         mock_parse_args,
         _copy,
@@ -488,7 +483,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch("agent_repair.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args")
     @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch.object(Path, "is_file", return_value=True)
+    
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
@@ -503,7 +498,6 @@ class TestAgentRepair(unittest.TestCase):
         _mkdir,
         _glob,
         _exists,
-        _is_file,
         _which,
         mock_parse_args,
         _copy,
