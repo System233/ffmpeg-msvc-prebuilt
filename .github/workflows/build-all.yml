@@ -78,7 +78,8 @@ jobs:
       - name: Compute port hash for download cache
         id: porthash
         run: |
-          echo "port_hash=$(python scripts/ci/compute_port_hash.py)" >> "$GITHUB_OUTPUT"
+          $hash = python scripts/ci/compute_port_hash.py
+          "port_hash=$hash" | Add-Content -Path $env:GITHUB_OUTPUT
 
       - name: Quick cache check
         id: dl-check
@@ -111,8 +112,6 @@ jobs:
           VCPKG_OVERLAY_TRIPLETS: triplets
         shell: pwsh
         run: |
-          $env:TRIPLETS = "${{ env.TRIPLETS }}"
-          $env:VCPKG_INSTALL_OPTIONS = "${{ env.VCPKG_INSTALL_OPTIONS }}"
           & "${{ github.workspace }}/scripts/ci/dl_seed.ps1"
 
       - name: Save vcpkg downloads cache
