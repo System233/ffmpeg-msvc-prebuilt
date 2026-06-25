@@ -29,6 +29,5 @@ patches:
   - 8.x/0045-use-prebuilt-bin2c-8.0.patch
   - 8.x/0046-fix-msvc-detection-8.0.patch
   - 8.x/0047-fix-msvc-utf8.patch
-  - 8.x/0048-backport-23039.patch
   - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
   - 8.x/0051-lensfun-configure-fix-8.x.patch
