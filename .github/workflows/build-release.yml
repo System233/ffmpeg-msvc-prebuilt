@@ -143,10 +143,10 @@ jobs:
           python scripts/ci/scan_variants.py --ver "$ver" --rev "$rev" $FILTER_ARGS --github-output
 
   seed-setup:
-    if: ${{ !inputs.skip_seed }}
     uses: ./.github/workflows/seed-setup.yml
     with:
       name: ${{ inputs.yaml }}
+      skip: ${{ inputs.skip_seed }}
 
   # == Build: compile FFmpeg for triplets × licenses × linkages ==============
   # Matrix is dynamically populated by the scan job — only unbuilt variants.

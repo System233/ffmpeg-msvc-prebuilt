@@ -17,6 +17,11 @@ on:
         description: "Source identifier for log artifacts (e.g. global, pr, or yaml version)"
         type: string
         required: true
+      skip:
+        description: "Skip seed work internally (jobs show as success but do nothing)"
+        type: boolean
+        required: false
+        default: false
 
 env:
   VCPKG_TAG: 2026.06.01
@@ -29,6 +34,7 @@ jobs:
   # combination via --only-downloads, so per-version builds never need to
   # fetch from the internet (shared download cache for all architectures).
   dl-seed:
+    if: ${{ !inputs.skip }}
     runs-on: windows-2022
     permissions: {}
     steps:
@@ -106,6 +112,7 @@ jobs:
   # compute ABI hash → save with exact key for deterministic retrieval.
   # Runs once per triplet globally — not per-version.
   seed:
+    if: ${{ !inputs.skip }}
     needs: [dl-seed]
     runs-on: windows-2022
     permissions: {}
