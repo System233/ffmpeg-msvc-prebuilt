@@ -16,3 +16,17 @@ build:
       host: true
     - name: vcpkg-pkgconfig-get-modules
       host: true
+
+patches:
+  - 8.x/0001-create-lib-libraries-6.1.patch
+  - 8.x/0002-fix-msvc-link.patch
+  - 8.x/0003-fix-windowsinclude.patch
+  - 8.x/0004-dependencies-8.0.patch
+  - 8.x/0005-fix-nasm-8.0.patch
+  - 8.x/0007-fix-lib-naming-7.0.patch
+  - 8.x/0013-define-WINVER.patch
+  - 8.x/0020-fix-aarch64-libswscale-6.1.patch
+  - 8.x/0024-fix-osx-host-c11.patch
+  - 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
+  - 8.x/0045-use-prebuilt-bin2c-8.0.patch
+  - 8.x/0046-fix-msvc-detection-8.0.patch

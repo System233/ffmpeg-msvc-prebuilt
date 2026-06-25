@@ -17,4 +17,20 @@ build:
       host: true
     - name: vcpkg-pkgconfig-get-modules
       host: true
-
+patches:
+  - 7.x/0001-create-lib-libraries-6.1.patch
+  - 7.x/0002-fix-msvc-link.patch
+  - 7.x/0003-fix-windowsinclude.patch
+  - 7.x/0004-dependencies-7.0.patch
+  - 7.x/0005-fix-nasm-7.0.patch
+  - 7.x/0007-fix-lib-naming-7.0.patch
+  - 7.x/0012-Fix-ssl-110-detection.patch
+  - 7.x/0013-define-WINVER.patch
+  - 7.x/0020-fix-aarch64-libswscale-6.1.patch
+  - 7.x/0024-fix-osx-host-c11.patch
+  - 7.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
+  - 7.x/0041-add-const-for-opengl-definition.patch
+  - 7.x/0043-fix-miss-head-7.0.patch
+  - 7.x/0050-lensfun-0.3.4-compat-7.x.patch
+  - 7.x/0051-lensfun-configure-fix-7.0.2.patch
+  - 7.x/0052-svtav1-3.x-compat-7.x.patch
