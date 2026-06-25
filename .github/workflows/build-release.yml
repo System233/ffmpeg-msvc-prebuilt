@@ -45,6 +45,10 @@ on:
         description: 'Pull request number (for PR Build failures)'
         type: string
         required: false
+      skip_seed:
+        description: 'Skip dl-seed and seed (caller already ran them)'
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -70,6 +74,10 @@ on:
       pr_number:
         type: string
         required: false
+      skip_seed:
+        type: boolean
+        required: false
+        default: false
 
 # ==─ Global environment ======================================================
 env:
@@ -138,6 +146,7 @@ jobs:
   # combination via --only-downloads, so builds never need to fetch from the
   # internet (shared download cache for all architectures).
   dl-seed:
+    if: ${{ !inputs.skip_seed }}
     runs-on: windows-2022
     permissions: {}
     steps:
@@ -214,6 +223,7 @@ jobs:
   # Always builds (no skip).  Fuzzy cache restore → vcpkg ABI check →
   # compute ABI hash → save with exact key for deterministic retrieval.
   seed:
+    if: ${{ !inputs.skip_seed }}
     needs: [dl-seed, scan]
     runs-on: windows-2022
     permissions: {}
@@ -331,7 +341,7 @@ jobs:
   # Matrix is dynamically populated by the scan job — only unbuilt variants.
   build:
     needs: [seed, scan]
-    if: needs.scan.outputs.matrix != '[]'
+    if: ${{ always() && needs.scan.outputs.matrix != '[]' }}
     runs-on: windows-2022
     permissions: {}
     strategy:
@@ -466,6 +476,7 @@ jobs:
     concurrency:
       group: data-branch
       cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -569,11 +580,11 @@ jobs:
       steps:
         - name: Check Matrix Status
           run: |
-            if [ "${{ needs.build.result }}" != "success" ]; then
+            if [ "${{ needs.build.result }}" = "success" ] || [ "${{ needs.build.result }}" = "skipped" ]; then
+              echo "All Matrix builds passed successfully!"
+            else
               echo "Matrix builds failed!"
               exit 1
-            else
-              echo "All Matrix builds passed successfully!"
             fi
 
   # == Trigger pages rebuild ================================================─

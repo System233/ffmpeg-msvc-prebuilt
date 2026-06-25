@@ -6,7 +6,9 @@
 #   - Push to main with ffmpeg/*.yaml changes: detects changed versions, builds
 #   - Manual workflow_dispatch: same as schedule
 #
-# Serialization is handled by build-release.yml internally.
+# dl-seed and seed run once globally (not per-version) to avoid redundant
+# source downloads and base dependency builds.  build-release.yml handles
+# per-version FFmpeg compilation, packaging, and release.
 # ---------------------------------------------------------------------------
 
 name: Build All FFmpeg Versions
@@ -20,6 +22,12 @@ on:
     paths:
       - 'ffmpeg/*.yaml'
   workflow_dispatch:
+
+env:
+  VCPKG_TAG: 2026.06.01
+  TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
+  VCPKG_FORCE_DOWNLOADED_BINARIES: 1
+  VCPKG_INSTALL_OPTIONS: --x-abi-tools-use-exact-versions
 
 jobs:
   scan:
@@ -49,8 +57,203 @@ jobs:
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+  # == DL-Seed: download sources for all triplets ==============================
+  # Single job that downloads source archives for every triplet × feature
+  # combination via --only-downloads, so per-version builds never need to
+  # fetch from the internet (shared download cache for all architectures).
+  dl-seed:
+    runs-on: windows-2022
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: 'requirements.txt'
+
+      - name: Generate ffmpeg-deps port
+        run: |
+          python scripts/ffport.py deps
+
+      - name: Compute port hash for download cache
+        id: porthash
+        run: |
+          echo "port_hash=$(python scripts/ci/compute_port_hash.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Quick cache check
+        id: dl-check
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          lookup-only: true
+
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: ${{ env.VCPKG_TAG }}
+          vcpkg-root: ${{ runner.temp }}/vcpkg
+
+      - name: Restore vcpkg downloads cache (all triplets)
+        if: steps.dl-check.outputs.cache-hit != 'true'
+        id: dl-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+          restore-keys: |
+            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
+
+      - name: Download sources for all triplets
+        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/vcpkg
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        shell: pwsh
+        run: |
+          $env:TRIPLETS = "${{ env.TRIPLETS }}"
+          $env:VCPKG_INSTALL_OPTIONS = "${{ env.VCPKG_INSTALL_OPTIONS }}"
+          & "${{ github.workspace }}/scripts/ci/dl_seed.ps1"
+
+      - name: Save vcpkg downloads cache
+        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
+
+      - name: Upload build logs (dl-seed)
+        if: failure() && steps.dl-check.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-global-dl-seed
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
+          compression-level: 9
+          retention-days: 7
+
+  # == Seed: build base dependencies once per triplet ========================─
+  # Always builds (no skip).  Fuzzy cache restore → vcpkg ABI check →
+  # compute ABI hash → save with exact key for deterministic retrieval.
+  # Runs once per triplet globally — not per-version.
+  seed:
+    needs: [dl-seed]
+    runs-on: windows-2022
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        triplet: ["arm-windows", "arm64-windows", "x86-windows", "x64-windows"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: 'requirements.txt'
+
+      - name: Generate ffmpeg-deps port
+        run: |
+          python scripts/ffport.py deps
+
+      - uses: ./.github/actions/vcpkg-restore-caches
+        with:
+          vcpkg-tag: ${{ env.VCPKG_TAG }}
+          vcpkg-root: ${{ runner.temp }}/vcpkg
+          cache-path: ${{ runner.temp }}/vcpkg-cache
+          triplet: ${{ matrix.triplet }}
+          fail-on-miss-root: 'true'
+
+      - name: Patch vcvarsall.bat for ARM Windows SDK
+        if: matrix.triplet == 'arm-windows'
+        run: |
+          $patched = $false
+          $vsPaths = & vswhere -all -legacy -property installationPath
+          foreach ($vsPath in $vsPaths) {
+            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+            Write-Output "Patching $vcvarsall"
+            $content = Get-Content $vcvarsall -Raw -Encoding Ascii
+            $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
+            Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
+            $patched = $true
+          }
+          if (-not $patched) {
+            throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
+          }
+
+      - name: Install ffmpeg-deps (all features) + merge ABI hashes
+        id: abi-hash
+        env:
+          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
+        run: |
+          $hashes = @()
+          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
+          if ($json.features) {
+            foreach ($f in $json.features.PSObject.Properties.Name) {
+              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$f]" `
+                --triplet=${{ matrix.triplet }} `
+                --recurse `
+                --x-install-root=${{ runner.temp }}/vcpkg_installed `
+                ${{ env.VCPKG_INSTALL_OPTIONS }}
+              $abiFile = "${{ runner.temp }}/vcpkg_installed/${{ matrix.triplet }}/share/ffmpeg-deps/vcpkg_abi_info.txt"
+              Write-Output "=== ABI info for ffmpeg-deps[$f] (${{ matrix.triplet }}) ==="
+              Get-Content $abiFile | ForEach-Object { Write-Output $_ }
+              Write-Output "=== END ABI info ==="
+              $content = Get-Content $abiFile -Raw
+              $bytes = [System.Text.Encoding]::UTF8.GetBytes($content)
+              $h = [System.BitConverter]::ToString(
+                [System.Security.Cryptography.SHA256]::HashData($bytes)
+              ) -replace '-', ''
+              $hashes += $h
+              $null = New-Item -ItemType Directory -Force "${{ runner.temp }}/abi-logs"
+              Copy-Item $abiFile "${{ runner.temp }}/abi-logs/ffmpeg-deps-$f.txt"
+              Remove-Item -Recurse -Force "${{ runner.temp }}/vcpkg_installed"
+            }
+          }
+          $hashes = $hashes | Sort-Object -Unique
+          Write-Output "=== Merged ABI hashes (${{ matrix.triplet }}) ==="
+          $hashes | ForEach-Object { Write-Output $_ }
+          Write-Output "---"
+          $bytes = [System.Text.Encoding]::UTF8.GetBytes(($hashes -join '|'))
+          $merged = [System.BitConverter]::ToString(
+            [System.Security.Cryptography.SHA256]::HashData($bytes)
+          ) -replace '-', ''
+          Write-Output "Merged: $merged"
+          Write-Output "=== END ==="
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "value=$merged"
+
+      - name: Check if exact binary cache already exists
+        id: bin-save-check
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
+          lookup-only: true
+
+      - name: Save binary cache with exact ABI key
+        if: steps.bin-save-check.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
+
+      - name: Upload build logs (seed)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs-global-seed-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
+          compression-level: 9
+          retention-days: 7
+
   build:
-    needs: scan
+    needs: [seed, scan]
     if: needs.scan.outputs.matrix != '[]'
     strategy:
       fail-fast: false
@@ -59,4 +262,5 @@ jobs:
     uses: ./.github/workflows/build-release.yml
     with:
       yaml: ${{ matrix.config.version }}
+      skip_seed: true
     secrets: inherit

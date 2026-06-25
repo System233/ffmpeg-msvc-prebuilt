@@ -110,6 +110,10 @@ def main() -> None:
         help="Trigger event name (default: %(default)s)",
     )
     parser.add_argument(
+        "--yaml", type=str, default="",
+        help="YAML config name to scope the context to (e.g. 7.1.1)",
+    )
+    parser.add_argument(
         "--log-dir", type=str, default="./error_logs",
         help="Log directory path written into the context record (default: %(default)s)",
     )
@@ -139,14 +143,23 @@ def main() -> None:
             if job.get("conclusion") == "failure":
                 failed_job_names.append(job.get("name", ""))
 
-    # ── 2. Write hint file (always in cwd, matching the original JS) ─────
+    # ── 2. Filter by YAML if specified ───────────────────────────────────
+    if args.yaml:
+        yaml_pattern = f"({args.yaml})"
+        filtered = [n for n in failed_job_names if yaml_pattern in n]
+        # Only apply the filter if at least one job name matches;
+        # otherwise keep all (direct-call case where job names have no prefix).
+        if filtered:
+            failed_job_names = filtered
+
+    # ── 3. Write hint file (always in cwd, matching the original JS) ─────
     hint_rel = "./failed_steps_hint.txt"
     Path("failed_steps_hint.txt").write_text(
         "\n".join(failed_job_names), encoding="utf-8",
     )
     print(f"Failed jobs written to {hint_rel}")
 
-    # ── 3. Discover new patches ──────────────────────────────────────────
+    # ── 4. Discover new patches ──────────────────────────────────────────
     new_patches: list[str] = []
     if args.base_sha:
         new_patches = _git_diff_patches(args.base_sha)
@@ -155,7 +168,7 @@ def main() -> None:
         else:
             print("No new patches detected.")
 
-    # ── 4. Build context payload ─────────────────────────────────────────
+    # ── 5. Build context payload ─────────────────────────────────────────
     context = {
         "pr_number": int(args.pr_number) if args.pr_number else None,
         "base_branch": args.base_ref,
@@ -168,12 +181,13 @@ def main() -> None:
         ),
         "failed_jobs": failed_job_names,
         "new_patches": new_patches,
+        "target_yaml": args.yaml or None,
         "log_directory": args.log_dir,
         "hint_file": hint_rel,
         "trigger": args.trigger,
     }
 
-    # ── 5. Write context JSON ────────────────────────────────────────────
+    # ── 6. Write context JSON ────────────────────────────────────────────
     output_path = Path(args.output)
     output_path.write_text(
         json.dumps(context, indent=2, ensure_ascii=False) + "\n",
