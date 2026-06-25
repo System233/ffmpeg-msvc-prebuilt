@@ -15,6 +15,7 @@ import agent_repair  # noqa: E402
 
 # ── Default argparse namespace ────────────────────────────────────────────────
 _DEFAULT_ARGS = argparse.Namespace(
+    action="pr",
     base_sha=None,
     max_retries=3,
     prompt_file="scripts/ci/agent_prompt.md",
@@ -173,6 +174,7 @@ class TestAgentRepair(unittest.TestCase):
             )
 
             mock_parse_args.return_value = argparse.Namespace(
+                action="pr",
                 base_sha=None,
                 max_retries=3,
                 prompt_file=str(prompt_path),
@@ -227,6 +229,7 @@ class TestAgentRepair(unittest.TestCase):
     @mock.patch(
         "argparse.ArgumentParser.parse_args",
         return_value=argparse.Namespace(
+            action="pr",
             base_sha=None,
             max_retries=3,
             prompt_file="scripts/ci/agent_prompt.md",
@@ -410,6 +413,131 @@ class TestAgentRepair(unittest.TestCase):
         self.assertTrue(
             any("log --format=%s" in c for c in all_git_calls),
             f"git log --format=%s not called. Calls: {all_git_calls}",
+        )
+
+    # ── 11. action=push: start_sha is PR HEAD, not base_sha ───────────────────
+
+    @mock.patch("agent_repair.signal.signal")
+    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("argparse.ArgumentParser.parse_args")
+    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch.object(Path, "is_file", return_value=True)
+    @mock.patch.object(Path, "exists", return_value=False)
+    @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
+    @mock.patch.object(Path, "mkdir")
+    @mock.patch.object(Path, "read_text", return_value="prompt content")
+    @mock.patch.object(Path, "write_text")
+    @mock.patch("agent_repair.subprocess.run")
+    def test_11_action_push_uses_pr_head(
+        self,
+        mock_run,
+        _write_text,
+        _read_text,
+        _mkdir,
+        _glob,
+        _exists,
+        _is_file,
+        _which,
+        mock_parse_args,
+        _copy,
+        _signal,
+    ):
+        """action=push: start_sha is PR HEAD, reset/log use PR HEAD not base_sha."""
+        mock_parse_args.return_value = argparse.Namespace(
+            action="push",
+            base_sha="base-branch-sha",
+            max_retries=3,
+            prompt_file="scripts/ci/agent_prompt.md",
+            feedback_file="scripts/ci/agent_feedback.md",
+        )
+        mock_run.side_effect = _make_run_side_effect({
+            "git rev-parse": (0, "pr-head-sha\n"),
+        })
+
+        try:
+            agent_repair.main()
+        except SystemExit as e:
+            self.fail(f"main() raised SystemExit({e.code})")
+
+        all_git_calls = [
+            " ".join(str(a) for a in call.args[0])
+            for call in mock_run.call_args_list
+        ]
+
+        # Should reset --hard to PR HEAD, not base_sha
+        reset_hard = [c for c in all_git_calls if c.startswith("git reset --hard")]
+        self.assertTrue(
+            any("pr-head-sha" in c for c in reset_hard),
+            f"Expected reset --hard to PR HEAD. Calls: {reset_hard}",
+        )
+        self.assertFalse(
+            any("base-branch-sha" in c for c in reset_hard),
+            f"Unexpected reset --hard to base_sha. Calls: {reset_hard}",
+        )
+
+        # Should count commits relative to PR HEAD, not base_sha
+        log_range = [c for c in all_git_calls if "git log --oneline" in c and "..HEAD" in c]
+        self.assertTrue(
+            any("pr-head-sha..HEAD" in c for c in log_range),
+            f"Expected log range to use PR HEAD. Calls: {log_range}",
+        )
+
+    # ── 12. action=pr: start_sha is base_sha (not git rev-parse HEAD) ─────────
+
+    @mock.patch("agent_repair.signal.signal")
+    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("argparse.ArgumentParser.parse_args")
+    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch.object(Path, "is_file", return_value=True)
+    @mock.patch.object(Path, "exists", return_value=False)
+    @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
+    @mock.patch.object(Path, "mkdir")
+    @mock.patch.object(Path, "read_text", return_value="prompt content")
+    @mock.patch.object(Path, "write_text")
+    @mock.patch("agent_repair.subprocess.run")
+    def test_12_action_pr_uses_base_sha(
+        self,
+        mock_run,
+        _write_text,
+        _read_text,
+        _mkdir,
+        _glob,
+        _exists,
+        _is_file,
+        _which,
+        mock_parse_args,
+        _copy,
+        _signal,
+    ):
+        """action=pr: start_sha is base_sha, reset targets base_sha."""
+        mock_parse_args.return_value = argparse.Namespace(
+            action="pr",
+            base_sha="explicit-base-sha",
+            max_retries=3,
+            prompt_file="scripts/ci/agent_prompt.md",
+            feedback_file="scripts/ci/agent_feedback.md",
+        )
+        mock_run.side_effect = _make_run_side_effect()
+
+        try:
+            agent_repair.main()
+        except SystemExit as e:
+            self.fail(f"main() raised SystemExit({e.code})")
+
+        all_git_calls = [
+            " ".join(str(a) for a in call.args[0])
+            for call in mock_run.call_args_list
+        ]
+
+        # Should reset --hard to base_sha, not some rev-parse output
+        reset_hard = [c for c in all_git_calls if c.startswith("git reset --hard")]
+        self.assertTrue(
+            any("explicit-base-sha" in c for c in reset_hard),
+            f"Expected reset --hard to base_sha. Calls: {reset_hard}",
+        )
+        self.assertFalse(
+            any("abc1234567890" in c for c in reset_hard),
+            f"Unexpected reset to default rev-parse HEAD. Calls: {reset_hard}",
         )
 
     # ── 10. Feedback template substitution works correctly ────────────────────

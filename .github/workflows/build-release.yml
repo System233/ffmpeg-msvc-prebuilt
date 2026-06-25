@@ -475,12 +475,7 @@ jobs:
         run: |
           echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
 
-      # Checkout main branch so we have access to scripts/
       - uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            scripts/
-            requirements.txt
 
       - uses: ./.github/actions/setup-python
         with:
