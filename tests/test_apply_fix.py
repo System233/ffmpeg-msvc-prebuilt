@@ -510,9 +510,9 @@ class TestPushAndPr(unittest.TestCase):
             ["git", "push", "origin", f"HEAD:{self._branch}"], check=True
         )
 
-        # Verify git pull --rebase (best-effort in push mode)
+        # Verify git pull --rebase onto main (push mode)
         mock_run.assert_any_call(
-            ["git", "pull", "--rebase", "origin", self._branch]
+            ["git", "pull", "--rebase", "origin", "main"]
         )
 
         # Verify NO gh commands were called
