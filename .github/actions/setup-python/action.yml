@@ -1,0 +1,38 @@
+name: 'Setup Python'
+description: 'Set up Python with pip cache and install dependencies'
+inputs:
+  python-version:
+    description: 'Python version to install'
+    default: '3.12'
+  cache:
+    description: 'Whether to enable pip caching'
+    default: true
+    type: boolean
+  install:
+    description: 'Space-separated list of packages to pip install'
+    required: false
+  requirements:
+    description: 'Path to requirements file'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: ${{ inputs.cache && 'pip' || '' }}
+
+    - name: Install from requirements file
+      shell: bash
+      if: inputs.requirements != ''
+      run: pip install -r "$REQUIREMENTS"
+      env:
+        REQUIREMENTS: ${{ inputs.requirements }}
+
+    - name: Install specific packages
+      shell: bash
+      if: inputs.install != ''
+      run: pip install $PACKAGES
+      env:
+        PACKAGES: ${{ inputs.install }}

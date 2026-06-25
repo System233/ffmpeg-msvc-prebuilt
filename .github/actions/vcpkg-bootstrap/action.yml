@@ -1,0 +1,47 @@
+name: 'vcpkg Bootstrap'
+description: 'Clone and bootstrap vcpkg at a pinned tag with caching'
+inputs:
+  tag:
+    description: 'vcpkg tag to check out (e.g. 2026.06.01)'
+    required: true
+  vcpkg-root:
+    description: 'Directory where vcpkg will be cloned/installed'
+    required: true
+  cache-key:
+    description: 'Custom cache key (default: vcpkg-root-{tag})'
+    required: false
+
+outputs:
+  cache-hit:
+    description: '"true" if root cache restored, otherwise "false"'
+    value: ${{ steps.vcpkg-root-restore.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Restore vcpkg root cache
+      id: vcpkg-root-restore
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.vcpkg-root }}
+        key: ${{ inputs.cache-key || format('vcpkg-root-{0}', inputs.tag) }}
+
+    - name: Clone vcpkg at pinned tag
+      if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        git clone --branch ${{ inputs.tag }} --depth 1 `
+          https://github.com/microsoft/vcpkg.git ${{ inputs.vcpkg-root }}
+
+    - name: Bootstrap vcpkg
+      if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        & "${{ inputs.vcpkg-root }}/bootstrap-vcpkg.bat"
+
+    - name: Save vcpkg root cache
+      if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ inputs.vcpkg-root }}
+        key: ${{ inputs.cache-key || format('vcpkg-root-{0}', inputs.tag) }}

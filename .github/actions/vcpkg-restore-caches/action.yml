@@ -1,0 +1,67 @@
+name: 'vcpkg Restore Caches'
+description: 'Restore vcpkg root, downloads, and binary caches'
+inputs:
+  vcpkg-tag:
+    description: 'vcpkg tag used in cache keys'
+    required: true
+  vcpkg-root:
+    description: 'Path to the vcpkg installation directory'
+    required: true
+  cache-path:
+    description: 'Path to the vcpkg binary package cache directory'
+    required: true
+  triplet:
+    description: 'vcpkg triplet for binary cache key'
+    required: false
+  fail-on-miss-root:
+    description: 'Fail if vcpkg root cache miss'
+    default: 'false'
+  fail-on-miss-downloads:
+    description: 'Fail if downloads cache miss'
+    default: 'false'
+  fail-on-miss-binary:
+    description: 'Fail if binary cache miss'
+    default: 'false'
+
+outputs:
+  cache-hit-root:
+    description: '"true" if vcpkg root cache was restored'
+    value: ${{ steps.restore-root.outputs.cache-hit }}
+  cache-hit-downloads:
+    description: '"true" if vcpkg downloads cache was restored'
+    value: ${{ steps.restore-downloads.outputs.cache-hit }}
+  cache-hit-binary:
+    description: '"true" if vcpkg binary cache was restored'
+    value: ${{ steps.restore-binary.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Restore vcpkg root cache
+      id: restore-root
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.vcpkg-root }}
+        key: vcpkg-root-${{ inputs.vcpkg-tag }}
+        fail-on-cache-miss: ${{ inputs.fail-on-miss-root }}
+
+    - name: Restore vcpkg downloads cache
+      id: restore-downloads
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.vcpkg-root }}/downloads
+        key: vcpkg-dl-all-${{ inputs.vcpkg-tag }}-restore
+        restore-keys: |
+          vcpkg-dl-all-${{ inputs.vcpkg-tag }}-
+        fail-on-cache-miss: ${{ inputs.fail-on-miss-downloads }}
+
+    - name: Restore vcpkg binary cache
+      id: restore-binary
+      if: inputs.triplet != ''
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.cache-path }}
+        key: vcpkg-seed-${{ inputs.vcpkg-tag }}-${{ inputs.triplet }}-restore
+        restore-keys: |
+          vcpkg-seed-${{ inputs.vcpkg-tag }}-${{ inputs.triplet }}-
+        fail-on-cache-miss: ${{ inputs.fail-on-miss-binary }}

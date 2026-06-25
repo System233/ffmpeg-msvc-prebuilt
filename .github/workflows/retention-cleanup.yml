@@ -46,13 +46,9 @@ jobs:
           exit 0
         shell: bash
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install pyyaml
+          requirements: 'requirements.txt'
 
       # Run retention policy script.
       # The script reads data from data/ and prints DELETE_RELEASE:
@@ -64,60 +60,21 @@ jobs:
           cat cleanup_output.txt
         shell: bash
 
-      # Parse DELETE_RELEASE lines and remove the corresponding GitHub Releases.
-      # Best-effort: ignore errors if a release was already deleted.
       - name: Delete GitHub Releases
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ ! -f cleanup_output.txt ]; then
-            echo "No cleanup output found — nothing to delete."
-            exit 0
-          fi
-          while IFS= read -r line; do
-            tag="${line#DELETE_RELEASE:}"
-            [ -n "$tag" ] || continue
-            echo "Deleting release: $tag"
-            gh release delete "$tag" --yes 2>/dev/null || echo "  (skipped — release may not exist)"
-          done < <(grep '^DELETE_RELEASE:' cleanup_output.txt || true)
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci/cleanup_releases.py releases --file cleanup_output.txt
 
-      # Parse DELETE_TAG lines and remove the corresponding git tags.
-      # Best-effort: ignore errors if a tag was already deleted.
       - name: Delete git tags
-        run: |
-          if [ ! -f ../cleanup_output.txt ]; then
-            echo "No cleanup output found — nothing to delete."
-            exit 0
-          fi
-          while IFS= read -r line; do
-            tag="${line#DELETE_TAG:}"
-            [ -n "$tag" ] || continue
-            echo "Deleting tag: $tag"
-            git push origin --delete "$tag" 2>/dev/null || echo "  (skipped — tag may not exist)"
-          done < <(grep '^DELETE_TAG:' ../cleanup_output.txt || true)
-        shell: bash
-        working-directory: data
+        run: python scripts/ci/cleanup_releases.py tags --file ../cleanup_output.txt --directory data
 
       # Commit and push the updated data branch (version YAML deletions +
       # build-index updates performed by retention_policy.py).
       - name: Commit and push data branch
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit on data branch"
-            exit 0
-          fi
-          git commit -m "retention: cleanup old builds"
-          for i in 1 2 3; do
-            git pull --rebase origin data && git push origin data && break
-            echo "  Push attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || { echo "ERROR: failed to push after 3 attempts"; exit 1; }
-        shell: bash
-        working-directory: data
+          python scripts/ci/push_data_branch.py \
+            --message 'retention: cleanup old builds' \
+            --directory data
 
   # ── Trigger pages rebuild ─────────────────────────────────────────────────
   trigger-pages:

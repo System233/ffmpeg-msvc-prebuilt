@@ -31,38 +31,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+          requirements: 'requirements.txt'
 
       - name: Scan versions to build
         id: scan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
         run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "push" ]; then
-            BEFORE="${{ github.event.before }}"
-            AFTER="${{ github.event.after }}"
-            python scripts/ops/ci_detect_changes.py \
-              --base "$BEFORE" --head "$AFTER" --json > changes.json
-            include=$(jq -c '
-              if .found then
-                [.changed[] | {version}]
-              else
-                []
-              end
-            ' changes.json)
+          if [ "$EVENT_NAME" = "push" ]; then
+            matrix=$(python scripts/ci/scan_versions.py --mode push --base "$BEFORE" --head "$AFTER")
           else
-            include=$(python scripts/ffport.py list | jq -R -s -c '
-              split("\n") | map(select(length > 0)) | map({version: .})
-            ')
+            matrix=$(python scripts/ci/scan_versions.py --mode all)
           fi
-
-          echo "matrix=$include" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
     needs: scan
