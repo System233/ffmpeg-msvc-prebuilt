@@ -270,7 +270,7 @@ jobs:
       # == Upload build logs for debugging ==========================
       # Always runs, even if Step 4 fails, so logs are available for triage.
       - name: Upload build logs
-        if: always()
+        if: success() || failure()
         uses: actions/upload-artifact@v6
         with:
           name: build-logs-${{ inputs.yaml }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
@@ -388,7 +388,7 @@ jobs:
       name: all-checks-passed
       runs-on: ubuntu-latest
       needs: build
-      if: always()
+      if: success() || failure()
       steps:
         - name: Check Matrix Status
           run: |
@@ -408,7 +408,7 @@ jobs:
   # == Auto-heal: diagnose and create fix PR on build failure ==============─
   trigger-auto-heal:
     needs: build
-    if: ${{ always() && needs.build.result == 'failure' && (!inputs.dry_run || inputs.pr_number != '') }}
+    if: ${{ failure() && needs.build.result == 'failure' && (!inputs.dry_run || inputs.pr_number != '') }}
     uses: ./.github/workflows/auto-heal.yml
     with:
       ref: ${{ inputs.ref }}

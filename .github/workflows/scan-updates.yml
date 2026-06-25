@@ -84,7 +84,7 @@ jobs:
           done < new_versions.txt
 
       - name: Summary
-        if: always()
+        if: success() || failure()
         run: |
           echo "=== Scan Updates Summary ==="
           if [ -s new_versions.txt ]; then
