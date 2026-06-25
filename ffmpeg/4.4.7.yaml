@@ -1,6 +1,10 @@
 extends: "4.4"
 revision: 1
 
+define:
+  exclude:
+    - zmq
+
 source:
   sha512: ccd79de9a570d6168ff2ee28061c3637a39963512a3e44b438a4a14a92865d5e91ed7d2f98a360826ac389e96d0ff3eb9f27b88164e6846d35efa0a817c0ff7b
 
