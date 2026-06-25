@@ -4,6 +4,7 @@ source:
   method: git
   repo: ffmpeg/ffmpeg
   ref: "n${VERSION}"
+  sha512: 33d8102c0e2cca0fce2b737be3af114d3d39a30d0ed9d521ce02493fc10ec1f22af07747346a56371d748e5914b6f8069fdf4e2e6c87c7f472953e92a43d0010
 
 build:
   base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
