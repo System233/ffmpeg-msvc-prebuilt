@@ -2,22 +2,12 @@ diff --git a/configure b/configure
 index 13462ff..d6e70a7 100755
 --- a/configure
 +++ b/configure
-@@ -3652,6 +3652,9 @@
-         --libfuzzer=*)
-             libfuzzer_path="$optval"
-         ;;
-+        --debug)
-+            enable debug_configure
-+        ;;
-         *)
-             optname="${opt%%=*}"
-             optname="${optname#--}"
-@@ -5876,7 +5879,11 @@
+@@ -5876,7 +5876,11 @@
      check_builtin sem_timedwait semaphore.h "sem_t *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
  
  enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
 -enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
-+if enabled debug_configure; then
++if enabled debug; then
 +    enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2d
 +else
 +    enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
