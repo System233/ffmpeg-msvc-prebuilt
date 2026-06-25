@@ -140,6 +140,10 @@ def _bump_revision(yaml_name: str, base_revision: str) -> None:
     )
     yaml_path.write_text(new_content, encoding="utf-8")
 
+    if content == new_content:
+        print("Revision unchanged (already at base_revision + 1); skipping commit")
+        return
+
     print(f"Bumped revision: {base_rev} -> {new_rev}")
 
     subprocess.run(["git", "add", str(yaml_path)], check=True)
