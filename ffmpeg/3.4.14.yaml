@@ -17,3 +17,5 @@ patches:
   - 3.x/0011-fix-opengl-quoting.patch
   - 3.x/0012-fix-opengl-unistd.patch
   - 3.x/0013-fix-x264-imports.patch
+  - 3.x/0014-fix-debug-build.patch
+  - 3.x/0015-fix-arm64-asm.patch

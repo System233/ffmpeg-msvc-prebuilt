@@ -15,9 +15,9 @@ diff --git a/configure b/configure
 index abcdef1..0000000 100755
 --- a/configure
 +++ b/configure
-@@ -5879,3 +5879,4 @@
+@@ -5888,3 +5888,4 @@
  enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
 -enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 +enabled bzlib && { check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2 ||
-+                   enable bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion -lbz2d; }
++                   check_lib bzlib bzlib.h BZ2_bzlibVersion -lbz2d; }
  enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma

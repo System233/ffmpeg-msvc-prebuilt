@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: opencode <opencode@users.noreply.github.com>
+Date: Thu, 25 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Disable asm on ARM64 Windows to fix gas-preprocessor detection
+
+On Windows ARM64, no GNU assembler (gas-preprocessor) is available,
+causing configure to fail with "GNU assembler not found" when
+--enable-asm is used. Since MSVC ARM64 builds cannot use GAS assembly,
+disable asm for ARM64 Windows builds.
+
+---
+ configure | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index abcdef1..0000000 100755
+--- a/configure
++++ b/configure
+@@ -5394,7 +5394,11 @@
+     return 0
+ }
+
++# Disable asm on aarch64 Windows (no gas-preprocessor available)
++enabled aarch64 && [ "$target_os" = win32 ] && disable asm
++
+-if enabled_any arm aarch64 || enabled_all ppc altivec && enabled asm; then
++if enabled asm && { enabled_any arm aarch64 ||
++                    enabled_all ppc altivec; }; then
+     nogas=:
+     enabled_any arm aarch64 && nogas=die
+     enabled_all ppc altivec && [ $target_os_default != aix ] && nogas=warn
