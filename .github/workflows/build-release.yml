@@ -11,8 +11,8 @@
 name: Build FFmpeg Release
 
 concurrency:
-  group: ${{ inputs.dry_run && format('dry-run-{0}', github.run_id) || format('release-{0}', inputs.ref || inputs.yaml) }}
-  cancel-in-progress: false
+  group: ${{ inputs.dry_run && format('dry-run-{0}-{1}', github.run_id, inputs.ref || inputs.yaml) || format('release-{0}', inputs.ref || inputs.yaml) }}
+  cancel-in-progress: ${{ inputs.dry_run }}
 
 on:
   workflow_dispatch:
