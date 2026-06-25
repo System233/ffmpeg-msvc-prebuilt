@@ -1,8 +1,19 @@
 extends: "8.0"
-revision: 1
+revision: 3
 
 source:
   sha512: f31769a7ed52865165e7db4a03e9378b3376012b7aaf0bbc022aa76c3e999e71c3927e6eb8639d8681e04e33362dd73eafa9e7c62a3c71599ff78da09f5cee0a
+
+build:
+  cmake_defines:
+    FFMPEG_NEED_BIN2C: ON
+  host_deps:
+    - name: ffmpeg-bin2c
+      host: true
+    - name: vcpkg-cmake-get-vars
+      host: true
+    - name: vcpkg-pkgconfig-get-modules
+      host: true
 
 patches:
   - 8.x/0001-create-lib-libraries-6.1.patch
@@ -17,3 +28,6 @@ patches:
   - 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
   - 8.x/0045-use-prebuilt-bin2c-8.0.patch
   - 8.x/0046-fix-msvc-detection-8.0.patch
+  - 8.x/0047-fix-msvc-utf8.patch
+  - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
+  - 8.x/0055-lensfun-configure-fix-8.0.1.patch
