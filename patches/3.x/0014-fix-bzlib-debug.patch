@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Thu, 25 Jun 2026 15:52:00 +0000
+Subject: [PATCH] Fix bzlib debug library name for MSVC builds
+
+---
+ configure | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/configure b/configure
+--- a/configure
++++ b/configure
+@@ -3653,6 +3653,9 @@
+         --libfuzzer=*)
+             libfuzzer_path="$optval"
+         ;;
++        --debug)
++            enable debug_configure
++        ;;
+         *)
+             optname="${opt%%=*}"
+             optname="${optname#--}"
+@@ -5889,7 +5892,11 @@
+ 
+ enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
+-enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
++if enabled debug_configure; then
++    enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2d
++else
++    enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
++fi
+ enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
