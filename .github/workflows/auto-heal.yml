@@ -199,6 +199,7 @@ jobs:
           GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
           python scripts/ci/agent_repair.py \
+            --action "${{ needs.check.outputs.action }}" \
             --base-sha "${{ needs.check.outputs.base_sha }}" \
             --max-retries 3 \
             --prompt-file scripts/ci/agent_prompt.md \

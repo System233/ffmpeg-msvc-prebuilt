@@ -95,6 +95,12 @@ def main() -> None:
         description="OpenCode autonomous agent repair loop",
     )
     parser.add_argument(
+        "--action",
+        default="pr",
+        choices=["pr", "push"],
+        help="Operation mode: 'pr' reset to base_sha, 'push' stays on PR HEAD (default: pr)",
+    )
+    parser.add_argument(
         "--base-sha",
         default=None,
         help="Base commit SHA (default: git rev-parse HEAD)",
@@ -152,6 +158,11 @@ def main() -> None:
     if not base_sha:
         base_sha = _git_check("rev-parse", "HEAD")
 
+    # Determine the start SHA for the agent loop.
+    # For push: start from PR branch HEAD to preserve existing commits.
+    # For pr:    start from base_sha (main) for a clean base.
+    start_sha = _git_check("rev-parse", "HEAD") if args.action == "push" else base_sha
+
     max_retries: int = args.max_retries
 
     # ── Initialize prompt from template (bash: cp "$PROMPT_FILE" prompt.txt) ──
@@ -168,8 +179,8 @@ def main() -> None:
         attempt += 1
         print(f"=== Agent repair attempt {attempt}/{max_retries} ===")
 
-        # git reset --hard "$BASE_SHA"
-        _git_check("reset", "--hard", base_sha)
+        # Reset to the loop's start SHA so each attempt begins cleanly.
+        _git_check("reset", "--hard", start_sha)
 
         # If feedback.txt exists, append it to prompt.txt
         # (bash: if [ -f feedback.txt ]; then cat feedback.txt >> prompt.txt; fi)
@@ -186,20 +197,20 @@ def main() -> None:
             continue
 
         # Check if any commits were made (bash: if ! git log --oneline ... | grep -q .)
-        log_result = _git("log", "--oneline", f"{base_sha}..HEAD")
+        log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
         if not log_result.stdout.strip():
             print(f"No changes on attempt {attempt}")
             break
 
         # Count commits; squash if > 1 (bash: COMMIT_COUNT=$(git rev-list --count ...))
-        commit_count_str = _git_check("rev-list", "--count", f"{base_sha}..HEAD")
+        commit_count_str = _git_check("rev-list", "--count", f"{start_sha}..HEAD")
         commit_count = int(commit_count_str)
         if commit_count > 1:
             print(f"Squashing {commit_count} commits into one")
             # Get latest commit message from the range
             # (bash: MSG=$(git log --format=%s -1 "${BASE_SHA}..HEAD"))
-            msg = _git_check("log", "--format=%s", "-1", f"{base_sha}..HEAD")
-            _git_check("reset", "--soft", base_sha)
+            msg = _git_check("log", "--format=%s", "-1", f"{start_sha}..HEAD")
+            _git_check("reset", "--soft", start_sha)
             _git_check("commit", "-m", msg)
 
         # Generate patch (bash: mkdir -p patch-output; git format-patch -1 HEAD -o patch-output)
@@ -231,7 +242,7 @@ def main() -> None:
     # ── Post-loop: check max retry outcome (bash lines 147-160) ──────────────
     if attempt >= max_retries:
         # (bash: if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then ...)
-        log_result = _git("log", "--oneline", f"{base_sha}..HEAD")
+        log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
         if log_result.stdout.strip():
             # (bash: PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1); [ -n "$PATCH" ] && ...)
             patch_files = list(Path("patch-output").glob("*.patch"))
