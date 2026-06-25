@@ -1,15 +1,20 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: opencode <opencode@users.noreply.github.com>
 Date: Thu, 25 Jun 2026 00:00:00 +0000
-Subject: [PATCH] Fix debug build library detection for bzlib
+Subject: [PATCH] Fix debug build library detection for bzlib and MSVC static
+ library naming
 
-In debug builds, vcpkg's bzip2 port provides libbz2d.lib instead of
-libbz2.lib. Add --debug flag handling and use -lbz2d when debug mode
-is enabled.
+Fix two issues:
+1. In debug builds, vcpkg's bzip2 port provides libbz2d.lib instead of
+   libbz2.lib. Add --debug flag handling and use -lbz2d when debug mode
+   is enabled.
+2. For MSVC static builds, ensure internal FFmpeg library references use
+   .lib extension (matching LIBSUF) instead of the default .a, so the
+   linker can find them.
 
 ---
- configure | 10 ++++++++++
- 1 file changed, 10 insertions(+)
+ configure | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
 
 diff --git a/configure b/configure
 index abcdef1..0000000 100755
@@ -25,9 +30,20 @@ index abcdef1..0000000 100755
          *)
              optname="${opt%%=*}"
              optname="${optname#--}"
-@@ -5876,7 +5879,11 @@
-     check_builtin sem_timedwait semaphore.h "sem_t *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
+@@ -5060,6 +5063,12 @@
+        LIBPREF=""
+        LIBSUF=".lib"
++        if ! enabled shared; then
++            # For static builds, use .lib suffix matching LIBSUF
++            LD_LIB='%'
++            test -z "$build_suffix" && build_suffix=$LIBSUF
++        fi
+        SLIBPREF=""
+        SLIBSUF=".dll"
  
+@@ -5876,7 +5885,11 @@
+     check_builtin sem_timedwait semaphore.h "sem *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
+
  enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
 -enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 +if enabled debug_configure; then
