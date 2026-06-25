@@ -121,6 +121,7 @@ jobs:
         id: rev
         run: |
           rev=$(python scripts/ffport.py get-revision "${{ inputs.yaml }}")
+          echo "Revision: $rev"
           echo "value=$rev" >> "$GITHUB_OUTPUT"
 
       - name: Scan variants and output dynamic build matrix
@@ -164,6 +165,7 @@ jobs:
         id: porthash
         run: |
           $hash = python scripts/ci/compute_port_hash.py
+          Write-Output "Port hash: $hash"
           "port_hash=$hash" | Add-Content -Path $env:GITHUB_OUTPUT
 
       - name: Quick cache check
@@ -369,6 +371,7 @@ jobs:
             --triplet $triplet --linkage $linkage --license $license
 
           $port_name = "ffmpeg"
+          Write-Output "Variant: $variant_id, Port: $port_name, Linkage: $linkage"
 
           echo "linkage_name=$linkage" >> $env:GITHUB_OUTPUT
           echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
