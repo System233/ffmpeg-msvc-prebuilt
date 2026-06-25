@@ -55,6 +55,7 @@ jobs:
           else
             matrix=$(python scripts/ci/scan_versions.py --mode all)
           fi
+          echo "Versions to build: $matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   # == DL-Seed: download sources for all triplets ==============================
@@ -79,6 +80,7 @@ jobs:
         id: porthash
         run: |
           $hash = python scripts/ci/compute_port_hash.py
+          Write-Output "Port hash: $hash"
           "port_hash=$hash" | Add-Content -Path $env:GITHUB_OUTPUT
 
       - name: Quick cache check
