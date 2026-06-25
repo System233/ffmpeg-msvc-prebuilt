@@ -209,14 +209,14 @@ jobs:
       - name: Upload patch artifact
         uses: actions/upload-artifact@v6
         with:
-          name: auto-heal-patch-${{ github.run_id }}
+          name: auto-heal-patch-${{ inputs.yaml }}
           path: patch-output/
           retention-days: 1
 
       - name: Upload fix report
         uses: actions/upload-artifact@v6
         with:
-          name: fix-report-${{ github.run_id }}
+          name: fix-report-${{ inputs.yaml }}
           path: fix_report.md
           retention-days: 1
 
@@ -240,14 +240,14 @@ jobs:
       - name: Download patch artifact
         uses: actions/download-artifact@v8
         with:
-          name: auto-heal-patch-${{ github.run_id }}
+          name: auto-heal-patch-${{ inputs.yaml }}
           path: patch-input
         continue-on-error: true
 
       - name: Download fix report
         uses: actions/download-artifact@v8
         with:
-          name: fix-report-${{ github.run_id }}
+          name: fix-report-${{ inputs.yaml }}
           path: fix-report
         continue-on-error: true
 
