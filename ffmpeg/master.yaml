@@ -1,4 +1,4 @@
-extends: "8.1"
+extends: "base"
 revision: 0
 
 source:
@@ -16,7 +16,11 @@ source:
 # - microsoft/vcpkg-tool#538
 
 build:
-  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect"
+  base_options: "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-debug"
+  debug:
+    options: "--disable-optimizations"
+  release:
+    options: "--enable-optimizations"
   host_deps:
     - name: ffmpeg-bin2c
       host: true
@@ -27,6 +31,7 @@ build:
     - name: vcpkg-pkgconfig-get-modules
       host: true
   cmake_defines:
+    FFMPEG_NEED_BIN2C: ON
     FFMPEG_NEED_OPSTOOL: "ON"
 
 patches:
