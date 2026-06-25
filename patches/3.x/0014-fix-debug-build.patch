@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: opencode <opencode@users.noreply.github.com>
+Date: Thu, 25 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Fix debug build library detection for bzlib
+
+In debug builds, vcpkg's bzip2 port provides bz2d.lib instead of
+bz2.lib in the debug library path. Try -lbz2 first, and fall back
+to -lbz2d if that fails.
+
+---
+ configure | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index abcdef1..0000000 100755
+--- a/configure
++++ b/configure
+@@ -5888,3 +5888,4 @@
+ enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
+-enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
++enabled bzlib && { check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2 ||
++                   check_lib bzlib bzlib.h BZ2_bzlibVersion -lbz2d; }
+ enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
