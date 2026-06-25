@@ -208,7 +208,7 @@ jobs:
           key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
 
       - name: Upload build logs (seed)
-        if: always()
+        if: success() || failure()
         uses: actions/upload-artifact@v6
         with:
           name: build-logs-${{ inputs.name }}-seed-${{ matrix.triplet }}
