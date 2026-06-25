@@ -79,8 +79,13 @@ jobs:
           ' changes.json)
           echo "matrix=$include" >> "$GITHUB_OUTPUT"
 
+  seed-setup:
+    uses: ./.github/workflows/seed-setup.yml
+    with:
+      name: pr
+
   build:
-    needs: detect
+    needs: [seed-setup, detect]
     if: needs.detect.outputs.matrix != '[]'
     strategy:
       fail-fast: false
@@ -91,6 +96,7 @@ jobs:
       yaml: ${{ matrix.version }}
       dry_run: true
       pr_number: ${{ needs.detect.outputs.pr_number }}
+      skip_seed: true
     secrets: inherit
 
   all-checks-passed:
@@ -101,9 +107,9 @@ jobs:
       steps:
         - name: Check Matrix Status
           run: |
-            if [ "${{ needs.build.result }}" != "success" ]; then
+            if [ "${{ needs.build.result }}" = "success" ] || [ "${{ needs.build.result }}" = "skipped" ]; then
+              echo "All Matrix builds passed successfully!"
+            else
               echo "Matrix builds failed!"
               exit 1
-            else
-              echo "All Matrix builds passed successfully!"
             fi
