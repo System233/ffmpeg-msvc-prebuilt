@@ -96,16 +96,24 @@ def get_revision(content: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-def get_child_versions(family_stem: str) -> list[str]:
-    """List all X.Y.Z.yaml children of a family X.Y."""
-    ffmpeg_dir = REPO_ROOT / "ffmpeg"
-    prefix = family_stem + "."
+def get_child_versions(stem: str, ref: str) -> list[str]:
+    """List all X.Y.Z.yaml children of a family X.Y at git ref."""
+    pattern = f"ffmpeg/{stem}.*.yaml"
+    result = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", ref, "--", pattern],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+    if result.returncode != 0:
+        return []
     children = []
-    for f in ffmpeg_dir.iterdir():
-        if f.suffix != ".yaml" or f.stem == "base":
+    prefix = f"ffmpeg/{stem}."
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line or not line.startswith(prefix):
             continue
-        if f.stem.startswith(prefix) and f.stem.count(".") == 2:
-            children.append(f.stem)
+        name = Path(line).stem
+        if name.count(".") == 2:
+            children.append(name)
     return sorted(children, key=version_key)
 
 
@@ -116,7 +124,7 @@ def detect_changes(before: str, after: str) -> DetectionResult:
     changed_files = git_diff_names(before, after, "ffmpeg/*.yaml")
 
     SKIP_STEMS = {"base", "master"}
-    changed_stems: set[str] = set()
+    changed_stems = set()
     for line in changed_files:
         m = re.match(r"ffmpeg/(.+)\.yaml$", line)
         if m and m.group(1) not in SKIP_STEMS:
@@ -128,29 +136,15 @@ def detect_changes(before: str, after: str) -> DetectionResult:
     result = DetectionResult()
 
     for stem in sorted(changed_stems, key=version_key):
-        old_content = git_show(before, f"ffmpeg/{stem}.yaml")
-        new_content = git_show(after, f"ffmpeg/{stem}.yaml")
-        is_new = (old_content == "" and new_content != "")
-        parts = stem.split(".")
-        is_family = len(parts) == 2
+        if stem.count(".") == 1:  # family YAML → cascade children
+            for child in get_child_versions(stem, after):
+                content = git_show(after, f"ffmpeg/{child}.yaml")
+                if content:
+                    result.add(child, get_revision(content))
 
-        if is_family:
-            children = get_child_versions(stem)
-            if children:
-                for child in children:
-                    child_file = REPO_ROOT / "ffmpeg" / f"{child}.yaml"
-                    rev = get_revision(child_file.read_text()) if child_file.exists() else 0
-                    result.add(child, rev)
-            else:
-                old_rev = get_revision(old_content)
-                new_rev = get_revision(new_content)
-                if old_rev != new_rev or is_new:
-                    result.add(stem, new_rev)
-        else:
-            old_rev = get_revision(old_content)
-            new_rev = get_revision(new_content)
-            if old_rev != new_rev or is_new:
-                result.add(stem, new_rev)
+        content = git_show(after, f"ffmpeg/{stem}.yaml")
+        if content:
+            result.add(stem, get_revision(content))
 
     return result
 
