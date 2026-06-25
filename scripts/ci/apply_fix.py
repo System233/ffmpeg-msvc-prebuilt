@@ -176,11 +176,12 @@ def _push_and_pr(
     # -- rebase onto latest main before push (push mode only) --
     if action == "push":
         print("==> Rebasing onto latest main before push (action=push)")
+        subprocess.run(["git", "fetch", "origin"])
         subprocess.run(["git", "pull", "--rebase", "origin", "main"])
 
     # -- push to branch --
     print(f"==> Pushing to origin HEAD:{branch}")
-    subprocess.run(["git", "push", "origin", f"HEAD:{branch}"], check=True)
+    subprocess.run(["git", "push", "--force-with-lease", "origin", f"HEAD:{branch}"], check=True)
 
     # -- PR operations --
     if action == "pr":
