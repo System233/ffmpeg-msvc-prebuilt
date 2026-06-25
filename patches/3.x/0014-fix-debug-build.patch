@@ -30,7 +30,7 @@ index abcdef1..0000000 100755
          *)
              optname="${opt%%=*}"
              optname="${optname#--}"
-@@ -5060,6 +5063,12 @@
+@@ -5060,5 +5063,10 @@
         LIBPREF=""
         LIBSUF=".lib"
 +        if ! enabled shared; then
@@ -41,9 +41,9 @@ index abcdef1..0000000 100755
         SLIBPREF=""
         SLIBSUF=".dll"
  
-@@ -5876,7 +5885,11 @@
+@@ -5876,5 +5885,9 @@
      check_builtin sem_timedwait semaphore.h "sem *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
-
+ 
  enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
 -enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 +if enabled debug_configure; then
