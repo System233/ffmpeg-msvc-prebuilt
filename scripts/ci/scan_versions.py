@@ -9,7 +9,9 @@ Supports two operating modes:
     objects for each changed version, or an empty array.
 
 ``all``
-    Run ``ffport.py list`` to enumerate every available version YAML.
+    Run ``ffport.py list`` to enumerate every available version YAML, then
+    check each version against the data branch.  Versions whose 24 variants
+    (triplet × license × linkage) are all already built are excluded.
     Outputs a JSON array of ``{"version": …}`` objects.
 
 Usage::
@@ -59,22 +61,55 @@ def run_push(base: str, head: str) -> list[dict[str, str]]:
 
 
 def run_all() -> list[dict[str, str]]:
-    """Run ffport.py list and return a version object for every line of output."""
-    result = subprocess.run(
+    """List all versions and filter to only those needing at least one build."""
+    list_result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "ffport.py"), "list"],
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
     )
-    if result.returncode != 0:
-        print(f"error: ffport.py list failed:\n{result.stderr}", file=sys.stderr)
-        raise SystemExit(result.returncode)
+    if list_result.returncode != 0:
+        print(f"error: ffport.py list failed:\n{list_result.stderr}", file=sys.stderr)
+        raise SystemExit(list_result.returncode)
+
+    all_versions = [
+        line.strip() for line in list_result.stdout.splitlines() if line.strip()
+    ]
+
+    # Fetch data branch once — shared across all version checks
+    subprocess.run(["git", "fetch", "origin", "data"],
+                   cwd=REPO_ROOT, capture_output=True)
+
+    scan_script = str(REPO_ROOT / "scripts" / "ci" / "scan_variants.py")
 
     versions: list[dict[str, str]] = []
-    for line in result.stdout.splitlines():
-        stripped = line.strip()
-        if stripped:
-            versions.append({"version": stripped})
+    for ver in all_versions:
+        rev_result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "ffport.py"),
+             "get-revision", ver],
+            capture_output=True, text=True, cwd=str(REPO_ROOT),
+        )
+        rev = rev_result.stdout.strip() if rev_result.returncode == 0 else "0"
+
+        scan_result = subprocess.run(
+            [sys.executable, scan_script, "--ver", ver, "--rev", rev],
+            capture_output=True, text=True, cwd=str(REPO_ROOT),
+        )
+        if scan_result.returncode != 0:
+            print(f"WARNING: scan_variants failed for {ver}, including anyway",
+                  file=sys.stderr)
+            versions.append({"version": ver})
+            continue
+
+        data = json.loads(scan_result.stdout)
+        if data.get("matrix"):
+            print(f"INCLUDE: {ver} ({len(data['matrix'])} variant(s) to build)",
+                  file=sys.stderr)
+            versions.append({"version": ver})
+        else:
+            print(f"SKIP: {ver} (all variants already built)", file=sys.stderr)
+
+    print(f"Versions to build: {len(versions)}", file=sys.stderr)
     return versions
 
 
