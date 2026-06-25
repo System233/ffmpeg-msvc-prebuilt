@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn, Sequence
 
-from bump_revision import bump
+RE_REVISION = re.compile(r"^(revision:\s*)(\d+)", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
 # Allowed scope patterns (mirrors check_allowed_files.py)
@@ -113,8 +113,17 @@ def _apply_patch(
 # ---------------------------------------------------------------------------
 
 
-def _bump_revision(yaml_name: str) -> None:
-    """Bump the revision field in ``ffmpeg/{yaml_name}.yaml`` (best-effort)."""
+def _bump_revision(yaml_name: str, base_revision: str) -> None:
+    """Bump the revision field based on *base_revision* (value from base branch).
+
+    Reads the YAML file from the working tree and sets its revision to
+    ``base_revision + 1`` regardless of what the agent may have left in the
+    file.
+    """
+    if not base_revision:
+        print("::warning::No base revision provided; skipping revision bump")
+        return
+
     yaml_path = Path(f"ffmpeg/{yaml_name}.yaml")
     if not yaml_path.exists():
         print(
@@ -122,8 +131,16 @@ def _bump_revision(yaml_name: str) -> None:
         )
         return
 
-    old_rev, new_rev = bump(yaml_path)
-    print(f"Bumped revision: {old_rev} -> {new_rev}")
+    base_rev = int(base_revision)
+    new_rev = base_rev + 1
+
+    content = yaml_path.read_text(encoding="utf-8")
+    new_content = RE_REVISION.sub(
+        lambda match: f"{match.group(1)}{new_rev}", content, count=1
+    )
+    yaml_path.write_text(new_content, encoding="utf-8")
+
+    print(f"Bumped revision: {base_rev} -> {new_rev}")
 
     subprocess.run(["git", "add", str(yaml_path)], check=True)
     subprocess.run(["git", "commit", "-m", f"fix({yaml_name}): bump revision to {new_rev}"], check=True)
@@ -134,6 +151,7 @@ def _push_and_pr(
     branch: str,
     yaml_name: str,
     bump_revision_flag: bool,
+    base_revision: str,
     pr_number: str,
     fix_report_dir: str,
     github_repository: str,
@@ -149,7 +167,7 @@ def _push_and_pr(
 
     # -- bump revision (optional) --
     if bump_revision_flag and yaml_name:
-        _bump_revision(yaml_name)
+        _bump_revision(yaml_name, base_revision)
 
     # -- pull with rebase before push (push mode only, best-effort) --
     if action == "push":
@@ -283,6 +301,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Bump revision after applying patch.",
     )
     parser.add_argument(
+        "--base-revision",
+        default="",
+        help="Base revision to bump from (required when --bump-revision is set).",
+    )
+    parser.add_argument(
         "--pr-number",
         default="",
         help="Existing PR number to update (used with --action=push).",
@@ -322,6 +345,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         branch=args.branch,
         yaml_name=args.yaml,
         bump_revision_flag=args.bump_revision,
+        base_revision=args.base_revision,
         pr_number=args.pr_number,
         fix_report_dir=fix_report_dir,
         github_repository=github_repository,
