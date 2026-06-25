@@ -37,3 +37,4 @@ patches:
   - 8.x/0048-backport-23039.patch
   - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
   - 8.x/0051-lensfun-configure-fix-8.x.patch
+  - 8.x/0055-fix-graph-resources-dir-8.x.patch
