@@ -202,7 +202,7 @@ jobs:
         if: failure() && steps.dl-check.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: build-logs-dl-seed
+          name: build-logs-${{ inputs.yaml }}-dl-seed
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
@@ -319,7 +319,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: build-logs-seed-${{ matrix.triplet }}
+          name: build-logs-${{ inputs.yaml }}-seed-${{ matrix.triplet }}
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
@@ -451,7 +451,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: build-logs-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          name: build-logs-${{ inputs.yaml }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err

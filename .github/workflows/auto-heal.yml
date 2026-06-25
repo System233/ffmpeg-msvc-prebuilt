@@ -71,6 +71,7 @@ jobs:
       base_ref: ${{ steps.decide.outputs.base_ref }}
       head_sha: ${{ steps.decide.outputs.head_sha }}
       head_ref: ${{ steps.decide.outputs.head_ref }}
+      base_revision: ${{ steps.decide.outputs.base_revision }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -154,7 +155,7 @@ jobs:
         with:
           run-id: ${{ needs.check.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: build-logs-*
+          pattern: build-logs-${{ inputs.yaml }}-*
           path: error_logs
 
       - uses: ./.github/actions/setup-python
@@ -275,4 +276,5 @@ jobs:
             --bot-user-id "${{ steps.bot-user.outputs.user-id }}" \
             --yaml "${{ inputs.yaml }}" \
             ${{ needs.check.outputs.bump_revision == 'true' && '--bump-revision' || '' }} \
+            ${{ needs.check.outputs.bump_revision == 'true' && format('--base-revision {0}', needs.check.outputs.base_revision) || '' }} \
             --pr-number "${{ needs.check.outputs.pr_number }}"

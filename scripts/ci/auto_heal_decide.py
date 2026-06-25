@@ -142,6 +142,7 @@ def decide(args: argparse.Namespace) -> dict:
     base_sha = ""
     head_sha = ""
     head_ref = ""
+    rev = None
 
     if pr_number:
         # ── PR Build failure ────────────────────────────────────────────
@@ -208,6 +209,7 @@ def decide(args: argparse.Namespace) -> dict:
         "base_ref": base_ref,
         "head_sha": head_sha,
         "head_ref": head_ref,
+        "base_revision": str(rev) if rev is not None else "",
     }
 
 

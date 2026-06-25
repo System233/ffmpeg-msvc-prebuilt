@@ -294,6 +294,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=False,
+            base_revision="",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -351,6 +352,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=False,
+            base_revision="",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -401,6 +403,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=False,
+            base_revision="",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -449,6 +452,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=False,
+            base_revision="",
             pr_number="42",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -495,6 +499,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=False,
+            base_revision="",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -517,15 +522,17 @@ class TestPushAndPr(unittest.TestCase):
                 args[0] == "gh", f"Unexpected gh call: {args}"
             )
 
-    # -- 9. bump_revision=True → bump_revision.bump called ----------------
+    # -- 9. bump_revision=True → _bump_revision called with base_revision ---
 
     @patch.object(Path, "exists", return_value=True)  # YAML exists
-    @patch("apply_fix.bump", return_value=(5, 6))
+    @patch.object(Path, "read_text", return_value="revision: 5\n")
+    @patch.object(Path, "write_text")
     @patch("apply_fix.subprocess.run")
     def test_bump_revision_called(
         self,
         mock_run: MagicMock,
-        mock_bump: MagicMock,
+        mock_write_text: MagicMock,
+        mock_read_text: MagicMock,
         _mock_exists: MagicMock,
     ) -> None:
         commit_msg = "fix: apply auto-heal"
@@ -540,13 +547,15 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=True,
+            base_revision="5",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
         )
 
-        # Verify bump was called with the correct Path
-        mock_bump.assert_called_once_with(Path(f"ffmpeg/{self._yaml}.yaml"))
+        # Verify write_text was called with updated revision
+        args, kwargs = mock_write_text.call_args
+        self.assertIn("revision: 6", args[0])
 
         # Verify git add and commit (use platform-native paths)
         mock_run.assert_any_call(
@@ -575,6 +584,7 @@ class TestPushAndPr(unittest.TestCase):
             branch=self._branch,
             yaml_name=self._yaml,
             bump_revision_flag=True,
+            base_revision="5",
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
@@ -596,17 +606,22 @@ class TestBumpRevision(unittest.TestCase):
     """Tests for the ``_bump_revision`` function."""
 
     @patch.object(Path, "exists", return_value=True)
-    @patch("apply_fix.bump", return_value=(3, 4))
+    @patch.object(Path, "read_text", return_value="revision: 3\n")
+    @patch.object(Path, "write_text")
     @patch("apply_fix.subprocess.run")
     def test_bump_adds_and_commits(
         self,
         mock_run: MagicMock,
-        mock_bump: MagicMock,
+        mock_write_text: MagicMock,
+        mock_read_text: MagicMock,
         _mock_exists: MagicMock,
     ) -> None:
-        _bump_revision("master")
+        _bump_revision("master", "3")
 
-        mock_bump.assert_called_once_with(Path("ffmpeg/master.yaml"))
+        # Verify write_text was called with updated revision
+        args, kwargs = mock_write_text.call_args
+        self.assertIn("revision: 4", args[0])
+
         mock_run.assert_any_call(
             ["git", "add", _plat("ffmpeg/master.yaml")], check=True
         )
@@ -621,7 +636,7 @@ class TestBumpRevision(unittest.TestCase):
         mock_run: MagicMock,
         _mock_exists: MagicMock,
     ) -> None:
-        _bump_revision("nonexistent")
+        _bump_revision("nonexistent", "3")
 
         # No git 'add' commands should have been called
         add_calls = [
@@ -683,6 +698,7 @@ class TestFullFlow(unittest.TestCase):
             branch="fix/branch",
             yaml_name="8.1.1",
             bump_revision_flag=False,
+            base_revision="",
             pr_number="",
             fix_report_dir="fix-report",
             github_repository="owner/repo",

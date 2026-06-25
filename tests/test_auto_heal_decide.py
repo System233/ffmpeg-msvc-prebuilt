@@ -149,6 +149,7 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["pr_number"], "42")
         self.assertEqual(result["pr_author"], "testuser")
         self.assertEqual(result["skip"], "false")
+        self.assertEqual(result["base_revision"], "")
         mock_gh_api.assert_called_once_with("repos/owner/repo/pulls/42")
 
     # ── Scenario 2: YAML provided, no existing remote branch ─────────────
@@ -167,6 +168,7 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["branch"], "fix/ffmpeg-8.1.1-r3")
         self.assertEqual(result["bump_revision"], "true")
         self.assertEqual(result["checkout_ref"], "main")
+        self.assertEqual(result["base_revision"], "2")
 
     # ── Scenario 3: YAML provided, existing remote branch + open PR ──────
 
@@ -215,6 +217,7 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["branch"], "fix/ffmpeg-master")
         self.assertEqual(result["bump_revision"], "false")
         self.assertEqual(result["action"], "pr")
+        self.assertEqual(result["base_revision"], "")
 
     # ── Scenario 6: workflow_dispatch (no PR number or yaml) ─────────────
 
@@ -239,6 +242,7 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["checkout_ref"], "fix/something")
         self.assertEqual(result["branch"], "fix/something")
         self.assertEqual(result["pr_author"], "devuser")
+        self.assertEqual(result["base_revision"], "")
         self.assertEqual(mock_gh_api.call_count, 2)
 
 
