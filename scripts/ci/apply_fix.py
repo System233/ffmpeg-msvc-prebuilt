@@ -169,10 +169,10 @@ def _push_and_pr(
     if bump_revision_flag and yaml_name:
         _bump_revision(yaml_name, base_revision)
 
-    # -- pull with rebase before push (push mode only, best-effort) --
+    # -- rebase onto latest main before push (push mode only) --
     if action == "push":
-        print("==> Pulling with rebase before push (action=push)")
-        subprocess.run(["git", "pull", "--rebase", "origin", branch])
+        print("==> Rebasing onto latest main before push (action=push)")
+        subprocess.run(["git", "pull", "--rebase", "origin", "main"])
 
     # -- push to branch --
     print(f"==> Pushing to origin HEAD:{branch}")
