@@ -4,6 +4,7 @@ source:
   method: git
   repo: ffmpeg/ffmpeg
   ref: "n${VERSION}"
+  sha512: 0e1ba72f57992fb3b38b0d6377182c4730e266bf78b2ac0720febfe000afdce66d6d621d305726a70474c03cf50041e6066a270b87b7ab086c54f7351b713a89
 
 dep_overrides:
   nvcodec: "ffnvcodec-11"
