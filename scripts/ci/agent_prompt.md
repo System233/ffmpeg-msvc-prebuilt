@@ -11,9 +11,8 @@
 - **关键**：你只能修复 `agent_context.json` 中 `target_yaml` 字段指定的版本！
 
 ## 约束
-- **只修复 `agent_context.json` 中 `target_yaml` 指向的版本对应的 `ffmpeg/*.yaml`**
-- 只修改 `ffmpeg/*.yaml`
-- **禁止修改 `ffmpeg/base.yaml`**
+- **只修改 `ffmpeg/{target_yaml}.yaml`（来自 `agent_context.json` 的 `target_yaml` 字段）**
+- **禁止修改其他版本的 YAML 文件（如 `base.yaml`）**
 - 族 YAML（如 7.0.yaml、8.0.yaml）禁止修改 build.*、features.*、dep_overrides
 - 优先通过补丁修复：在 patches/{family}/ 搜索现有补丁
 - 修改前检查继承影响：grep -rl "extends: \"$(basename $file .yaml)\"" ffmpeg/

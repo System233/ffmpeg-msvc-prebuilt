@@ -24,27 +24,19 @@ from typing import NoReturn, Sequence
 
 RE_REVISION = re.compile(r"^(revision:\s*)(\d+)", re.MULTILINE)
 
-# ---------------------------------------------------------------------------
-# Allowed scope patterns (mirrors check_allowed_files.py)
-# ---------------------------------------------------------------------------
-
-ALLOWED: tuple[re.Pattern[str], ...] = (
-    re.compile(r"^ffmpeg/.*\.yaml$"),
-    re.compile(r"^patches/.*\.patch$"),
-)
-OPENCODE_PREFIX: str = ".opencode/"
-
-
-def _is_violation(filename: str) -> bool:
-    """Return ``True`` if *filename* is **not** within the allowed scope."""
-    if filename.startswith(OPENCODE_PREFIX):
-        return False
-    return not any(p.search(filename) for p in ALLOWED)
+from _allowed import find_violations
 
 
 # ---------------------------------------------------------------------------
 # Phase 1: apply patch
 # ---------------------------------------------------------------------------
+
+
+def _make_body(body_path: Path | None, run_id: str) -> str:
+    """Read body from file (if exists) and append run_id footer."""
+    content = body_path.read_text(encoding="utf-8") if body_path and body_path.is_file() else ""
+    footer = f"\n---\nTriggered by auto-heal run: #{run_id}"
+    return content + footer
 
 
 def _apply_patch(
@@ -96,7 +88,7 @@ def _apply_patch(
         text=True,
     )
     changed_files = [f for f in result.stdout.strip().split("\n") if f]
-    violations = [f for f in changed_files if _is_violation(f)]
+    violations = find_violations(changed_files)
 
     if violations:
         print("::error::Agent modified files outside allowed scope:")
@@ -159,6 +151,7 @@ def _push_and_pr(
     pr_number: str,
     fix_report_dir: str,
     github_repository: str,
+    run_id: str,
 ) -> None:
     """Push changes and handle PR creation/update."""
     # -- extract commit message --
@@ -185,9 +178,9 @@ def _push_and_pr(
 
     # -- PR operations --
     if action == "pr":
-        _create_pr(agent_title, yaml_name, branch, fix_report_dir, github_repository)
+        _create_pr(agent_title, yaml_name, branch, fix_report_dir, github_repository, run_id)
     elif action == "push" and pr_number:
-        _edit_pr(agent_title, pr_number, fix_report_dir, github_repository)
+        _edit_pr(agent_title, pr_number, fix_report_dir, github_repository, run_id)
 
 
 def _create_pr(
@@ -196,6 +189,7 @@ def _create_pr(
     branch: str,
     fix_report_dir: str,
     github_repository: str,
+    run_id: str,
 ) -> None:
     """Create a new PR and enable auto-merge."""
     print("==> Creating PR")
@@ -204,6 +198,7 @@ def _create_pr(
         agent_title = f"fix({yaml_name}): auto-fix build failure"
 
     body_file = Path(fix_report_dir) / "fix_report.md"
+    body = _make_body(body_file, run_id)
     cmd = [
         "gh",
         "pr",
@@ -216,11 +211,9 @@ def _create_pr(
         agent_title,
         "--repo",
         github_repository,
+        "--body",
+        body,
     ]
-    if body_file.exists():
-        cmd.extend(["--body-file", str(body_file)])
-    else:
-        print(f"::notice::No fix report found at {body_file}; using empty body")
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -248,11 +241,13 @@ def _edit_pr(
     pr_number: str,
     fix_report_dir: str,
     github_repository: str,
+    run_id: str,
 ) -> None:
     """Update an existing PR's title and body."""
     print(f"==> Updating existing PR #{pr_number}")
 
     body_file = Path(fix_report_dir) / "fix_report.md"
+    body = _make_body(body_file, run_id)
     cmd = [
         "gh",
         "pr",
@@ -262,9 +257,9 @@ def _edit_pr(
         agent_title or "",
         "--repo",
         github_repository,
+        "--body",
+        body,
     ]
-    if body_file.exists():
-        cmd.extend(["--body-file", str(body_file)])
 
     subprocess.run(cmd)
 
@@ -315,6 +310,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="",
         help="Existing PR number to update (used with --action=push).",
     )
+    parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Auto-heal workflow run ID (appended to PR body for traceability).",
+    )
     return parser.parse_args(argv)
 
 
@@ -354,6 +354,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         pr_number=args.pr_number,
         fix_report_dir=fix_report_dir,
         github_repository=github_repository,
+        run_id=args.run_id,
     )
 
 

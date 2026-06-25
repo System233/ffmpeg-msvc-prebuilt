@@ -11,9 +11,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
 from apply_fix import (
     _apply_patch,
     _bump_revision,
-    _is_violation,
+    _make_body,
     _push_and_pr,
 )
+from _allowed import find_violations
+
+
+def _is_violation(filename: str) -> bool:
+    """Helper: wraps find_violations to return bool for a single file."""
+    return bool(find_violations([filename]))
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +56,10 @@ def _git_log_cmd() -> list[str]:
     return ["git", "log", "-1", "--format=%s", "HEAD"]
 
 
+RUN_ID = "999"
+BODY_FOOTER = f"\n---\nTriggered by auto-heal run: #{RUN_ID}"
+
+
 # ---------------------------------------------------------------------------
 # _is_violation
 # ---------------------------------------------------------------------------
@@ -70,11 +80,11 @@ class TestIsViolation(unittest.TestCase):
     def test_patches_nested_patch_allowed(self) -> None:
         self.assertFalse(_is_violation("patches/8.x/001/0001-foo.patch"))
 
-    def test_opencode_allowed(self) -> None:
-        self.assertFalse(_is_violation(".opencode/skills/auto-heal/SKILL.md"))
+    def test_opencode_violation(self) -> None:
+        self.assertTrue(_is_violation(".opencode/skills/auto-heal/SKILL.md"))
 
-    def test_opencode_config_allowed(self) -> None:
-        self.assertFalse(_is_violation(".opencode/config.json"))
+    def test_opencode_config_violation(self) -> None:
+        self.assertTrue(_is_violation(".opencode/config.json"))
 
     def test_scripts_py_violation(self) -> None:
         self.assertTrue(_is_violation("scripts/ci/foo.py"))
@@ -138,7 +148,7 @@ class TestApplyPatch(unittest.TestCase):
         mock_run.side_effect = lambda args, **kwargs: (
             _ok()
             if args == _git_am_cmd(ANY)
-            else _ok("ffmpeg/8.1.1.yaml\n.opencode/skills/auto-heal/SKILL.md\n")
+            else _ok("ffmpeg/8.1.1.yaml\n")
             if args == _git_diff_cmd()
             else _ok()
         )
@@ -191,12 +201,12 @@ class TestApplyPatch(unittest.TestCase):
             ["git", "reset", "--hard", "HEAD~1"], capture_output=True, text=True
         )
 
-    # -- 4. Mixed scope with .opencode/ → allowed -------------------------
+    # -- 4. Mixed scope with .opencode/ → violation now --------------------
 
     @patch("apply_fix.subprocess.run")
     @patch.object(Path, "is_dir", return_value=True)
     @patch.object(Path, "glob")
-    def test_opencode_files_not_violations(
+    def test_opencode_files_violation(
         self,
         mock_glob: MagicMock,
         _mock_is_dir: MagicMock,
@@ -212,14 +222,15 @@ class TestApplyPatch(unittest.TestCase):
             else _ok()
         )
 
-        # Should not raise
-        _apply_patch(
-            self._patch_dir,
-            self._bot_name,
-            self._bot_id,
-            self._token,
-            self._repo,
-        )
+        # Should exit 1 (opencode files are now violations)
+        with self.assertRaises(SystemExit) as ctx:
+            _apply_patch(
+                self._patch_dir,
+                self._bot_name,
+                self._bot_id,
+                self._token,
+                self._repo,
+            )
 
     # -- 5. git am fails → exit 1 ----------------------------------------
 
@@ -270,12 +281,10 @@ class TestPushAndPr(unittest.TestCase):
 
     # -- 6. ACTION=pr: gh pr create + gh pr merge called correctly --------
 
-    @patch.object(Path, "exists", return_value=False)  # no body file
     @patch("apply_fix.subprocess.run")
     def test_action_pr_creates_and_merges(
         self,
         mock_run: MagicMock,
-        _mock_exists: MagicMock,
     ) -> None:
         commit_msg = "fix(8.1.1): auto-fix build failure"
 
@@ -298,14 +307,15 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
         # Verify git push
         mock_run.assert_any_call(
-            ["git", "push", "origin", f"HEAD:{self._branch}"], check=True
+            ["git", "push", "--force-with-lease", "origin", f"HEAD:{self._branch}"], check=True
         )
 
-        # Verify gh pr create with correct args (no --body-file)
+        # Verify gh pr create with correct args (no body file → body = footer only)
         mock_run.assert_any_call(
             [
                 "gh",
@@ -319,10 +329,11 @@ class TestPushAndPr(unittest.TestCase):
                 commit_msg,
                 "--repo",
                 self._repo,
+                "--body",
+                BODY_FOOTER,
             ],
             capture_output=True,
             text=True,
-            
         )
 
         # Verify gh pr merge
@@ -332,12 +343,10 @@ class TestPushAndPr(unittest.TestCase):
 
     # -- 6b. ACTION=pr with empty commit message → fallback title ---------
 
-    @patch.object(Path, "exists", return_value=False)
     @patch("apply_fix.subprocess.run")
     def test_action_pr_fallback_title(
         self,
         mock_run: MagicMock,
-        _mock_exists: MagicMock,
     ) -> None:
         mock_run.side_effect = lambda args, **kwargs: (
             _ok("")
@@ -356,6 +365,7 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
         fallback_title = f"fix({self._yaml}): auto-fix build failure"
@@ -372,23 +382,28 @@ class TestPushAndPr(unittest.TestCase):
                 fallback_title,
                 "--repo",
                 self._repo,
+                "--body",
+                BODY_FOOTER,
             ],
             capture_output=True,
             text=True,
-            
         )
 
     # -- 6c. ACTION=pr with fix report body file --------------------------
 
-    @patch.object(Path, "exists", return_value=True)
+    BODY_CONTENT = "## Fix Summary\n- Root cause: test"
+    BODY_WITH_FOOTER = BODY_CONTENT + BODY_FOOTER
+
+    @patch.object(Path, "read_text", return_value=BODY_CONTENT)
+    @patch.object(Path, "is_file", return_value=True)
     @patch("apply_fix.subprocess.run")
     def test_action_pr_with_body_file(
         self,
         mock_run: MagicMock,
-        _mock_exists: MagicMock,
+        _mock_is_file: MagicMock,
+        _mock_read_text: MagicMock,
     ) -> None:
         commit_msg = "fix: apply auto-heal"
-        body_path = _plat(f"{self._fix_report}/fix_report.md")
 
         mock_run.side_effect = lambda args, **kwargs: (
             _ok(commit_msg)
@@ -407,9 +422,10 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
-        # --body-file should be present
+        # --body with content + run_id footer
         mock_run.assert_any_call(
             [
                 "gh",
@@ -423,25 +439,28 @@ class TestPushAndPr(unittest.TestCase):
                 commit_msg,
                 "--repo",
                 self._repo,
-                "--body-file",
-                body_path,
+                "--body",
+                self.BODY_WITH_FOOTER,
             ],
             capture_output=True,
             text=True,
-            
         )
 
     # -- 7. ACTION=push + PR_NUMBER: gh pr edit called --------------------
 
-    @patch.object(Path, "exists", return_value=True)  # body file exists
+    BODY_CONTENT = "## Fix Summary\n- Root cause: test"
+    BODY_WITH_FOOTER = BODY_CONTENT + BODY_FOOTER
+
+    @patch.object(Path, "read_text", return_value=BODY_CONTENT)
+    @patch.object(Path, "is_file", return_value=True)
     @patch("apply_fix.subprocess.run")
     def test_action_push_with_pr_number_edits(
         self,
         mock_run: MagicMock,
-        _mock_exists: MagicMock,
+        _mock_is_file: MagicMock,
+        _mock_read_text: MagicMock,
     ) -> None:
         commit_msg = "fix: update from auto-heal"
-        body_path = _plat(f"{self._fix_report}/fix_report.md")
 
         mock_run.side_effect = lambda args, **kwargs: (
             _ok(commit_msg) if args == _git_log_cmd() else _ok()
@@ -456,9 +475,10 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="42",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
-        # Verify gh pr edit was called with correct args
+        # Verify gh pr edit was called with --body (content + footer)
         mock_run.assert_any_call(
             [
                 "gh",
@@ -469,10 +489,9 @@ class TestPushAndPr(unittest.TestCase):
                 commit_msg,
                 "--repo",
                 self._repo,
-                "--body-file",
-                body_path,
+                "--body",
+                self.BODY_WITH_FOOTER,
             ],
-            
         )
 
         # Verify NO gh pr create or gh pr merge calls
@@ -503,11 +522,12 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
         # Verify git push
         mock_run.assert_any_call(
-            ["git", "push", "origin", f"HEAD:{self._branch}"], check=True
+            ["git", "push", "--force-with-lease", "origin", f"HEAD:{self._branch}"], check=True
         )
 
         # Verify git pull --rebase onto main (push mode)
@@ -551,6 +571,7 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
         # Verify write_text was called with updated revision
@@ -588,6 +609,7 @@ class TestPushAndPr(unittest.TestCase):
             pr_number="",
             fix_report_dir=self._fix_report,
             github_repository=self._repo,
+            run_id=RUN_ID,
         )
 
         # git add/commit should NOT have been called for bump
@@ -676,7 +698,7 @@ class TestFullFlow(unittest.TestCase):
         mock_run.side_effect = lambda args, **kwargs: (
             _ok()
             if args == _git_am_cmd(ANY)
-            else _ok("ffmpeg/8.1.1.yaml\n.opencode/config.json\n")
+            else _ok("ffmpeg/8.1.1.yaml\n")
             if args == _git_diff_cmd()
             else _ok(commit_msg)
             if args == _git_log_cmd()
@@ -702,11 +724,12 @@ class TestFullFlow(unittest.TestCase):
             pr_number="",
             fix_report_dir="fix-report",
             github_repository="owner/repo",
+            run_id=RUN_ID,
         )
 
         # Verify push happened
         mock_run.assert_any_call(
-            ["git", "push", "origin", "HEAD:fix/branch"], check=True
+            ["git", "push", "--force-with-lease", "origin", "HEAD:fix/branch"], check=True
         )
 
     @patch("apply_fix.subprocess.run")
