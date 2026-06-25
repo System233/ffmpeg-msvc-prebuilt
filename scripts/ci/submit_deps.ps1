@@ -45,12 +45,14 @@ $features = if ($json.features) {
 }
 
 foreach ($triplet in $triplets) {
-    $featureArgs = $features | ForEach-Object { "--x-feature=$_" }
+    $allFeatures = $features -join ','
+    $portSpec = "ffmpeg-deps[$allFeatures]"
     Write-Output "Submitting dependency graph for $triplet..."
 
-    & $vcpkgExe install @featureArgs `
+    & $vcpkgExe install $portSpec `
         --triplet=$triplet `
         --dry-run `
+        --recurse `
         @installOptions
 
     if ($LASTEXITCODE -ne 0) {
