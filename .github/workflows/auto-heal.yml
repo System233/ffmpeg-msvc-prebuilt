@@ -77,160 +77,47 @@ jobs:
           fetch-depth: 0
 
       - name: Check build log artifacts exist
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const runId = parseInt('${{ inputs.run_id }}');
-            const artifacts = await github.paginate(
-              github.rest.actions.listWorkflowRunArtifacts,
-              { owner: context.repo.owner, repo: context.repo.repo, run_id: runId }
-            );
-            const hasBuildLogs = artifacts.some(a => a.name.startsWith('build-logs-'));
-            if (!hasBuildLogs) {
-              core.setFailed('No build log artifacts found — FFmpeg build never started, skipping auto-heal');
-            }
-
-      - name: Decide
-        id: decide
-        uses: actions/github-script@v9
+        run: |
+          artifacts=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ inputs.run_id }}/artifacts" --jq '.artifacts[] | select(.name | startswith("build-logs-")) | .name')
+          if [ -z "$artifacts" ]; then
+            echo "No build log artifacts found — FFmpeg build never started, skipping auto-heal"
+            exit 1
+          fi
         env:
-          INPUT_RUN_ID: ${{ inputs.run_id }}
-          INPUT_YAML: ${{ inputs.yaml }}
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-          INPUT_BASE_REF: ${{ inputs.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: ./.github/actions/setup-python
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const runId = process.env.INPUT_RUN_ID;
-            const yaml = process.env.INPUT_YAML;
-            let prNumber = process.env.INPUT_PR_NUMBER;
-            let baseRef = process.env.INPUT_BASE_REF;
+          requirements: 'requirements.txt'
 
-            let skip = 'false', action = '', branch = '', checkoutRef = '', bumpRevision = 'false';
-            let prAuthor = '', baseSha = '', headSha = '', headRef = '';
-
-            if (prNumber) {
-              // == PR Build failure: pr_number from caller =================
-              const pr = await github.rest.pulls.get({ owner, repo, pull_number: parseInt(prNumber) });
-              action = 'push';
-              branch = pr.data.head.ref;
-              checkoutRef = branch;
-              prAuthor = pr.data.user.login;
-              baseSha = pr.data.base.sha;
-              baseRef = pr.data.base.ref;
-              headSha = pr.data.head.sha;
-              headRef = pr.data.head.ref;
-              console.log(`push mode: branch ${branch}, PR #${prNumber}`);
-            } else if (yaml) {
-              // == Release/Master failure ================================
-              const yamlPath = `ffmpeg/${yaml}.yaml`;
-              const fs = require('fs');
-              const content = fs.readFileSync(yamlPath, 'utf-8');
-              const revMatch = content.match(/^revision:\s*(\d+)/m);
-              const rev = revMatch ? parseInt(revMatch[1]) : null;
-
-              const branchName = rev !== null
-                ? `fix/ffmpeg-${yaml}-r${rev + 1}`
-                : `fix/ffmpeg-${yaml}`;
-              bumpRevision = rev !== null ? 'true' : 'false';
-              action = 'pr';
-              branch = branchName;
-              checkoutRef = 'main';
-              baseRef = baseRef || 'main';
-
-              const { execSync } = require('child_process');
-              const exists = execSync(`git ls-remote --heads origin "${branchName}"`, { encoding: 'utf-8' }).trim();
-              if (exists) {
-                const prState = execSync(`gh pr list --head "${branchName}" --json state -q '.[0].state'`, { encoding: 'utf-8' }).trim();
-                if (prState === 'OPEN') {
-                  skip = 'true';
-                  console.log(`PR already open for ${branchName} — skipping`);
-                }
-              }
-              console.log(`pr mode: branch ${branchName}, bump ${bumpRevision}`);
-            } else {
-              // == workflow_dispatch =====================================
-              const run = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: parseInt(runId) });
-              prNumber = run.data.pull_requests[0]?.number;
-              if (!prNumber) {
-                core.setFailed(`Workflow run ${runId} has no associated PR`);
-                return;
-              }
-              const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-              action = 'push';
-              branch = pr.data.head.ref;
-              checkoutRef = branch;
-              prAuthor = pr.data.user.login;
-              baseSha = pr.data.base.sha;
-              baseRef = pr.data.base.ref;
-              headSha = pr.data.head.sha;
-              headRef = pr.data.head.ref;
-              console.log(`push mode: branch ${branch} (from PR #${prNumber})`);
-            }
-
-            core.setOutput('skip', skip);
-            core.setOutput('action', action);
-            core.setOutput('branch', branch);
-            core.setOutput('checkout_ref', checkoutRef);
-            core.setOutput('bump_revision', bumpRevision);
-            core.setOutput('run_id', runId);
-            core.setOutput('pr_number', prNumber.toString());
-            core.setOutput('pr_author', prAuthor);
-            core.setOutput('base_sha', baseSha);
-            core.setOutput('base_ref', baseRef);
-            core.setOutput('head_sha', headSha);
-            core.setOutput('head_ref', headRef);
+      - name: Decide strategy
+        id: decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_YAML: ${{ inputs.yaml }}
+          INPUT_PR: ${{ inputs.pr_number }}
+          INPUT_BASE_REF: ${{ inputs.base_ref }}
+        run: |
+          ARGS=(--run-id "${{ inputs.run_id }}")
+          [ -n "$INPUT_YAML" ] && ARGS+=(--yaml "$INPUT_YAML")
+          [ -n "$INPUT_PR" ] && ARGS+=(--pr-number "$INPUT_PR")
+          JSON=$(python scripts/ci/auto_heal_decide.py "${ARGS[@]}" --base-ref "$INPUT_BASE_REF")
+          echo "$JSON" | python scripts/ci/json_to_github_output.py
 
       - name: Check PR Author Authorization
         if: steps.decide.outputs.action == 'push'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const author = '${{ steps.decide.outputs.pr_author }}';
-            const BOT_USERS = ['github-actions[bot]', 'ffmpeg-dev[bot]'];
-            if (BOT_USERS.includes(author)) {
-              console.log(`Authorized: ${author} (project automation bot)`);
-              return;
-            }
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            try {
-              const perm = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: author });
-              const level = perm.data.permission;
-              if (level === 'admin' || level === 'write') {
-                console.log(`Authorized: ${author} (${level} access)`);
-              } else {
-                core.setFailed(`PR author "${author}" has ${level} access. Only collaborators with admin/write permission or bot users are allowed.`);
-              }
-            } catch (err) {
-              if (err.status === 404) {
-                core.setFailed(`PR author "${author}" is not a collaborator. Auto-heal is restricted to maintainers and bot users.`);
-              } else throw err;
-            }
+        run: python scripts/ci/check_pr_author.py --author "${{ steps.decide.outputs.pr_author }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Check only allowed files modified
         if: steps.decide.outputs.action == 'push'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const base = '${{ steps.decide.outputs.base_sha }}';
-            const head = '${{ steps.decide.outputs.head_sha }}';
-            const { data } = await github.rest.repos.compareCommits({
-              owner: context.repo.owner, repo: context.repo.repo, base, head
-            });
-            const ALLOWED = [/^ffmpeg\/.*\.yaml$/, /^patches\/.*\.patch$/];
-            const violations = data.files
-              .filter(f => !ALLOWED.some(p => p.test(f.filename)))
-              .filter(f => !f.filename.startsWith('.opencode/'))
-              .map(f => f.filename);
-            if (violations.length > 0) {
-              console.log('PR modifies files outside allowed scope:');
-              violations.forEach(f => console.log(`  ${f}`));
-              core.setFailed('Auto-heal refused: PR modifies files outside ffmpeg/*.yaml and patches/*.x/*.patch');
-            } else {
-              console.log('All changed files are within allowed scope.');
-            }
+        run: |
+          python scripts/ci/check_allowed_files.py \
+            --base "${{ steps.decide.outputs.base_sha }}" \
+            --head "${{ steps.decide.outputs.head_sha }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   # == Job 1: Diagnose + fix + commit locally ==============================
   agent-repair:
@@ -270,59 +157,22 @@ jobs:
           pattern: build-logs-*
           path: error_logs
 
-      - name: Generate Agent Context
-        uses: actions/github-script@v9
-        id: context
+      - uses: ./.github/actions/setup-python
         with:
-          script: |
-            const runId = parseInt('${{ needs.check.outputs.run_id }}');
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const prNumber = '${{ needs.check.outputs.pr_number }}' || null;
-            const { execSync } = require('child_process');
-            const fs = require('fs');
-            const baseSha = '${{ needs.check.outputs.base_sha }}';
+          requirements: 'requirements.txt'
 
-            const jobs = await github.rest.actions.listJobsForWorkflowRun({
-              owner, repo, run_id: runId
-            });
-
-            const failedJobNames = jobs.data.jobs
-              .filter(j => j.conclusion === 'failure')
-              .map(j => j.name);
-
-            fs.writeFileSync('failed_steps_hint.txt', failedJobNames.join('\n'));
-
-            let newPatches = [];
-            if (baseSha) {
-              const diff = execSync(
-                `git diff --name-only --diff-filter=A ${baseSha}..HEAD -- patches/`,
-                { encoding: 'utf-8' }
-              ).trim();
-              newPatches = diff ? diff.split('\n') : [];
-            }
-            console.log('New patches:', newPatches);
-
-            const contextPayload = {
-              pr_number: prNumber ? parseInt(prNumber) : null,
-              base_branch: '${{ needs.check.outputs.base_ref }}',
-              base_sha: baseSha || '',
-              head_branch: '${{ needs.check.outputs.head_ref }}',
-              head_sha: '${{ needs.check.outputs.head_sha }}',
-              workflow_run_id: runId,
-              workflow_url: `https://github.com/${owner}/${repo}/actions/runs/${runId}`,
-              failed_jobs: failedJobNames,
-              new_patches: newPatches,
-              log_directory: './error_logs',
-              hint_file: './failed_steps_hint.txt',
-              trigger: '${{ env.TRIGGER }}'
-            };
-
-            fs.writeFileSync('agent_context.json', JSON.stringify(contextPayload, null, 2));
-            console.log("Agent context generated.");
-
-      - name: Install Dependencies
-        run: pip install -r requirements.txt
+      - name: Generate Agent Context
+        run: |
+          python scripts/ci/auto_heal_context.py \
+            --run-id "${{ needs.check.outputs.run_id }}" \
+            --pr-number "${{ needs.check.outputs.pr_number }}" \
+            --base-sha "${{ needs.check.outputs.base_sha }}" \
+            --base-ref "${{ needs.check.outputs.base_ref }}" \
+            --head-branch "${{ needs.check.outputs.head_ref }}" \
+            --head-sha "${{ needs.check.outputs.head_sha }}" \
+            --trigger "${{ env.TRIGGER }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Fetch .opencode from opencode branch
         run: |
@@ -341,146 +191,17 @@ jobs:
           chmod 755 "$HOME/.opencode/bin/opencode"
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
 
-      - name: Write agent prompt
-        run: |
-          cat > prompt.txt <<'PROMPT_EOF'
-          你是 ffmpeg-msvc-prebuilt 项目的全自动修复 Agent。CI 构建失败了。
-
-          ## 知识来源
-          诊断知识库位于 `.opencode/skills/auto-heal/SKILL.md`，包含完整的决策树、修复策略和引用文件表。
-          第一步：先读取 SKILL.md，理解决策树和各文件的用途。
-
-          ## 上下文
-          - `agent_context.json` — PR 编号、失败的 Job 列表、日志路径
-          - `failed_steps_hint.txt` — 失败的 Job 名称
-          - `error_logs/build-logs-{triplet}-{license}-{linkage}/` — 构建日志目录
-
-           ## 约束
-           - 只修改 `ffmpeg/*.yaml`
-           - **禁止修改 `ffmpeg/base.yaml`**
-           - 族 YAML（如 7.0.yaml、8.0.yaml）禁止修改 build.*、features.*、dep_overrides
-           - 优先通过补丁修复：在 patches/{family}/ 搜索现有补丁
-           - 修改前检查继承影响：grep -rl "extends: \"$(basename $file .yaml)\"" ffmpeg/
-           - patches 规则：
-             - `agent_context.json` 的 `new_patches` 字段列出的是本 PR 新增的 patch，可以修改或删除
-             - 不在 `new_patches` 中的 patch 是 main 分支已有的，禁止修改
-             - 需要修正时应修改已有的 PR patch，而非重复新增
-           - 禁止修改 `scripts/` `ports/` `.github/` `data/` `web/` `build/`
-           - 禁止运行 `vcpkg install`
-           - 大文件用 grep/tail，禁止完整读取
-
-           ## 任务
-           1. 读取 `agent_context.json` → 确定哪些矩阵变体失败
-           2. 读取 `.opencode/skills/auto-heal/SKILL.md` → 获取诊断知识
-           3. 在 `error_logs/` 下找到对应日志目录 → 按 SKILL 的决策树分析根因
-           4. 修改 `ffmpeg/*.yaml` 或 patches 修复（new_patches 中的可修改，其余的仅可移除或新增）
-           5. 验证：
-              - 改 YAML → `python scripts/ffport.py generate <version>`
-              - 改 patch → `git apply --check` 按 YAML 顺序应用
-           6. 将修复摘要写入 `fix_report.md`：
-              ## Fix Summary
-              - Root cause: <一句话说明>
-              - Files changed:
-                - 列出修改的文件
-              - Verification: <验证命令的输出>
-           7. 验证通过后提交到本地仓库：
-              git add ffmpeg/ patches/
-              git commit -m "fix(<version>): <简短、描述性的消息>"
-              提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
-           8. 退出
-          PROMPT_EOF
-
       - name: Agent repair loop
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GIT_AUTHOR_NAME: "ffmpeg-dev[bot]"
           GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
-          set -euo pipefail
-          trap 'echo "::warning::Workflow cancelled by user, terminating..."; [ -n "$OC_PID" ] && kill "$OC_PID" 2>/dev/null; exit 1' SIGTERM SIGINT
-
-          git config --global user.name "ffmpeg-dev[bot]"
-          git config --global user.email "ffmpeg-dev[bot]@users.noreply.github.com"
-
-          BASE_SHA="${{ needs.check.outputs.base_sha }}"
-          [ -z "$BASE_SHA" ] && BASE_SHA="$(git rev-parse HEAD)"
-          attempt=0
-
-          while [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; do
-            attempt=$((attempt + 1))
-            echo "=== Agent repair attempt $attempt/$MAX_RETRY_ATTEMPTS ==="
-
-            git reset --hard "$BASE_SHA"
-
-            if [ -f feedback.txt ]; then
-              cat feedback.txt >> prompt.txt
-            fi
-
-            opencode run --model "deepseek/deepseek-v4-flash" \
-              --dangerously-skip-permissions \
-              "$(cat prompt.txt)" &
-            OC_PID=$!
-            wait "$OC_PID" || { rc=$?; echo "::warning::opencode failed (exit $rc)"; continue; }
-
-            if ! git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
-              echo "No changes on attempt $attempt"
-              break
-            fi
-
-            COMMIT_COUNT=$(git rev-list --count "${BASE_SHA}..HEAD")
-            if [ "$COMMIT_COUNT" -gt 1 ]; then
-              echo "Squashing $COMMIT_COUNT commits into one"
-              MSG=$(git log --format=%s -1 "${BASE_SHA}..HEAD")
-              git reset --soft "$BASE_SHA"
-              git commit -m "$MSG"
-            fi
-
-            mkdir -p patch-output
-            git format-patch -1 HEAD -o patch-output
-            PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
-            [ -z "$PATCH" ] && continue
-
-            FILES=$(git diff HEAD~1..HEAD --name-only)
-            VIOLATIONS=$(echo "$FILES" \
-              | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
-              | grep -vE '^\.opencode/' || true)
-
-            if [ -n "$VIOLATIONS" ]; then
-              echo "::warning::Scope violation on attempt $attempt:"
-              echo "$VIOLATIONS" | while IFS= read -r f; do
-                echo "::warning::  $f"
-              done
-              if [ "$attempt" -lt "$MAX_RETRY_ATTEMPTS" ]; then
-                {
-                  echo ""
-                  echo "## 第 ${attempt} 次尝试反馈"
-                  echo "违反了范围约束，修改了以下禁止文件："
-                  echo "$VIOLATIONS" | sed 's/^/- /'
-                  echo ""
-                  echo "你只能修改 ffmpeg/*.yaml 和 patches/*.patch 文件（仅限 new_patches 中的 patch）。"
-                } > feedback.txt
-                continue
-              fi
-            else
-              echo "All checks passed on attempt $attempt"
-              break
-            fi
-          done
-
-          if [ "$attempt" -ge "$MAX_RETRY_ATTEMPTS" ]; then
-            if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
-              PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1)
-              if [ -n "$PATCH" ]; then
-                FILES=$(git diff HEAD~1..HEAD --name-only)
-                VIOLATIONS=$(echo "$FILES" \
-                  | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
-                  | grep -vE '^\.opencode/' || true)
-                [ -z "$VIOLATIONS" ] && exit 0
-              fi
-            fi
-            echo "::error::Max retries exhausted with violations"
-            exit 1
-          fi
+          python scripts/ci/agent_repair.py \
+            --base-sha "${{ needs.check.outputs.base_sha }}" \
+            --max-retries 3 \
+            --prompt-file scripts/ci/agent_prompt.md \
+            --feedback-file scripts/ci/agent_feedback.md
 
       - name: Upload patch artifact
         uses: actions/upload-artifact@v6
@@ -543,99 +264,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Apply patch
-        env:
-          TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
-          if [ -z "$PATCH" ]; then
-            echo "No patch found. Agent made no changes."
-            exit 0
-          fi
-
-          git config --global user.name "ffmpeg-dev[bot]"
-          git config --global user.email "${{ steps.bot-user.outputs.user-id }}+ffmpeg-dev[bot]@users.noreply.github.com"
-
-          git remote set-url origin \
-            "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}"
-
-          git am "$PATCH"
-
-          VIOLATIONS=$(git diff HEAD~1..HEAD --name-only \
-            | grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$' \
-            | grep -vE '^\.opencode/' || true)
-          if [ -n "$VIOLATIONS" ]; then
-            echo "::error::Agent modified files outside allowed scope:"
-            echo "$VIOLATIONS"
-            git reset --hard HEAD~1
-            exit 1
-          fi
-          echo "All modified files are within allowed scope."
-
-      - name: Extract agent commit message
-        id: agent-msg
-        run: |
-          PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
-          if [ -z "$PATCH" ]; then
-            echo "No patch found, skipping title extraction"
-            echo "title=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          AGENT_MSG=$(git log -1 --format=%s HEAD | tr '\n' ' ')
-          echo "title=${AGENT_MSG}" >> "$GITHUB_OUTPUT"
-
-      - name: Bump revision
-        if: needs.check.outputs.bump_revision == 'true'
-        run: |
-          YAML="${{ inputs.yaml }}"
-          YAML_PATH="ffmpeg/${YAML}.yaml"
-          REV=$(grep '^revision:' "$YAML_PATH" | awk '{print $2}')
-          NEW_REV=$((REV + 1))
-          sed -i "s/^revision:.*/revision: ${NEW_REV}/" "$YAML_PATH"
-          echo "Bumped revision: $REV -> $NEW_REV"
-          git add "$YAML_PATH"
-          git commit -m "fix($YAML): bump revision to $NEW_REV"
-
-      - name: Push
-        env:
-          TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          if [ "${{ needs.check.outputs.action }}" = "push" ]; then
-            git pull --rebase origin "${{ needs.check.outputs.branch }}" || true
-          fi
-          git push origin HEAD:"${{ needs.check.outputs.branch }}"
-
-      - name: Create PR with auto-merge
-        if: needs.check.outputs.action == 'pr'
+      - name: Apply fix and push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          AGENT_TITLE: ${{ steps.agent-msg.outputs.title }}
-          BRANCH: ${{ needs.check.outputs.branch }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          [ -z "$AGENT_TITLE" ] && AGENT_TITLE="fix(${{ inputs.yaml }}): auto-fix build failure"
-          BODY_FILE=fix-report/fix_report.md
-          [ ! -f "$BODY_FILE" ] && BODY_FILE=/dev/null
-
-          PR_URL=$(gh pr create \
-            --base main \
-            --head "$BRANCH" \
-            --title "$AGENT_TITLE" \
-            --body-file "$BODY_FILE")
-          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-
-          [ -n "$PR_NUMBER" ] && gh pr merge "$PR_NUMBER" --auto --squash || \
-            echo "::warning::Auto-merge not enabled"
-
-      - name: Update PR title and body
-        if: needs.check.outputs.action == 'push'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          AGENT_TITLE: ${{ steps.agent-msg.outputs.title }}
-          PR_NUMBER: ${{ needs.check.outputs.pr_number }}
-        run: |
-          if [ -f fix-report/fix_report.md ]; then
-            gh pr edit "$PR_NUMBER" \
-              --title "$AGENT_TITLE" \
-              --repo "${{ github.repository }}" \
-              --body-file fix-report/fix_report.md
-          fi
+          python scripts/ci/apply_fix.py \
+            --action "${{ needs.check.outputs.action }}" \
+            --branch "${{ needs.check.outputs.branch }}" \
+            --bot-user-id "${{ steps.bot-user.outputs.user-id }}" \
+            --yaml "${{ inputs.yaml }}" \
+            ${{ needs.check.outputs.bump_revision == 'true' && '--bump-revision' || '' }} \
+            --pr-number "${{ needs.check.outputs.pr_number }}"

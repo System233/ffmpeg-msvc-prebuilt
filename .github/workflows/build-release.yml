@@ -97,14 +97,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+          requirements: 'requirements.txt'
 
       - name: Validate ref format
         if: inputs.ref != ''
@@ -122,46 +117,21 @@ jobs:
 
       - name: Scan variants and output dynamic build matrix
         id: scan
+        env:
+          TRIPLETS: ${{ env.TRIPLETS }}
+          LICENSES: ${{ env.LICENSES }}
+          LINKAGES: ${{ env.LINKAGES }}
         run: |
           ver="${{ inputs.ref || inputs.yaml }}"
           rev="${{ steps.rev.outputs.value }}"
           target_arch="${{ inputs.target_arch }}"
           target_license="${{ inputs.target_license }}"
 
-          # Determine major version
-          major="$(python scripts/ops/naming.py major --version "$ver")"
+          FILTER_ARGS=""
+          [ -n "$target_arch" ] && FILTER_ARGS="$FILTER_ARGS --target-arch $target_arch"
+          [ -n "$target_license" ] && FILTER_ARGS="$FILTER_ARGS --target-license $target_license"
 
-          git fetch origin data 2>/dev/null || echo "Data branch not found"
-
-          include="[]"
-          for triplet in $TRIPLETS; do
-            for license in $LICENSES; do
-              for linkage in $LINKAGES; do
-                [ -n "$target_arch" ] && [ "$triplet" != "$target_arch" ] && continue
-                [ -n "$target_license" ] && [ "$license" != "$target_license" ] && continue
-
-                variant_key="${triplet}-${linkage}-${license}"
-
-                # Check data branch for existing variants
-                path="$(python scripts/ops/naming.py data-path \
-                  --version "$ver" --revision "$rev" \
-                  --triplet "$triplet" --linkage "$linkage" --license "$license")"
-
-                if git show "origin/data:${path}" 2>/dev/null >/dev/null; then
-                  echo "SKIP: ${variant_key} already built"
-                else
-                  echo "NEED: ${variant_key}"
-                  include=$(echo "$include" | jq -c \
-                    --arg t "$triplet" --arg l "$license" --arg g "$linkage" \
-                    '. + [{"triplet": $t, "license": $l, "linkage": $g}]')
-                fi
-              done
-            done
-          done
-
-          echo "matrix=$include" >> "$GITHUB_OUTPUT"
-          echo "triplets=$(echo "$TRIPLETS" | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
-          echo "Build matrix: $(echo "$include" | jq -c '. | length') variant(s) to build"
+          python scripts/ci/scan_variants.py --ver "$ver" --rev "$rev" $FILTER_ARGS --github-output
 
   # == DL-Seed: download sources for all triplets ==============================
   # Single job that downloads source archives for every triplet × feature
@@ -173,15 +143,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+          requirements: 'requirements.txt'
 
       - name: Generate ffmpeg-deps port
         run: |
@@ -189,20 +153,8 @@ jobs:
 
       - name: Compute port hash for download cache
         id: porthash
-        shell: pwsh
         run: |
-          $files = Get-ChildItem ports -Recurse -File | Sort-Object FullName
-          $stream = [System.IO.MemoryStream]::new()
-          foreach ($f in $files) {
-              $rel = Resolve-Path $f.FullName -Relative
-              $bytes = [System.Text.Encoding]::UTF8.GetBytes($rel)
-              $stream.Write($bytes, 0, $bytes.Length)
-              $content = [System.IO.File]::ReadAllBytes($f.FullName)
-              $stream.Write($content, 0, $content.Length)
-          }
-          $hashBytes = [System.Security.Cryptography.SHA256]::HashData($stream.ToArray())
-          $stream.Dispose()
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "port_hash=$([System.BitConverter]::ToString($hashBytes) -replace '-', '')"
+          echo "port_hash=$(python scripts/ci/compute_port_hash.py)" >> "$GITHUB_OUTPUT"
 
       - name: Quick cache check
         id: dl-check
@@ -212,35 +164,15 @@ jobs:
           key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
           lookup-only: true
 
-      - name: Restore vcpkg root cache
-        id: vcpkg-root-restore
-        uses: actions/cache/restore@v5
+      - uses: ./.github/actions/vcpkg-bootstrap
         with:
-          path: ${{ runner.temp }}/vcpkg
-          key: vcpkg-root-${{ env.VCPKG_TAG }}
-
-      - name: Clone vcpkg at pinned tag (fallback)
-        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
-        run: |
-          git clone --branch ${{ env.VCPKG_TAG }} --depth 1 `
-            https://github.com/microsoft/vcpkg.git ${{ runner.temp }}/vcpkg
-
-      - name: Bootstrap vcpkg (fallback)
-        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
-        run: |
-          & "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat"
-
-      - name: Save vcpkg root cache (fallback)
-        if: steps.vcpkg-root-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg
-          key: vcpkg-root-${{ env.VCPKG_TAG }}
+          tag: ${{ env.VCPKG_TAG }}
+          vcpkg-root: ${{ runner.temp }}/vcpkg
 
       - name: Restore vcpkg downloads cache (all triplets)
         if: steps.dl-check.outputs.cache-hit != 'true'
         id: dl-cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
           key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
@@ -250,26 +182,21 @@ jobs:
       - name: Download sources for all triplets
         if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
         env:
+          VCPKG_ROOT: ${{ runner.temp }}/vcpkg
           VCPKG_OVERLAY_PORTS: ports
           VCPKG_OVERLAY_TRIPLETS: triplets
         shell: pwsh
         run: |
-          $triplets = $env:TRIPLETS.Split(' ')
-          $json = Get-Content ports/ffmpeg-deps/vcpkg.json -Raw | ConvertFrom-Json
-          $features = if ($json.features) { $json.features.PSObject.Properties.Name } else { @("all") }
-          if ($json.features) {
-            $allFeatures = $json.features.PSObject.Properties.Name -join ','
-            foreach ($triplet in $triplets) {
-              Write-Output "Downloading ffmpeg-deps[$allFeatures] for $triplet ..."
-              & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "ffmpeg-deps[$allFeatures]" `
-                --triplet=$triplet --recurse --only-downloads ${{ env.VCPKG_INSTALL_OPTIONS }}
-              if ($LASTEXITCODE -ne 0) {
-                throw "Failed to download ffmpeg-deps[$allFeatures] for $triplet"
-              }
-            }
-          } else {
-            Write-Host "No features found in ffmpeg-deps — nothing to submit"
-          }
+          $env:TRIPLETS = "${{ env.TRIPLETS }}"
+          $env:VCPKG_INSTALL_OPTIONS = "${{ env.VCPKG_INSTALL_OPTIONS }}"
+          & "${{ github.workspace }}/scripts/ci/dl_seed.ps1"
+
+      - name: Save vcpkg downloads cache
+        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
 
       - name: Upload build logs (dl-seed)
         if: failure() && steps.dl-check.outputs.cache-hit != 'true'
@@ -279,6 +206,7 @@ jobs:
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
           compression-level: 9
           retention-days: 7
 
@@ -296,44 +224,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+          requirements: 'requirements.txt'
 
       - name: Generate ffmpeg-deps port
         run: |
           python scripts/ffport.py deps
 
-      - name: Restore vcpkg root cache
-        uses: actions/cache/restore@v5
+      - uses: ./.github/actions/vcpkg-restore-caches
         with:
-          path: ${{ runner.temp }}/vcpkg
-          key: vcpkg-root-${{ env.VCPKG_TAG }}
-          fail-on-cache-miss: true
-
-      - name: Restore vcpkg downloads cache
-        id: dl-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-restore
-          restore-keys: |
-            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
-
-      - name: Restore vcpkg binary cache (fuzzy)
-        id: bin-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-restore
-          restore-keys: |
-            vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-
+          vcpkg-tag: ${{ env.VCPKG_TAG }}
+          vcpkg-root: ${{ runner.temp }}/vcpkg
+          cache-path: ${{ runner.temp }}/vcpkg-cache
+          triplet: ${{ matrix.triplet }}
+          fail-on-miss-root: 'true'
 
       - name: Patch vcvarsall.bat for ARM Windows SDK
         if: matrix.triplet == 'arm-windows'
@@ -410,14 +315,6 @@ jobs:
           path: ${{ runner.temp }}/vcpkg-cache
           key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
 
-      - name: Upload ABI debug files
-        uses: actions/upload-artifact@v6
-        with:
-          name: abi-info-seed-${{ matrix.triplet }}
-          path: ${{ runner.temp }}/abi-logs/
-          compression-level: 9
-          retention-days: 7
-
       - name: Upload build logs (seed)
         if: always()
         uses: actions/upload-artifact@v6
@@ -426,6 +323,7 @@ jobs:
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
           compression-level: 9
           retention-days: 7
 
@@ -444,19 +342,9 @@ jobs:
       - uses: actions/checkout@v6
 
       # == Setup steps ====================================================─
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
-      - name: Generate ffmpeg-deps port
-        run: |
-          python scripts/ffport.py deps
+          requirements: 'requirements.txt'
 
       - name: Resolve variant metadata
         id: vars
@@ -477,30 +365,15 @@ jobs:
           echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
           echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
 
-      - name: Restore vcpkg root cache
-        uses: actions/cache/restore@v5
+      - uses: ./.github/actions/vcpkg-restore-caches
         with:
-          path: ${{ runner.temp }}/vcpkg
-          key: vcpkg-root-${{ env.VCPKG_TAG }}
-          fail-on-cache-miss: true
-
-      - name: Restore vcpkg downloads cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg/downloads
-          key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-restore
-          restore-keys: |
-            vcpkg-dl-all-${{ env.VCPKG_TAG }}-
-          fail-on-cache-miss: true
-
-      - name: Restore vcpkg binary cache (latest)
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/vcpkg-cache
-          key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-restore
-          fail-on-cache-miss: true
-          restore-keys: |
-            vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-
+          vcpkg-tag: ${{ env.VCPKG_TAG }}
+          vcpkg-root: ${{ runner.temp }}/vcpkg
+          cache-path: ${{ runner.temp }}/vcpkg-cache
+          triplet: ${{ matrix.triplet }}
+          fail-on-miss-root: 'true'
+          fail-on-miss-downloads: 'true'
+          fail-on-miss-binary: 'true'
 
       - name: Patch vcvarsall.bat for ARM Windows SDK
         if: matrix.triplet == 'arm-windows'
@@ -582,6 +455,7 @@ jobs:
           path: |
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
             ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
+            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
           compression-level: 9
           retention-days: 7
 
@@ -608,14 +482,9 @@ jobs:
             scripts/
             requirements.txt
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: ./.github/actions/setup-python
         with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+          requirements: 'requirements.txt'
 
       # Checkout data branch
       - name: Checkout data branch
@@ -672,71 +541,29 @@ jobs:
       - name: Commit and push data branch
         if: inputs.dry_run != true
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes to commit on data branch"
-            exit 0
-          fi
-          git commit -m "Build artifacts for ${{ inputs.ref || inputs.yaml }}"
-          # Push with rebase retry to handle concurrent runs
-          for i in 1 2 3; do
-            git pull --rebase origin data && git push origin data && break
-            echo "  Push attempt $i failed, retrying in 5s..."
-            sleep 5
-          done || { echo "ERROR: failed to push after 3 attempts"; exit 1; }
-        working-directory: data
-        shell: bash
+          python scripts/ci/push_data_branch.py \
+            --message "Build artifacts for ${{ inputs.ref || inputs.yaml }}" \
+            --directory data
 
-      # == Release tag ======================================================
       - name: Determine release tag
         id: release_tag
         run: |
-          var_file=$(find ${{ github.workspace }}/artifacts -maxdepth 1 -name '*.var.yaml' 2>/dev/null | head -1)
-          if [ -z "$var_file" ]; then
+          tag=$(python scripts/ci/manage_release.py tag --artifacts-dir "${{ github.workspace }}/artifacts")
+          if [ -z "$tag" ]; then
             echo "No artifacts — nothing to release" >&2
             echo "tag=" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
           fi
-          ver=$(python scripts/ops/naming.py var-version "$var_file")
-          today=$(date +%Y%m%d)
-          echo "tag=ffmpeg-${ver}" >> "$GITHUB_OUTPUT"
-        shell: bash
 
-      # == Create or append GitHub Release ==================================─
       - name: Create or append GitHub Release
         if: inputs.dry_run != true && steps.release_tag.outputs.tag != ''
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ steps.release_tag.outputs.tag }}"
-          ARTIFACTS_DIR="${{ github.workspace }}/artifacts"
-
-          # Count zip assets
-          ZIPS=("$ARTIFACTS_DIR"/*.zip)
-          if [ ${#ZIPS[@]} -eq 0 ]; then
-            echo "No zip artifacts found — skipping release step"
-            exit 0
-          fi
-
-          if gh release view "$TAG" --json id &>/dev/null; then
-            echo "Release $TAG already exists — uploading additional assets"
-            gh release upload "$TAG" "$ARTIFACTS_DIR"/*.zip --clobber
-          else
-            echo "Creating release $TAG"
-            TITLE_VER="${{ inputs.ref || inputs.yaml }}"
-            if [ -n "${{ inputs.ref }}" ]; then
-              TITLE="FFmpeg ${TITLE_VER} (MSVC Prebuilt, Snapshot)"
-            else
-              TITLE="FFmpeg ${TITLE_VER} (MSVC Prebuilt)"
-            fi
-            gh release create "$TAG" \
-              "$ARTIFACTS_DIR"/*.zip \
-              --title "$TITLE" \
-              --notes "Automated build of FFmpeg ${{ inputs.ref || inputs.yaml }} using MSVC via vcpkg."
-          fi
-        shell: bash
+          ARGS="--tag ${{ steps.release_tag.outputs.tag }} --artifacts-dir ${{ github.workspace }}/artifacts --yaml ${{ inputs.yaml }}"
+          [ -n "${{ inputs.ref }}" ] && ARGS="$ARGS --ref ${{ inputs.ref }}"
+          python scripts/ci/manage_release.py create $ARGS
 
 
   all-checks-passed:
