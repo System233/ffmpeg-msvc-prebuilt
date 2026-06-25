@@ -357,6 +357,10 @@ jobs:
 
            ## 约束
            - 只修改 `ffmpeg/*.yaml`
+           - **禁止修改 `ffmpeg/base.yaml`**
+           - 族 YAML（如 7.0.yaml、8.0.yaml）禁止修改 build.*、features.*、dep_overrides
+           - 优先通过补丁修复：在 patches/{family}/ 搜索现有补丁
+           - 修改前检查继承影响：grep -rl "extends: \"$(basename $file .yaml)\"" ffmpeg/
            - patches 规则：
              - `agent_context.json` 的 `new_patches` 字段列出的是本 PR 新增的 patch，可以修改或删除
              - 不在 `new_patches` 中的 patch 是 main 分支已有的，禁止修改
@@ -630,7 +634,6 @@ jobs:
           PR_NUMBER: ${{ needs.check.outputs.pr_number }}
         run: |
           if [ -f fix-report/fix_report.md ]; then
-            [ -z "$AGENT_TITLE" ] && AGENT_TITLE="fix(${{ inputs.yaml }}): auto-fix build failure"
             gh pr edit "$PR_NUMBER" \
               --title "$AGENT_TITLE" \
               --repo "${{ github.repository }}" \
