@@ -34,6 +34,16 @@ CRITICAL — I MUST follow these:
 - When reading large files (>5MB), use `tail | grep` — never read the whole file
 - When testing patches, **MUST apply in YAML patch-list order** — never individually
 - **When auto-heal mode**: allowed to run `python scripts/ffport.py`, `git apply`, `pip install -r requirements.txt` for verification. **Still forbidden**: `vcpkg install`, any command likely to exceed 30s.
+- **NEVER** modify `ffmpeg/base.yaml` — shared by all versions, read-only
+- Family YAMLs (`X.Y.yaml`, e.g. `7.0.yaml`): **ONLY** modify `patches` and
+  `source.sha512`. Do NOT modify `build.*`, `features.*`, `dep_overrides`
+  (inherited by all child versions that don't override)
+- Version YAMLs (`X.Y.Z.yaml`): all fields modifiable
+- **Before modifying any YAML**, check inheritance impact:
+  `grep -rl "extends: \"$(basename \$file .yaml)\"" ffmpeg/`
+- **Prefer patches over config changes**: search existing patches in
+  `patches/{family}/` first — many issues already have a patch that just
+  isn't referenced by the current version or needs minor adaptation
 
 ## Quick Decision Tree
 
