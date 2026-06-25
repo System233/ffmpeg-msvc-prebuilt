@@ -4,16 +4,16 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
-from check_allowed_files import ALLOWED, OPENCODE_PREFIX
+from _allowed import find_violations
 
 
 def is_file_allowed(filename: str) -> bool:
     """Mirror the check_allowed_files logic for testing."""
-    return any(p.search(filename) for p in ALLOWED) or filename.startswith(OPENCODE_PREFIX)
+    return not find_violations([filename])
 
 
 class TestAllowedRegexes(unittest.TestCase):
-    """Tests for the ALLOWED tuple of compiled regex patterns."""
+    """Tests for the ALLOWED default patterns."""
 
     def test_ffmpeg_yaml_allowed_basic(self):
         """ffmpeg/*.yaml files are allowed."""
@@ -37,16 +37,16 @@ class TestAllowedRegexes(unittest.TestCase):
 
 
 class TestOpenCodePrefix(unittest.TestCase):
-    """Tests for the OPENCODE_PREFIX ('.opencode/') allowlist."""
+    """Tests that .opencode/ files are NOT allowed."""
 
-    def test_opencode_skill_md_allowed(self):
-        self.assertTrue(is_file_allowed(".opencode/skills/auto-heal/SKILL.md"))
+    def test_opencode_skill_md_not_allowed(self):
+        self.assertFalse(is_file_allowed(".opencode/skills/auto-heal/SKILL.md"))
 
-    def test_opencode_json_allowed(self):
-        self.assertTrue(is_file_allowed(".opencode/foo/bar.json"))
+    def test_opencode_json_not_allowed(self):
+        self.assertFalse(is_file_allowed(".opencode/foo/bar.json"))
 
-    def test_opencode_root_file_allowed(self):
-        self.assertTrue(is_file_allowed(".opencode/config.json"))
+    def test_opencode_root_file_not_allowed(self):
+        self.assertFalse(is_file_allowed(".opencode/config.json"))
 
 
 class TestForbiddenFiles(unittest.TestCase):
