@@ -166,6 +166,7 @@ jobs:
         run: |
           python scripts/ci/auto_heal_context.py \
             --run-id "${{ needs.check.outputs.run_id }}" \
+            --yaml "${{ inputs.yaml }}" \
             --pr-number "${{ needs.check.outputs.pr_number }}" \
             --base-sha "${{ needs.check.outputs.base_sha }}" \
             --base-ref "${{ needs.check.outputs.base_ref }}" \

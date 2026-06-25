@@ -5,11 +5,13 @@
 第一步：先读取 SKILL.md，理解决策树和各文件的用途。
 
 ## 上下文
-- `agent_context.json` — PR 编号、失败的 Job 列表、日志路径
+- `agent_context.json` — PR 编号、`target_yaml`（你唯一需要修复的版本）、失败的 Job 列表、日志路径
 - `failed_steps_hint.txt` — 失败的 Job 名称
 - `error_logs/build-logs-{triplet}-{license}-{linkage}/` — 构建日志目录
+- **关键**：你只能修复 `agent_context.json` 中 `target_yaml` 字段指定的版本！
 
 ## 约束
+- **只修复 `agent_context.json` 中 `target_yaml` 指向的版本对应的 `ffmpeg/*.yaml`**
 - 只修改 `ffmpeg/*.yaml`
 - **禁止修改 `ffmpeg/base.yaml`**
 - 族 YAML（如 7.0.yaml、8.0.yaml）禁止修改 build.*、features.*、dep_overrides
@@ -38,7 +40,12 @@
     - 列出修改的文件
   - Verification: <验证命令的输出>
 7. 验证通过后提交到本地仓库：
-  git add ffmpeg/ patches/
-  git commit -m "fix(<version>): <简短、描述性的消息>"
-  提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
+   git add ffmpeg/ patches/
+   git diff --staged --stat # 检查是否提交了无关文件
+   git commit -m "fix(<version>): <简短、描述性的消息>"
+   提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
+   **禁止提交 fix_report.md 到 git！fix_report.md 是构建产物，不是源码。**
+   **禁止提交其他无关文件**
+   **只能提交修复`target_yaml`所必须的文件**
+
 8. 退出
