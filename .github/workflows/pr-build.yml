@@ -83,6 +83,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.matrix != '[]'
     strategy:
+      fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.detect.outputs.matrix) }}
     uses: ./.github/workflows/build-release.yml
