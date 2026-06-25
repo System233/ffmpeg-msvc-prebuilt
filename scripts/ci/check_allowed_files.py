@@ -8,17 +8,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from typing import Sequence
 
-ALLOWED: tuple[re.Pattern[str], ...] = (
-    re.compile(r"^ffmpeg/.*\.yaml$"),
-    re.compile(r"^patches/.*\.patch$"),
-)
-
-OPENCODE_PREFIX: str = ".opencode/"
+from _allowed import find_violations
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -27,6 +21,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--base", required=True, help="Base commit SHA")
     parser.add_argument("--head", required=True, help="Head commit SHA")
+    parser.add_argument("--yaml", default=None, help="YAML config name to scope allowed files (e.g. 8.1.1)")
     return parser.parse_args(argv)
 
 
@@ -62,12 +57,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     files = _get_changed_files(args.base, args.head)
 
-    violations = [
-        f
-        for f in files
-        if not any(p.search(f) for p in ALLOWED)
-        and not f.startswith(OPENCODE_PREFIX)
-    ]
+    violations = find_violations(files, yaml=args.yaml)
 
     if violations:
         print("PR modifies files outside allowed scope:")

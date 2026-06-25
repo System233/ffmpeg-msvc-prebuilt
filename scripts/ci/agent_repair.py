@@ -16,8 +16,8 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -25,28 +25,7 @@ import sys
 from pathlib import Path
 from typing import List
 
-# ---------------------------------------------------------------------------
-# Compiled regex patterns matching the bash grep -vE filters:
-#   grep -vE '^ffmpeg/.*\.yaml$|^patches/.*\.patch$'
-#   grep -vE '^\.opencode/'
-# ---------------------------------------------------------------------------
-_ALLOWED_PATTERNS: List[re.Pattern[str]] = [
-    re.compile(r"^ffmpeg/.*\.yaml$"),
-    re.compile(r"^patches/.*\.patch$"),
-    re.compile(r"^\.opencode/"),
-]
-
-# ── Violation filtering (bash grep -vE equivalent) ───────────────────────────
-
-def _filter_violations(files: List[str]) -> List[str]:
-    """Return files that are NOT allowed by the scope patterns."""
-    violations: List[str] = []
-    for f in files:
-        if any(p.search(f) for p in _ALLOWED_PATTERNS):
-            continue
-        violations.append(f)
-    return violations
-
+from _allowed import find_violations
 
 # ── Feedback generation (bash _generate_feedback equivalent) ──────────────────
 
@@ -145,6 +124,17 @@ def main() -> None:
         print(f"ERROR: FEEDBACK_FILE not found: {feedback_file}", file=sys.stderr)
         sys.exit(1)
 
+    # ── Read target_yaml from context (bash: read target_yaml from agent_context.json) ─
+    context_path = Path("agent_context.json")
+    target_yaml = None
+    if context_path.is_file():
+        ctx = json.loads(context_path.read_text(encoding="utf-8"))
+        target_yaml = ctx.get("target_yaml")
+    if target_yaml:
+        print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
+    else:
+        print("WARNING: target_yaml not found in context, allowing any ffmpeg/*.yaml", file=sys.stderr)
+
     # ── Configure git user.name/user.email ─────────────────────────────────────
     git_author_name = os.environ.get("GIT_AUTHOR_NAME", "ffmpeg-dev[bot]")
     git_author_email = os.environ.get(
@@ -225,7 +215,7 @@ def main() -> None:
         # Check for scope violations (bash: git diff HEAD~1..HEAD --name-only | grep -vE ... || true)
         files_output = _git_check("diff", "HEAD~1..HEAD", "--name-only")
         changed_files = [line for line in files_output.splitlines() if line.strip()]
-        violations = _filter_violations(changed_files)
+        violations = find_violations(changed_files, yaml=target_yaml)
 
         if violations:
             print(f"[WARNING] Scope violation on attempt {attempt}:", file=sys.stderr)
@@ -249,7 +239,7 @@ def main() -> None:
             if patch_files:
                 files_output = _git_check("diff", "HEAD~1..HEAD", "--name-only")
                 changed_files = [line for line in files_output.splitlines() if line.strip()]
-                violations = _filter_violations(changed_files)
+                violations = find_violations(changed_files, yaml=target_yaml)
                 if not violations:
                     sys.exit(0)
         # (bash: echo "[ERROR] Max retries exhausted with violations" >&2; exit 1)
