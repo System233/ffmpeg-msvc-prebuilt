@@ -1,5 +1,22 @@
 extends: "7.1"
-revision: 1
+revision: 2
+
+patches:
+  - 7.x/0001-create-lib-libraries-6.1.patch
+  - 7.x/0002-fix-msvc-link.patch
+  - 7.x/0003-fix-windowsinclude.patch
+  - 7.x/0004-dependencies-7.1.patch
+  - 7.x/0005-fix-nasm-7.1.patch
+  - 7.x/0007-fix-lib-naming-7.0.patch
+  - 7.x/0013-define-WINVER.patch
+  - 7.x/0020-fix-aarch64-libswscale-6.1.patch
+  - 7.x/0024-fix-osx-host-c11.patch
+  - 7.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
+  - 7.x/0041-add-const-for-opengl-definition.patch
+  - 7.x/0043-fix-miss-head-7.1.patch
+  - 7.x/0044-fix-vulkan-debug-callback-abi.patch
+  - 7.x/0050-lensfun-0.3.4-compat-7.x.patch
+  - 7.x/0051-lensfun-configure-fix-7.x.patch
 
 source:
   sha512: 6b9a5ee501be41d6abc7579a106263b31f787321cbc45dedee97abf992bf8236cdb2394571dd256a74154f4a20018d429ae7e7f0409611ddc4d6f529d924d175
