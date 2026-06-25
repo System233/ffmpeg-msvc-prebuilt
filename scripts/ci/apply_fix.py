@@ -62,12 +62,6 @@ def _apply_patch(
     patch_file = patches[0]
     print(f"==> Applying patch: {patch_file}")
 
-    # -- configure git identity --
-    subprocess.run(["git", "config", "--global", "user.name", bot_user_name])
-    subprocess.run(
-        ["git", "config", "--global", "user.email", f"{bot_user_id}+{bot_user_name}@users.noreply.github.com"],
-    )
-
     # -- set origin with token --
     subprocess.run(
         ["git", "remote", "set-url", "origin", f"https://x-access-token:{gh_token}@github.com/{github_repository}"],

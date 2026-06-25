@@ -18,15 +18,6 @@ import sys
 import time
 
 
-def git_config(directory: str, key: str, value: str) -> None:
-    """Set a git config value in *directory*."""
-    subprocess.run(
-        ["git", "config", key, value],
-        cwd=directory,
-        check=True,
-    )
-
-
 def git_add_all(directory: str) -> None:
     """Stage all changes (git add -A) in *directory*."""
     subprocess.run(
@@ -140,12 +131,7 @@ def main() -> None:
     max_retries: int = args.max_retries
     delay: float = args.delay
 
-    # 1. Configure git identity
-    print(f"Configuring git identity in {directory!r}...")
-    git_config(directory, "user.name", "github-actions[bot]")
-    git_config(directory, "user.email", "github-actions[bot]@users.noreply.github.com")
-
-    # 2. Stage all changes
+    # 1. Stage all changes
     print("Staging changes (git add -A)...")
     git_add_all(directory)
 

@@ -135,14 +135,6 @@ def main() -> None:
     else:
         print("WARNING: target_yaml not found in context, allowing any ffmpeg/*.yaml", file=sys.stderr)
 
-    # ── Configure git user.name/user.email ─────────────────────────────────────
-    git_author_name = os.environ.get("GIT_AUTHOR_NAME", "ffmpeg-dev[bot]")
-    git_author_email = os.environ.get(
-        "GIT_AUTHOR_EMAIL", "ffmpeg-dev[bot]@users.noreply.github.com"
-    )
-    _git_check("config", "--global", "user.name", git_author_name)
-    _git_check("config", "--global", "user.email", git_author_email)
-
     # ── Resolve BASE_SHA (bash: [ -z "$BASE_SHA" ] && BASE_SHA=$(git rev-parse HEAD)) ─
     base_sha = args.base_sha
     if not base_sha:

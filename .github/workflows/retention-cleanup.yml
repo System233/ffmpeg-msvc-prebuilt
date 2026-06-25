@@ -71,6 +71,11 @@ jobs:
 
       # Commit and push the updated data branch (version YAML deletions +
       # build-index updates performed by retention_policy.py).
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Commit and push data branch
         run: |
           python scripts/ci/push_data_branch.py \

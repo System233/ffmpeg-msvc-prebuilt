@@ -8,7 +8,6 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
 from push_data_branch import (
     has_staged_changes,
-    git_config,
     git_add_all,
     git_commit,
     git_push,
@@ -137,8 +136,6 @@ class TestIntegration(unittest.TestCase):
         self.mock_run.side_effect = side_effect
 
         # Simulate the full flow from main()
-        git_config("data", "user.name", "github-actions[bot]")
-        git_config("data", "user.email", "github-actions[bot]@users.noreply.github.com")
         git_add_all("data")
 
         self.assertTrue(has_staged_changes("data"))
@@ -147,8 +144,6 @@ class TestIntegration(unittest.TestCase):
         git_push("data", "data", max_retries=3, delay=5.0)
 
         expected_commands = [
-            ["git", "config", "user.name", "github-actions[bot]"],
-            ["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"],
             ["git", "add", "-A"],
             ["git", "diff", "--staged", "--quiet"],  # has_staged_changes
             ["git", "commit", "-m", "test commit"],
