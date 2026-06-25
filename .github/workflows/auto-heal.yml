@@ -393,6 +393,7 @@ jobs:
           GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
           set -euo pipefail
+          trap 'echo "::warning::Workflow cancelled by user, terminating..."; [ -n "$OC_PID" ] && kill "$OC_PID" 2>/dev/null; exit 1' SIGTERM SIGINT
 
           git config --global user.name "ffmpeg-dev[bot]"
           git config --global user.email "ffmpeg-dev[bot]@users.noreply.github.com"
@@ -413,7 +414,9 @@ jobs:
 
             opencode run --model "deepseek/deepseek-v4-flash" \
               --dangerously-skip-permissions \
-              "$(cat prompt.txt)"
+              "$(cat prompt.txt)" &
+            OC_PID=$!
+            wait "$OC_PID" || { rc=$?; echo "::warning::opencode failed (exit $rc)"; continue; }
 
             if ! git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then
               echo "No changes on attempt $attempt"
@@ -454,10 +457,10 @@ jobs:
                 } > feedback.txt
                 continue
               fi
+            else
+              echo "All checks passed on attempt $attempt"
+              break
             fi
-
-            echo "All checks passed on attempt $attempt"
-            break
           done
 
           if [ "$attempt" -ge "$MAX_RETRY_ATTEMPTS" ]; then
@@ -565,6 +568,18 @@ jobs:
           fi
           echo "All modified files are within allowed scope."
 
+      - name: Extract agent commit message
+        id: agent-msg
+        run: |
+          PATCH=$(ls patch-input/*.patch 2>/dev/null | head -1)
+          if [ -z "$PATCH" ]; then
+            echo "No patch found, skipping title extraction"
+            echo "title=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          AGENT_MSG=$(git log -1 --format=%s HEAD | tr '\n' ' ')
+          echo "title=${AGENT_MSG}" >> "$GITHUB_OUTPUT"
+
       - name: Bump revision
         if: needs.check.outputs.bump_revision == 'true'
         run: |
@@ -586,28 +601,38 @@ jobs:
           fi
           git push origin HEAD:"${{ needs.check.outputs.branch }}"
 
-      - name: Create PR
+      - name: Create PR with auto-merge
         if: needs.check.outputs.action == 'pr'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          AGENT_TITLE: ${{ steps.agent-msg.outputs.title }}
+          BRANCH: ${{ needs.check.outputs.branch }}
         run: |
-          gh pr create \
-            --base main \
-            --head "${{ needs.check.outputs.branch }}" \
-            --title "fix(${{ inputs.yaml }}): auto-fix build failure" \
-            --body "Auto-fix for build failure of \`${{ inputs.ref || inputs.yaml }}\` ([run #${{ inputs.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.run_id }}))"
+          [ -z "$AGENT_TITLE" ] && AGENT_TITLE="fix(${{ inputs.yaml }}): auto-fix build failure"
+          BODY_FILE=fix-report/fix_report.md
+          [ ! -f "$BODY_FILE" ] && BODY_FILE=/dev/null
 
-      - name: Post fix report
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "$AGENT_TITLE" \
+            --body-file "$BODY_FILE")
+          PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+
+          [ -n "$PR_NUMBER" ] && gh pr merge "$PR_NUMBER" --auto --squash || \
+            echo "::warning::Auto-merge not enabled"
+
+      - name: Update PR title and body
+        if: needs.check.outputs.action == 'push'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          AGENT_TITLE: ${{ steps.agent-msg.outputs.title }}
+          PR_NUMBER: ${{ needs.check.outputs.pr_number }}
         run: |
           if [ -f fix-report/fix_report.md ]; then
-            if [ "${{ needs.check.outputs.action }}" = "pr" ]; then
-              PR_NUMBER=$(gh pr list --head "${{ needs.check.outputs.branch }}" --json number -q '.[0].number')
-            else
-              PR_NUMBER="${{ needs.check.outputs.pr_number }}"
-            fi
-            [ -n "$PR_NUMBER" ] && gh pr comment "$PR_NUMBER" \
+            [ -z "$AGENT_TITLE" ] && AGENT_TITLE="fix(${{ inputs.yaml }}): auto-fix build failure"
+            gh pr edit "$PR_NUMBER" \
+              --title "$AGENT_TITLE" \
               --repo "${{ github.repository }}" \
               --body-file fix-report/fix_report.md
           fi
