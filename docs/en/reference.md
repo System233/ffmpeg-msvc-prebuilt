@@ -125,7 +125,7 @@ title: Feature Reference
 | Feature | Configure Flag | Description | Dependencies | Platform | Since |
 |---------|---------------|-------------|-------------|----------|-------|
 | `static` | — | Build FFmpeg as static libraries instead of shared | — | — | — |
-| `ffplay` | `--enable-ffplay` | Build the ffplay application | `@base` | — | — |
+| `ffplay` | `--enable-ffplay` | Build the ffplay application | `@base`, `@sdl2` | — | — |
 | `ffmpeg` | `--enable-ffmpeg` | Build the ffmpeg application | `@base` | — | — |
 | `ffprobe` | `--enable-ffprobe` | Build the ffprobe application | `@base` | — | — |
 | `base` | — | Build all libraries | `@avcodec`, `@avdevice`, `@avformat`, `@avfilter`, `@swresample`, `@swscale` | — | — |

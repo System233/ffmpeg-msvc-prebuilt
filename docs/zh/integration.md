@@ -117,6 +117,53 @@ target_link_libraries(myapp PRIVATE
 )
 ```
 
+## 可用目标
+
+每个 FFmpeg 模块都导出为一个 CMake 导入目标：
+
+| 目标 | 说明 |
+|---|---|
+| `FFmpeg::FFmpeg` | 伞目标 — 链接所有模块并设置头文件路径 |
+| `FFMPEG::ffmpeg` | `FFmpeg::FFmpeg` 的别名（旧名称） |
+| `FFmpeg::avutil` | libavutil — 通用工具 |
+| `FFmpeg::avcodec` | libavcodec — 音视频编解码器 |
+| `FFmpeg::avformat` | libavformat — 封装/解封装器 |
+| `FFmpeg::avfilter` | libavfilter — 滤镜图 |
+| `FFmpeg::avdevice` | libavdevice — 设备输入输出 |
+| `FFmpeg::swresample` | libswresample — 音频重采样 |
+| `FFmpeg::swscale` | libswscale — 图像缩放/色彩转换 |
+
+每个模块目标也提供旧 `FFMPEG::` 命名空间别名（如 `FFMPEG::avcodec`）。
+
+## 可用变量
+
+### 全局变量
+
+| 变量 | 说明 |
+|---|---|
+| `FFMPEG_FOUND` | 是否找到 FFmpeg |
+| `FFMPEG_VERSION` | FFmpeg 版本号 |
+| `FFMPEG_INCLUDE_DIRS` | 头文件搜索路径 |
+| `FFMPEG_LIBRARY_DIRS` | 库文件搜索路径 |
+| `FFMPEG_LIBRARIES` | 完整库文件列表 |
+| `FFMPEG_LIBRARY` | 等同于 `FFMPEG_LIBRARIES` |
+
+### 模块级变量
+
+对于每个模块 `<name>` 属于 `{avutil, avcodec, avformat, avfilter, avdevice, swresample, swscale}`：
+
+| 变量 | 说明 |
+|---|---|
+| `FFMPEG_lib<name>_FOUND` | 是否找到该模块 |
+| `FFMPEG_lib<name>_INCLUDE_DIRS` | 模块专用头文件目录 |
+| `FFMPEG_lib<name>_LIBRARY` | 模块库路径（自动识别 Debug/Release） |
+| `FFMPEG_lib<name>_LIBRARY_RELEASE` | Release 库路径 |
+| `FFMPEG_lib<name>_LIBRARY_DEBUG` | Debug 库路径 |
+| `FFMPEG_lib<name>_VERSION` | 模块版本（如 `61.19.100`） |
+| `FFMPEG_lib<name>_DLL_RELEASE` | Release DLL 路径（仅 Windows 共享库） |
+| `FFMPEG_lib<name>_DLL_DEBUG` | Debug DLL 路径（仅 Windows 共享库） |
+| `FFMPEG_lib<name>_DEPS_LIBRARY` | 该模块的外部依赖库 |
+
 ## 兼容性
 
 旧名称 `FFMPEG::ffmpeg` / `FFMPEG::avformat` 等仍可作为别名使用：

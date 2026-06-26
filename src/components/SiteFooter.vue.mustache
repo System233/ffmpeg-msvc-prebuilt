@@ -19,21 +19,21 @@ const releaseLink=computed(()=>withBase(`/${localeIndex.value}/releases`))
       <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
         [[footer.message]]
       </p>
-      <div class="text-[10px] text-gray-400 font-medium">
+      <div class="text-xs text-gray-400 font-medium">
         [[footer.copy]]
       </div>
     </div>
 
     <div class="grid grid-cols-2 gap-12 sm:gap-20">
       <div class="space-y-4">
-        <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Resources</h4>
+        <h4 class="text-xs font-bold uppercase tracking-widest text-gray-400">Resources</h4>
         <ul class="list-none p-0 m-0 space-y-2">
           <li><a :href="releaseLink" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.releases]]</a></li>
           <li><a :href="GITHUB_REPO_URL" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.github]]</a></li>
         </ul>
       </div>
       <div class="space-y-4">
-        <h4 class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Support</h4>
+        <h4 class="text-xs font-bold uppercase tracking-widest text-gray-400">Support</h4>
         <ul class="list-none p-0 m-0 space-y-2">
           <li><a :href="GITHUB_REPO_URL + '/issues'" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">[[footer.links.issues]]</a></li>
           <li><a href="https://ffmpeg.org/documentation.html" target="_blank" class="text-xs text-gray-600 dark:text-gray-400 no-underline hover:text-blue-600 transition-colors">FFmpeg Help</a></li>

@@ -12,8 +12,20 @@ const { localeIndex } = useData()
 const search = ref('')
 const majorFilter = ref('all')
 const ltsOnly = ref(false)
+const sortColumn = ref<'version' | 'date'>('version')
+const sortDirection = ref<'asc' | 'desc'>('desc')
+
+function toggleSort(col: 'version' | 'date') {
+  if (sortColumn.value === col) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortColumn.value = col
+    sortDirection.value = 'desc'
+  }
+}
+
 const filtered = computed(() => {
-  return releasesIndex.filter(r => {
+  let result = releasesIndex.filter(r => {
     if (search.value) {
       const q = search.value.toLowerCase()
       if (!r.version.toLowerCase().includes(q) && !r.release_tag.toLowerCase().includes(q)) return false
@@ -22,6 +34,16 @@ const filtered = computed(() => {
     if (ltsOnly.value && !r.lts) return false
     return true
   })
+
+  result.sort((a, b) => {
+    const dir = sortDirection.value === 'asc' ? 1 : -1
+    if (sortColumn.value === 'version') {
+      return a.version.localeCompare(b.version) * dir
+    }
+    return (new Date(a.created).getTime() - new Date(b.created).getTime()) * dir
+  })
+
+  return result
 })
 
 const majors = [...new Set(releasesIndex.map(r => r.major))].sort((a, b) => {
@@ -66,7 +88,7 @@ function fmtDate(iso: string): string {
     <div class="flex flex-wrap items-center gap-8 pt-6 border-t border-gray-100 dark:border-gray-800">
       <!-- Major Version (Radio) -->
       <div class="flex items-center gap-3">
-        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1">Versions</span>
+        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">Versions</span>
         <div class="flex flex-wrap gap-2">
           <label v-for="m in ['all', ...majors]" :key="m" class="cursor-pointer">
             <input type="radio" name="major" :value="m" v-model="majorFilter" class="sr-only peer" />
@@ -82,18 +104,15 @@ function fmtDate(iso: string): string {
 
       <div class="h-6 w-px bg-gray-200 dark:bg-gray-800 hidden md:block"></div>
 
-      <!-- Toggles (Checkbox) -->
+      <!-- Toggles -->
       <div class="flex items-center gap-4">
-        <label class="cursor-pointer">
-          <input type="checkbox" v-model="ltsOnly" class="sr-only peer" />
-          <TooltipTag :tooltip="'[[release.tooltips.lts]]'">
-            <span class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all
-              border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent
-              peer-checked:bg-green-600 peer-checked:text-white peer-checked:border-green-600">
-              <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-[10px]" />
-              [[filter.ltsOnly]]
-            </span>
-          </TooltipTag>
+        <label class="cursor-pointer select-none">
+          <div @click="ltsOnly = !ltsOnly"
+            class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all cursor-pointer"
+            :class="ltsOnly ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent'">
+            <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-xs" />
+            [[filter.ltsOnly]]
+          </div>
         </label>
       </div>
     </div>
@@ -101,12 +120,22 @@ function fmtDate(iso: string): string {
 
   <!-- Releases Table -->
   <div class="min-h-[300px]">
-    <div v-if="filtered.length" class="card overflow-hidden">
+    <div v-if="filtered.length" class="card overflow-x-auto">
       <table class="m-0 border-none">
         <thead>
           <tr>
-            <th class="w-[30%]">[[release.version]]</th>
-            <th class="hidden sm:table-cell">[[release.releasedOn]]</th>
+            <th class="w-[30%] cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('version')">
+              <span class="inline-flex items-center gap-1">
+                [[release.version]]
+                <Icon v-if="sortColumn === 'version'" :icon="sortDirection === 'asc' ? 'fa6-solid:arrow-up' : 'fa6-solid:arrow-down'" class="text-xs" />
+              </span>
+            </th>
+            <th class="hidden sm:table-cell cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('date')">
+              <span class="inline-flex items-center gap-1">
+                [[release.releasedOn]]
+                <Icon v-if="sortColumn === 'date'" :icon="sortDirection === 'asc' ? 'fa6-solid:arrow-up' : 'fa6-solid:arrow-down'" class="text-xs" />
+              </span>
+            </th>
             <th class="hidden md:table-cell text-center">[[release.variants]]</th>
             <th class="text-right">[[release.architectures]]</th>
             <th class="text-center w-24"></th>
@@ -118,10 +147,10 @@ function fmtDate(iso: string): string {
               <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2">
                   <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
-                  <TooltipTag :tooltip="'[[release.tooltips.lts]]'"><span v-if="r.lts" class="badge badge-green text-[9px] px-1.5 py-0">LTS</span></TooltipTag>
-                  <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.ffmpeg_ref.includes('-dev')" class="badge badge-blue text-[9px] px-1.5 py-0">Dev</span></TooltipTag>
+                  <TooltipTag :tooltip="'[[release.tooltips.lts]]'"><span v-if="r.lts" class="badge badge-green text-xs px-1.5 py-0">LTS</span></TooltipTag>
+                  <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.ffmpeg_ref.includes('-dev')" class="badge badge-blue text-xs px-1.5 py-0">[[release.master]]</span></TooltipTag>
                 </div>
-                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-[10px] font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
+                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>
             </td>
             <td class="hidden sm:table-cell text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
@@ -130,11 +159,11 @@ function fmtDate(iso: string): string {
             </td>
             <td class="text-right">
               <div class="flex flex-wrap justify-end gap-1">
-                <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-[8px] px-1.5 py-0">{{ a }}</span></TooltipTag>
+                <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-xs px-1.5 py-0">{{ a }}</span></TooltipTag>
               </div>
             </td>
             <td class="text-center">
-              <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-[10px] font-bold mx-auto">
+              <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-xs font-bold mx-auto">
                 [[variant.download]]
               </a>
             </td>

@@ -85,7 +85,7 @@
 }
 
 .badge {
-  @apply inline-flex items-center rounded-md border px-2.5 py-0.5 text-[10px] font-bold transition-colors uppercase tracking-tight;
+  @apply inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-bold transition-colors uppercase tracking-tight;
 }
 
 .badge-outline {
@@ -119,6 +119,14 @@ h3,
 h4 {
   @apply tracking-tight font-bold text-gray-900 dark:text-gray-100;
   margin-top: 0;
+  margin-bottom: 0.5em;
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+  margin-bottom: 0.5em !important;
 }
 
 /* Table refinements - compact and unified */
@@ -131,7 +139,7 @@ thead {
 }
 
 th {
-  @apply px-3 py-2 text-left text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest border-b border-gray-200! dark:border-gray-800!;
+  @apply px-3 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest border-b border-gray-200! dark:border-gray-800!;
 }
 
 td {

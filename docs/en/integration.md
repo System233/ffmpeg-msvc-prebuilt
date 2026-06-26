@@ -119,6 +119,54 @@ target_link_libraries(myapp PRIVATE
 )
 ```
 
+## Available Targets
+
+Each FFmpeg module is exposed as a CMake imported target:
+
+| Target | Description |
+|---|---|
+| `FFmpeg::FFmpeg` | Umbrella target — links all modules and sets include dirs |
+| `FFMPEG::ffmpeg` | Alias for `FFmpeg::FFmpeg` (legacy) |
+| `FFmpeg::avutil` | libavutil — common utilities |
+| `FFmpeg::avcodec` | libavcodec — audio/video codecs |
+| `FFmpeg::avformat` | libavformat — muxers/demuxers |
+| `FFmpeg::avfilter` | libavfilter — filter graphs |
+| `FFmpeg::avdevice` | libavdevice — device I/O |
+| `FFmpeg::swresample` | libswresample — audio resampling |
+| `FFmpeg::swscale` | libswscale — image scaling / color conversion |
+
+Each module target is also available under the legacy `FFMPEG::` namespace
+(e.g. `FFMPEG::avcodec`).
+
+## Available Variables
+
+### Global variables
+
+| Variable | Description |
+|---|---|
+| `FFMPEG_FOUND` | True if FFmpeg was found |
+| `FFMPEG_VERSION` | FFmpeg version string |
+| `FFMPEG_INCLUDE_DIRS` | Header file search paths |
+| `FFMPEG_LIBRARY_DIRS` | Library search paths |
+| `FFMPEG_LIBRARIES` | Full list of library paths |
+| `FFMPEG_LIBRARY` | Same as `FFMPEG_LIBRARIES` |
+
+### Per-module variables
+
+For each module `<name>` in `{avutil, avcodec, avformat, avfilter, avdevice, swresample, swscale}`:
+
+| Variable | Description |
+|---|---|
+| `FFMPEG_lib<name>_FOUND` | Whether this module was found |
+| `FFMPEG_lib<name>_INCLUDE_DIRS` | Module-specific include dirs |
+| `FFMPEG_lib<name>_LIBRARY` | Module library path (Debug/Release aware) |
+| `FFMPEG_lib<name>_LIBRARY_RELEASE` | Release library path |
+| `FFMPEG_lib<name>_LIBRARY_DEBUG` | Debug library path |
+| `FFMPEG_lib<name>_VERSION` | Module version (e.g. `61.19.100`) |
+| `FFMPEG_lib<name>_DLL_RELEASE` | Release DLL path (Windows shared only) |
+| `FFMPEG_lib<name>_DLL_DEBUG` | Debug DLL path (Windows shared only) |
+| `FFMPEG_lib<name>_DEPS_LIBRARY` | External dependency libraries for this module |
+
 ## Compatibility
 
 The old `FFMPEG::ffmpeg` / `FFMPEG::avformat` names are kept as

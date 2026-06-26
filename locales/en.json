@@ -43,7 +43,7 @@
     "version": "Version",
     "revision": "Revision",
     "lts": "LTS",
-    "master": "Dev Build",
+    "master": "Snapshot",
     "releaseTag": "GitHub Tag",
     "buildDate": "Build Date",
     "updatedDate": "Updated",
@@ -91,7 +91,7 @@
       "triplet": "Vcpkg target triplet: architecture-platform",
       "lts": "Long Term Support — stable with extended updates",
       "latest": "Most recent build in this version line",
-      "dev": "Development build from the latest source code",
+      "dev": "Snapshot build from the latest source code",
       "hash": "SHA-256 checksum for file integrity verification"
     }
   },
@@ -102,6 +102,11 @@
     "dependencies": "Linked Dependencies",
     "download": "Download",
     "develop": "SDK",
+    "tooltip": {
+      "binary": "Executables, headers and libraries",
+      "develop": "Executables, headers and libraries, plus debug libraries and PDB files",
+      "viewDetails": "Variant details"
+    },
     "shared": "Shared",
     "static": "Static",
     "noVariant": "Not available"

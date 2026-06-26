@@ -45,7 +45,7 @@
     "version": "版本",
     "revision": "修订号",
     "lts": "长期支持 (LTS)",
-    "master": "开发版",
+    "master": "快照版",
     "releaseTag": "GitHub 标签",
     "buildDate": "构建日期",
     "updatedDate": "更新日期",
@@ -93,7 +93,7 @@
       "triplet": "Vcpkg 目标三元组：架构-平台",
       "lts": "长期支持版 — 稳定发布，长期维护更新",
       "latest": "该版本线中的最新构建",
-      "dev": "基于最新源码的开发构建版本",
+      "dev": "基于最新源码的快照构建版本",
       "hash": "SHA-256 哈希值，用于校验文件完整性"
     }
   },
@@ -104,6 +104,11 @@
     "dependencies": "链接的依赖库",
     "download": "下载",
     "develop": "SDK",
+    "tooltip": {
+      "binary": "可执行文件、头文件和库文件",
+      "develop": "可执行文件、头文件和库文件，以及调试库和 PDB 文件",
+      "viewDetails": "变体详情"
+    },
     "shared": "动态",
     "static": "静态",
     "noVariant": "不可用"
@@ -111,7 +116,7 @@
   "filter": {
     "search": "搜索构建...",
     "allMajors": "所有主版本",
-    "ltsOnly": "仅长期支持",
+    "ltsOnly": "仅LTS(长期支持)",
     "completeOnly": "仅完成版本"
   },
   "footer": {
