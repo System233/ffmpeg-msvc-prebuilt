@@ -31,6 +31,7 @@ from typing import Any
 import yaml
 
 import os
+import shutil
 import subprocess
 from lts import is_lts
 from naming import parse_variant_id as naming_parse, major_version, build_data_path, make_version_dir, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
@@ -550,6 +551,27 @@ def cmd_remove(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: remove-release
+# ---------------------------------------------------------------------------
+
+def cmd_remove_release(args: argparse.Namespace) -> None:
+    """Remove an entire version/release directory from the database."""
+    version_tag = args.version_tag
+    if version_tag.startswith("ffmpeg-"):
+        version_id = version_tag[len("ffmpeg-"):]
+    else:
+        version_id = version_tag
+
+    version_dir = resolve_version_dir(version_id)
+    if not version_dir:
+        print(f"ERROR: version not found: {version_tag}", file=sys.stderr)
+        sys.exit(1)
+
+    shutil.rmtree(version_dir)
+    print(f"REMOVED {version_dir}")
+
+
+# ---------------------------------------------------------------------------
 # Subcommand: migrate
 # ---------------------------------------------------------------------------
 
@@ -712,6 +734,10 @@ def main() -> None:
     p = subparsers.add_parser("remove", help="Remove a variant")
     p.add_argument("variant_id", type=str)
 
+    # remove-release
+    p = subparsers.add_parser("remove-release", help="Remove an entire version/release by tag or version ID")
+    p.add_argument("version_tag", type=str, help="Version ID (e.g. 7.1.5) or release tag (e.g. ffmpeg-7.1.5)")
+
     # migrate
     subparsers.add_parser("migrate", help="Migrate old data structure to new")
 
@@ -732,6 +758,8 @@ def main() -> None:
         cmd_validate(args)
     elif args.command == "remove":
         cmd_remove(args)
+    elif args.command == "remove-release":
+        cmd_remove_release(args)
     elif args.command == "migrate":
         cmd_migrate(args)
     else:
