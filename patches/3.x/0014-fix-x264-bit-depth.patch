@@ -1,0 +1,15 @@
+diff --git a/libavcodec/libx264.c b/libavcodec/libx264.c
+index 26a561f..3cce596 100644
+--- a/libavcodec/libx264.c
++++ b/libavcodec/libx264.c
+@@ -36,6 +36,10 @@
+ #include <float.h>
+ #include <math.h>
+ 
++#ifndef x264_bit_depth
++static const int x264_bit_depth = 8;
++#endif
++
+ typedef struct X264Context {
+     AVClass        *class;
+     x264_param_t    params;
