@@ -33,5 +33,5 @@ patches:
   - 7.x/0041-add-const-for-opengl-definition.patch
   - 7.x/0043-fix-miss-head-7.1.patch
   - 7.x/0050-lensfun-0.3.4-compat-7.x.patch
-  - 7.x/0051-lensfun-configure-fix-7.0.2.patch
+  - 7.x/0051-lensfun-configure-fix-7.x.patch
   - 7.x/0052-svtav1-3.x-compat-7.x.patch
