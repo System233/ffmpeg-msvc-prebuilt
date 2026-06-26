@@ -6,8 +6,7 @@ Compares YAML files under ffmpeg/ at two git refs and reports which
 versions need a CI build.  A version is considered changed when:
 
   - Its YAML file is new (doesn't exist in the base commit), OR
-  - The ``revision`` field differs between base and head, OR
-  - Its family YAML (e.g. 8.1.yaml → 8.1.x children) was modified.
+  - The ``revision`` field differs between base and head.
 
 Usage as CLI:
 
@@ -96,27 +95,6 @@ def get_revision(content: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-def get_child_versions(stem: str, ref: str) -> list[str]:
-    """List all X.Y.Z.yaml children of a family X.Y at git ref."""
-    pattern = f"ffmpeg/{stem}.*.yaml"
-    result = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", ref, "--", pattern],
-        capture_output=True, text=True, cwd=str(REPO_ROOT),
-    )
-    if result.returncode != 0:
-        return []
-    children = []
-    prefix = f"ffmpeg/{stem}."
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line or not line.startswith(prefix):
-            continue
-        name = Path(line).stem
-        if name.count(".") == 2:
-            children.append(name)
-    return sorted(children, key=version_key)
-
-
 # ── Core detection ──────────────────────────────────────────────────────────
 
 def detect_changes(before: str, after: str) -> DetectionResult:
@@ -136,12 +114,6 @@ def detect_changes(before: str, after: str) -> DetectionResult:
     result = DetectionResult()
 
     for stem in sorted(changed_stems, key=version_key):
-        if stem.count(".") == 1:  # family YAML → cascade children
-            for child in get_child_versions(stem, after):
-                content = git_show(after, f"ffmpeg/{child}.yaml")
-                if content:
-                    result.add(child, get_revision(content))
-
         content = git_show(after, f"ffmpeg/{stem}.yaml")
         if content:
             result.add(stem, get_revision(content))
