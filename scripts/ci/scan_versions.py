@@ -34,6 +34,22 @@ from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from ffport import yaml_utils, merge
+
+
+def _has_required_source(stem: str) -> bool:
+    """Check if the resolved YAML chain has both sha512 and ref in source."""
+    try:
+        docs, _ = yaml_utils.resolve_chain(stem)
+    except SystemExit:
+        return False
+    merged = {}
+    for doc in docs:
+        merged = merge.deep_merge(merged, doc)
+    source = merged.get("source", {})
+    return bool(source.get("sha512")) and bool(source.get("ref"))
+
 
 def run_push(base: str, head: str) -> list[dict[str, str]]:
     """Run ci_detect_changes.py and return version objects for changed files."""
@@ -57,7 +73,7 @@ def run_push(base: str, head: str) -> list[dict[str, str]]:
     if not data.get("found"):
         return []
 
-    return [{"version": c["version"]} for c in data["changed"]]
+    return [{"version": c["version"]} for c in data["changed"] if _has_required_source(c["version"])]
 
 
 def run_all() -> list[dict[str, str]]:
@@ -75,6 +91,9 @@ def run_all() -> list[dict[str, str]]:
     all_versions = [
         line.strip() for line in list_result.stdout.splitlines() if line.strip()
     ]
+
+    # Filter to versions with both sha512 and ref in their resolved YAML chain
+    all_versions = [v for v in all_versions if _has_required_source(v)]
 
     # Fetch data branch once — shared across all version checks
     subprocess.run(["git", "fetch", "origin", "data"],
