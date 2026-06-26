@@ -122,11 +122,12 @@ class TestDecide(unittest.TestCase):
         self.env_patcher.start()
         self.addCleanup(self.env_patcher.stop)
 
-    def _make_args(self, run_id="12345", pr_number=None, yaml=None, base_ref="main"):
+    def _make_args(self, run_id="12345", pr_number=None, yaml=None, ref=None, base_ref="main"):
         return argparse.Namespace(
             run_id=run_id,
             pr_number=pr_number,
             yaml=yaml,
+            ref=ref,
             base_ref=base_ref,
         )
 
@@ -152,13 +153,15 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["base_revision"], "")
         mock_gh_api.assert_called_once_with("repos/owner/repo/pulls/42")
 
-    # ── Scenario 2: YAML provided, no existing fix PR ────────────────────
+    # ── Scenario 2: YAML provided, revision published, no fix PR ─────────
 
     @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
+    @mock.patch("auto_heal_decide.data_version_published")
     @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_no_existing_fix_pr(self, mock_read_rev, mock_has_fix_pr):
-        """YAML provided, no existing fix PR → action=pr, skip=false."""
+    def test_yaml_published_no_fix_pr(self, mock_read_rev, mock_published, mock_has_fix_pr):
+        """YAML provided, revision published, no fix PR → action=pr, bump=true."""
         mock_read_rev.return_value = 2
+        mock_published.return_value = True
         mock_has_fix_pr.return_value = False
         args = self._make_args(yaml="8.1.1")
         result = decide(args)
@@ -170,13 +173,34 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["checkout_ref"], "main")
         self.assertEqual(result["base_revision"], "2")
 
-    # ── Scenario 3: YAML provided, existing fix PR is OPEN ───────────────
+    # ── Scenario 3: YAML provided, revision NOT published (no bump) ──────
 
     @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
+    @mock.patch("auto_heal_decide.data_version_published")
     @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_existing_fix_pr_open(self, mock_read_rev, mock_has_fix_pr):
-        """YAML provided, existing fix PR is OPEN → action=pr, skip=true."""
+    def test_yaml_not_published_no_bump(self, mock_read_rev, mock_published, mock_has_fix_pr):
+        """YAML provided, revision NOT published → no bump, skip=false."""
         mock_read_rev.return_value = 2
+        mock_published.return_value = False
+        mock_has_fix_pr.return_value = False
+        args = self._make_args(yaml="8.1.1")
+        result = decide(args)
+
+        self.assertEqual(result["action"], "pr")
+        self.assertEqual(result["skip"], "false")
+        self.assertEqual(result["branch"], "fix/ffmpeg-8.1.1-r2")
+        self.assertEqual(result["bump_revision"], "false")
+        self.assertEqual(result["base_revision"], "2")
+
+    # ── Scenario 4: YAML provided, published, fix PR is OPEN ────────────
+
+    @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
+    @mock.patch("auto_heal_decide.data_version_published")
+    @mock.patch("auto_heal_decide.read_yaml_revision")
+    def test_yaml_published_fix_pr_open(self, mock_read_rev, mock_published, mock_has_fix_pr):
+        """YAML provided, published, fix PR is OPEN → skip=true."""
+        mock_read_rev.return_value = 2
+        mock_published.return_value = True
         mock_has_fix_pr.return_value = True
         args = self._make_args(yaml="8.1.1")
         result = decide(args)
@@ -185,7 +209,7 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["skip"], "true")
         self.assertEqual(result["branch"], "fix/ffmpeg-8.1.1-r3")
 
-    # ── Scenario 4: YAML without revision field ──────────────────────────
+    # ── Scenario 5: YAML without revision field ──────────────────────────
 
     @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
     @mock.patch("auto_heal_decide.read_yaml_revision")
@@ -201,7 +225,25 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["action"], "pr")
         self.assertEqual(result["base_revision"], "")
 
-    # ── Scenario 6: workflow_dispatch (no PR number or yaml) ─────────────
+    # ── Scenario 6: Master + ref (snapshot build failure) ────────────────
+
+    @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
+    @mock.patch("auto_heal_decide.data_version_published")
+    @mock.patch("auto_heal_decide.read_yaml_revision")
+    def test_yaml_master_with_ref(self, mock_read_rev, mock_published, mock_has_fix_pr):
+        """Master + ref: resolved_version=ref, published?bump : no-bump."""
+        mock_read_rev.return_value = 1
+        mock_published.return_value = False
+        mock_has_fix_pr.return_value = False
+        args = self._make_args(yaml="master", ref="n8.0-1234-gabc")
+        result = decide(args)
+
+        self.assertEqual(result["action"], "pr")
+        self.assertEqual(result["branch"], "fix/ffmpeg-master-r1")
+        self.assertEqual(result["bump_revision"], "false")
+        self.assertEqual(result["base_revision"], "1")
+
+    # ── Scenario 7: workflow_dispatch (no PR number or yaml) ─────────────
 
     @mock.patch("auto_heal_decide.gh_api")
     def test_workflow_dispatch(self, mock_gh_api):

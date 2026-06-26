@@ -96,11 +96,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INPUT_YAML: ${{ inputs.yaml }}
+          INPUT_REF: ${{ inputs.ref }}
           INPUT_PR: ${{ inputs.pr_number }}
           INPUT_BASE_REF: ${{ inputs.base_ref }}
         run: |
           ARGS=(--run-id "${{ inputs.run_id }}")
           [ -n "$INPUT_YAML" ] && ARGS+=(--yaml "$INPUT_YAML")
+          [ -n "$INPUT_REF" ] && ARGS+=(--ref "$INPUT_REF")
           [ -n "$INPUT_PR" ] && ARGS+=(--pr-number "$INPUT_PR")
           JSON=$(python scripts/ci/auto_heal_decide.py "${ARGS[@]}" --base-ref "$INPUT_BASE_REF")
           echo "$JSON" | python scripts/ci/json_to_github_output.py

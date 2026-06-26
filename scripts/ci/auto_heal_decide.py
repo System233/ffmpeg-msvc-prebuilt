@@ -23,6 +23,7 @@ Usage as CLI:
     python scripts/ci/auto_heal_decide.py \\
         --run-id 12345 \\
         --yaml master \\
+        --ref n8.0-1234-gabc \\
         --base-ref main
 
 Environment variables:
@@ -41,6 +42,11 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+# Direct import of naming helpers — same single source of truth used by
+# scan_variants.py, apply_fix.py, and manage_release.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts.ops.naming import major_version, make_version_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -114,6 +120,27 @@ def gh_has_open_fix_pr(yaml_name: str) -> bool:
     return int(result.stdout.strip() or "0") > 0
 
 
+def data_version_published(version: str, revision: int) -> bool:
+    """Check if ``version.yaml`` exists on the ``data`` branch for a version+revision.
+
+    ``version`` is the **resolved** version string (``ref || yaml_name``),
+    the same value that ``scan_variants.py`` passes to ``naming.py``.
+
+    Uses ``gh api --method HEAD`` — single HTTP HEAD, no body download.
+    """
+    owner, repo = get_owner_repo()
+    major = major_version(version)
+    ver_dir = make_version_dir(version=version, revision=revision)
+    path = f"{major}/{ver_dir}/version.yaml"
+
+    result = subprocess.run(
+        ["gh", "api", "--method", "HEAD",
+         f"repos/{owner}/{repo}/contents/{path}?ref=data"],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+    return result.returncode == 0
+
+
 # ── YAML helpers ─────────────────────────────────────────────────────────────
 
 
@@ -152,6 +179,7 @@ def decide(args: argparse.Namespace) -> dict:
     owner, repo = get_owner_repo()
     run_id: str = args.run_id
     yaml_name: str | None = args.yaml
+    ref: str | None = args.ref
     pr_number: str | None = args.pr_number
     base_ref: str = args.base_ref or "main"
 
@@ -182,8 +210,14 @@ def decide(args: argparse.Namespace) -> dict:
         # ── Release / Master failure ────────────────────────────────────
         rev = read_yaml_revision(yaml_name)
         if rev is not None:
-            branch = f"fix/ffmpeg-{yaml_name}-r{rev + 1}"
-            bump_revision = "true"
+            # Resolved version = ref (for snapshot/master) or yaml_name
+            resolved_version = ref if ref else yaml_name
+            if data_version_published(resolved_version, rev):
+                branch = f"fix/ffmpeg-{yaml_name}-r{rev + 1}"
+                bump_revision = "true"
+            else:
+                branch = f"fix/ffmpeg-{yaml_name}-r{rev}"
+                bump_revision = "false"
         else:
             branch = f"fix/ffmpeg-{yaml_name}"
             bump_revision = "false"
@@ -255,6 +289,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--pr-number",
         default=None,
         help="The PR number for PR build failures.",
+    )
+    parser.add_argument(
+        "--ref",
+        default=None,
+        help="Git ref for snapshot/master builds (e.g. n8.0-1234-gabc).",
     )
     parser.add_argument(
         "--base-ref",
