@@ -1,0 +1,30 @@
+From 6ad6cb15c5af6be493b2439a0a54343387243424 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Fri, 26 Jun 2026 13:24:02 +0800
+Subject: [PATCH] Fix LD_LIB for static MSVC builds
+
+LD_LIB='%.lib' was inside `if enabled shared; then` block, so static
+builds kept the GCC-style 'lib%.a' pattern, causing LNK1181 errors.
+Move it outside so it applies unconditionally for MSVC/Windows.
+---
+ configure | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/configure b/configure
+index e50bb0b..09ba934 100644
+--- a/configure
++++ b/configure
+@@ -5051,10 +5051,8 @@ case $target_os in
+         ;;
+     win32|win64)
+         disable symver
++        LD_LIB='%.lib'
+         if enabled shared; then
+-            # Link to the import library instead of the normal static library
+-            # for shared libs.
+-            LD_LIB='%.lib'
+             # Cannot build both shared and static libs with MSVC or icl.
+             disable static
+         fi
+-- 
+2.47.1.windows.2
