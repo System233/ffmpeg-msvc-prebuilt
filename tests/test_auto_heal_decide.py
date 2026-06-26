@@ -152,14 +152,14 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["base_revision"], "")
         mock_gh_api.assert_called_once_with("repos/owner/repo/pulls/42")
 
-    # ── Scenario 2: YAML provided, no existing remote branch ─────────────
+    # ── Scenario 2: YAML provided, no existing fix PR ────────────────────
 
-    @mock.patch("auto_heal_decide.git_remote_branch_exists")
+    @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
     @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_no_existing_branch(self, mock_read_rev, mock_branch_exists):
-        """YAML provided, no existing remote branch → action=pr, skip=false."""
+    def test_yaml_no_existing_fix_pr(self, mock_read_rev, mock_has_fix_pr):
+        """YAML provided, no existing fix PR → action=pr, skip=false."""
         mock_read_rev.return_value = 2
-        mock_branch_exists.return_value = False
+        mock_has_fix_pr.return_value = False
         args = self._make_args(yaml="8.1.1")
         result = decide(args)
 
@@ -170,16 +170,14 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["checkout_ref"], "main")
         self.assertEqual(result["base_revision"], "2")
 
-    # ── Scenario 3: YAML provided, existing remote branch + open PR ──────
+    # ── Scenario 3: YAML provided, existing fix PR is OPEN ───────────────
 
-    @mock.patch("auto_heal_decide.gh_pr_list_state")
-    @mock.patch("auto_heal_decide.git_remote_branch_exists")
+    @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
     @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_existing_pr_open(self, mock_read_rev, mock_branch_exists, mock_pr_state):
-        """YAML provided, existing remote branch + open PR → action=pr, skip=true."""
+    def test_yaml_existing_fix_pr_open(self, mock_read_rev, mock_has_fix_pr):
+        """YAML provided, existing fix PR is OPEN → action=pr, skip=true."""
         mock_read_rev.return_value = 2
-        mock_branch_exists.return_value = True
-        mock_pr_state.return_value = "OPEN"
+        mock_has_fix_pr.return_value = True
         args = self._make_args(yaml="8.1.1")
         result = decide(args)
 
@@ -187,30 +185,14 @@ class TestDecide(unittest.TestCase):
         self.assertEqual(result["skip"], "true")
         self.assertEqual(result["branch"], "fix/ffmpeg-8.1.1-r3")
 
-    # ── Scenario 4: YAML provided, existing remote branch + closed PR ────
+    # ── Scenario 4: YAML without revision field ──────────────────────────
 
-    @mock.patch("auto_heal_decide.gh_pr_list_state")
-    @mock.patch("auto_heal_decide.git_remote_branch_exists")
+    @mock.patch("auto_heal_decide.gh_has_open_fix_pr")
     @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_existing_pr_closed(self, mock_read_rev, mock_branch_exists, mock_pr_state):
-        """YAML provided, existing remote branch but PR closed → skip=false."""
-        mock_read_rev.return_value = 2
-        mock_branch_exists.return_value = True
-        mock_pr_state.return_value = "CLOSED"
-        args = self._make_args(yaml="8.1.1")
-        result = decide(args)
-
-        self.assertEqual(result["action"], "pr")
-        self.assertEqual(result["skip"], "false")
-
-    # ── Scenario 5: YAML without revision field ──────────────────────────
-
-    @mock.patch("auto_heal_decide.git_remote_branch_exists")
-    @mock.patch("auto_heal_decide.read_yaml_revision")
-    def test_yaml_no_revision_field(self, mock_read_rev, mock_branch_exists):
+    def test_yaml_no_revision_field(self, mock_read_rev, mock_has_fix_pr):
         """YAML without revision → branch name without -r suffix, bump_revision=false."""
         mock_read_rev.return_value = None
-        mock_branch_exists.return_value = False
+        mock_has_fix_pr.return_value = False
         args = self._make_args(yaml="master")
         result = decide(args)
 

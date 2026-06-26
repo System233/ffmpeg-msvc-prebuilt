@@ -92,6 +92,28 @@ def git_remote_branch_exists(branch: str) -> bool:
     return bool(result.stdout.strip())
 
 
+def gh_has_open_fix_pr(yaml_name: str) -> bool:
+    """Return ``True`` if an OPEN auto-heal PR exists for *yaml_name*.
+
+    Identifies the PR by label ``ffmpeg-{yaml_name}`` — decoupled from
+    branch naming and PR title.
+    """
+    owner, repo = get_owner_repo()
+    result = subprocess.run(
+        [
+            "gh", "api",
+            f"repos/{owner}/{repo}/issues?labels=ffmpeg-{yaml_name}&state=open",
+            "--jq", "map(select(.pull_request != null)) | length",
+        ],
+        capture_output=True, text=True, cwd=str(REPO_ROOT),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"gh api label search failed: {result.stderr.strip()}"
+        )
+    return int(result.stdout.strip() or "0") > 0
+
+
 # ── YAML helpers ─────────────────────────────────────────────────────────────
 
 
@@ -170,9 +192,8 @@ def decide(args: argparse.Namespace) -> dict:
         checkout_ref = "main"
         base_ref = base_ref or "main"
 
-        if git_remote_branch_exists(branch):
-            if gh_pr_list_state(branch) == "OPEN":
-                skip = "true"
+        if gh_has_open_fix_pr(yaml_name):
+            skip = "true"
 
     else:
         # ── workflow_dispatch ───────────────────────────────────────────

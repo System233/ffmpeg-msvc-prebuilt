@@ -207,6 +207,8 @@ def _create_pr(
         github_repository,
         "--body",
         body,
+        "--label",
+        f"ffmpeg-{yaml_name}",
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
