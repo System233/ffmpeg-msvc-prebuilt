@@ -329,10 +329,18 @@ jobs:
           fi
         shell: bash
 
+      - name: Determine artifact download prefix
+        id: artifact-prefix
+        run: |
+          prefix=$(python scripts/ops/naming.py variant-prefix \
+            --version "${{ inputs.yaml }}" \
+            --revision "${{ needs.scan.outputs.revision }}")
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: ffmpeg-${{ inputs.yaml }}-r${{ needs.scan.outputs.revision }}_*
+          pattern: ${{ steps.artifact-prefix.outputs.prefix }}*
           path: ${{ github.workspace }}/artifacts/
           merge-multiple: true
 

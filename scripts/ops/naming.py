@@ -65,6 +65,16 @@ def major_version(version: str) -> str:
     return f"{major}.x"
 
 
+def build_variant_prefix(*, version: str, revision: int = 0) -> str:
+    """Build the artifact download prefix for all variants of a version.
+
+    ``ffmpeg-{version}[-r{rev}]_`` — matches every variant ID
+    (e.g. ``ffmpeg-8.1.1-r2_x64-windows-shared-gpl``).
+    """
+    ver = make_version_dir(version=version, revision=revision)
+    return f"ffmpeg-{ver}_"
+
+
 def build_variant_id(
     *,
     version: str,
@@ -363,6 +373,10 @@ def build_cli() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # variant-prefix
+    p = sub.add_parser("variant-prefix", help="Build a variant download prefix")
+    _add_common_args(p)
+
     # variant-id
     p = sub.add_parser("variant-id", help="Build a variant ID")
     _add_common_args(p)
@@ -409,7 +423,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_cli()
     args = parser.parse_args(argv)
 
-    if args.command == "variant-id":
+    if args.command == "variant-prefix":
+        print(build_variant_prefix(version=args.version, revision=args.revision))
+
+    elif args.command == "variant-id":
         result = build_variant_id(
             version=args.version,
             revision=args.revision,
