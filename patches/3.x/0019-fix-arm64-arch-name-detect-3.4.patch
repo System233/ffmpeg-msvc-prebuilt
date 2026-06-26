@@ -12,7 +12,6 @@ index 55da57d..6ae1f9f 100644
              ;;
          arm*)
 @@ -5399,6 +5399,7 @@
-
  if enabled_any arm aarch64 || enabled_all ppc altivec && enabled asm; then
      nogas=:
 -    enabled_any arm aarch64 && nogas=die
