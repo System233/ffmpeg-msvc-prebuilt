@@ -10,4 +10,13 @@ index 55da57d..6ae1f9f 100644
 +        aarch64|arm64)
               as_default="armasm64"
               ;;
-         arm*)
+          arm*)
+@@ -5399,7 +5399,7 @@
+ 
+ if enabled_any arm aarch64 || enabled_all ppc altivec && enabled asm; then
+     nogas=:
+-    enabled_any arm aarch64 && nogas=die
++    enabled_any arm aarch64 && [ "$toolchain" != "msvc" ] && nogas=die
+     enabled_all ppc altivec && [ $target_os_default != aix ] && nogas=warn
+     as_noop=-v
+ 
