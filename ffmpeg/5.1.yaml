@@ -24,3 +24,4 @@ build:
 
 patches:
   - 5.x/0050-lensfun-0.3.4-compat.patch
+  - 5.x/0051-libjxl-0.11-compat.patch
