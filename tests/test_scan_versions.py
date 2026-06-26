@@ -56,23 +56,44 @@ class TestRunAll(unittest.TestCase):
         self.mock_run = patcher.start()
         self.addCleanup(patcher.stop)
 
+    @staticmethod
+    def _scan_result(version: str) -> str:
+        """Return fake scan_variants.py JSON stdout with a non-empty matrix."""
+        return json.dumps({"matrix": [{"triplet": "x64-windows"}]})
+
     def test_typical_output(self):
         """Two versions on separate lines → returns two version objects."""
-        self.mock_run.return_value = mock.Mock(
-            returncode=0,
-            stdout="8.1.1\n7.1.2\n",
-            stderr="",
-        )
+        self.mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout="8.1.1\n7.1.2\n", stderr=""),
+            # git fetch (ignored)
+            mock.Mock(returncode=0, stdout="", stderr=""),
+            # ffport.py get-revision 8.1.1
+            mock.Mock(returncode=0, stdout="0\n", stderr=""),
+            # scan_variants.py for 8.1.1
+            mock.Mock(returncode=0, stdout=self._scan_result("8.1.1"), stderr=""),
+            # ffport.py get-revision 7.1.2
+            mock.Mock(returncode=0, stdout="0\n", stderr=""),
+            # scan_variants.py for 7.1.2
+            mock.Mock(returncode=0, stdout=self._scan_result("7.1.2"), stderr=""),
+        ]
         result = run_all()
         self.assertEqual(result, [{"version": "8.1.1"}, {"version": "7.1.2"}])
 
     def test_empty_lines_filtered(self):
         """Empty lines and whitespace-only lines are skipped."""
-        self.mock_run.return_value = mock.Mock(
-            returncode=0,
-            stdout="8.1.1\n\n  \n7.1.2\n\n",
-            stderr="",
-        )
+        self.mock_run.side_effect = [
+            mock.Mock(returncode=0, stdout="8.1.1\n\n  \n7.1.2\n\n", stderr=""),
+            # git fetch (ignored)
+            mock.Mock(returncode=0, stdout="", stderr=""),
+            # ffport.py get-revision 8.1.1
+            mock.Mock(returncode=0, stdout="0\n", stderr=""),
+            # scan_variants.py for 8.1.1
+            mock.Mock(returncode=0, stdout=self._scan_result("8.1.1"), stderr=""),
+            # ffport.py get-revision 7.1.2
+            mock.Mock(returncode=0, stdout="0\n", stderr=""),
+            # scan_variants.py for 7.1.2
+            mock.Mock(returncode=0, stdout=self._scan_result("7.1.2"), stderr=""),
+        ]
         result = run_all()
         self.assertEqual(result, [{"version": "8.1.1"}, {"version": "7.1.2"}])
 

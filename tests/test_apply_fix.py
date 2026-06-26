@@ -315,6 +315,12 @@ class TestPushAndPr(unittest.TestCase):
             ["git", "push", "--force-with-lease", "origin", f"HEAD:{self._branch}"], check=True
         )
 
+        # Verify gh label create was called before gh pr create
+        mock_run.assert_any_call(
+            ["gh", "label", "create", f"ffmpeg-{self._yaml}", "--color", "FBCA04", "--force"],
+            capture_output=True,
+        )
+
         # Verify gh pr create with correct args (no body file → body = footer only)
         mock_run.assert_any_call(
             [
@@ -331,6 +337,8 @@ class TestPushAndPr(unittest.TestCase):
                 self._repo,
                 "--body",
                 BODY_FOOTER,
+                "--label",
+                f"ffmpeg-{self._yaml}",
             ],
             capture_output=True,
             text=True,
@@ -384,6 +392,8 @@ class TestPushAndPr(unittest.TestCase):
                 self._repo,
                 "--body",
                 BODY_FOOTER,
+                "--label",
+                f"ffmpeg-{self._yaml}",
             ],
             capture_output=True,
             text=True,
@@ -425,7 +435,7 @@ class TestPushAndPr(unittest.TestCase):
             run_id=RUN_ID,
         )
 
-        # --body with content + run_id footer
+        # --body with content + run_id footer, plus --label
         mock_run.assert_any_call(
             [
                 "gh",
@@ -441,6 +451,8 @@ class TestPushAndPr(unittest.TestCase):
                 self._repo,
                 "--body",
                 self.BODY_WITH_FOOTER,
+                "--label",
+                f"ffmpeg-{self._yaml}",
             ],
             capture_output=True,
             text=True,

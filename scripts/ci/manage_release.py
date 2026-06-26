@@ -37,33 +37,46 @@ def _find_naming_py() -> str:
 def determine_tag(artifacts_dir: Path) -> Optional[str]:
     """Find the first ``*.var.yaml`` in *artifacts_dir* and extract the release tag.
 
-    Returns the tag string ``ffmpeg-{version}``, or ``None`` if no ``.var.yaml``
-    files exist.
+    Returns the tag string ``ffmpeg-{version}[-r{rev}]`` (e.g. ``ffmpeg-8.1.1-r2``),
+    or ``None`` if no ``.var.yaml`` files exist.
     """
     var_files = sorted(str(p) for p in artifacts_dir.glob("*.var.yaml"))
     if not var_files:
         return None
 
     var_file = var_files[0]
+    version = ""
+    revision = 0
+    with open(var_file) as f:
+        for line in f:
+            if line.startswith("version:"):
+                version = line.split(":", 1)[1].strip()
+            elif line.startswith("revision:"):
+                revision = int(line.split(":", 1)[1].strip())
+
+    if not version:
+        print("Error: no version field in var file", file=sys.stderr)
+        sys.exit(1)
+
     naming_py = _find_naming_py()
     result = subprocess.run(
-        [sys.executable, naming_py, "var-version", var_file],
-        capture_output=True,
-        text=True,
+        [sys.executable, naming_py, "release-tag",
+         "--version", version, "--revision", str(revision)],
+        capture_output=True, text=True,
     )
     if result.returncode != 0:
         print(
-            f"Error running naming.py var-version: {result.stderr.strip()}",
+            f"Error running naming.py release-tag: {result.stderr.strip()}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    version = result.stdout.strip()
-    if not version:
-        print("Error: no version extracted from var file", file=sys.stderr)
+    tag = result.stdout.strip()
+    if not tag:
+        print("Error: empty tag from naming.py release-tag", file=sys.stderr)
         sys.exit(1)
 
-    return f"ffmpeg-{version}"
+    return tag
 
 
 # ---------------------------------------------------------------------------

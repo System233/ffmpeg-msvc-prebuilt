@@ -1,10 +1,11 @@
 """Tests for scripts/ci/manage_release.py."""
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
-from manage_release import _build_title, _build_notes
+from manage_release import _build_title, _build_notes, determine_tag
 
 
 class TestBuildTitle(unittest.TestCase):
@@ -61,6 +62,85 @@ class TestBuildNotes(unittest.TestCase):
         notes = _build_notes("n8.0-1234-gabc")
         expected = "Automated build of FFmpeg n8.0-1234-gabc using MSVC via vcpkg."
         self.assertEqual(notes, expected)
+
+
+class TestDetermineTag(unittest.TestCase):
+    """Tests for the determine_tag function."""
+
+    @staticmethod
+    def _write_var_yaml(dir_path: Path, variant_id: str, version: str, revision: int, **extra):
+        path = dir_path / f"{variant_id}.var.yaml"
+        lts = extra.get("lts", True)
+        lts_str = str(lts).lower() if isinstance(lts, bool) else lts
+        lines = [
+            f"variant_id: {variant_id}",
+            f"version: {version}",
+            f"revision: {revision}",
+            f"arch: {extra.get('arch', 'x64')}",
+            f"triplet: {extra.get('triplet', 'x64-windows')}",
+            f"linkage: {extra.get('linkage', 'shared')}",
+            f"license: {extra.get('license', 'gpl')}",
+            f"lts: {lts_str}",
+            f"ffmpeg_ref: {extra.get('ffmpeg_ref', f'n{version}')}",
+            "assets:",
+            "  binary:",
+            f"    file: {variant_id}.zip",
+            "    size: 1234",
+            "    digest: sha256:abc",
+            "features: []",
+            "dependencies: []",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_with_revision(self):
+        """Tagged release with revision includes -r{N} suffix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_var_yaml(d, "ffmpeg-8.1.1-r2_x64-windows-shared-gpl", "8.1.1", 2)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-8.1.1-r2")
+
+    def test_no_revision(self):
+        """Tagged release without revision omits the -r suffix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_var_yaml(d, "ffmpeg-8.1.1_x64-windows-shared-gpl", "8.1.1", 0)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-8.1.1")
+
+    def test_snapshot_version(self):
+        """Snapshot (date-based) version without revision produces correct tag."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_var_yaml(d, "ffmpeg-7.1-20260626_x64-windows-shared-gpl", "7.1-20260626", 0)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-7.1-20260626")
+
+    def test_snapshot_with_revision(self):
+        """Snapshot build that also has a revision includes both."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            self._write_var_yaml(d, "ffmpeg-7.1-20260626-r1_x64-windows-shared-gpl", "7.1-20260626", 1)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-7.1-20260626-r1")
+
+    def test_first_alphabetical_when_multiple(self):
+        """When multiple .var.yaml files exist, the first sorted is used."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            # r0 comes first alphabetically → should produce ffmpeg-7.1.5
+            self._write_var_yaml(d, "ffmpeg-7.1.5_x64-windows-shared-gpl", "7.1.5", 0)
+            self._write_var_yaml(d, "ffmpeg-8.1.1-r2_x64-windows-shared-gpl", "8.1.1", 2)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-7.1.5")
+
+    def test_no_var_files(self):
+        """When no .var.yaml files exist, returns None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            tag = determine_tag(d)
+            self.assertIsNone(tag)
 
 
 if __name__ == "__main__":

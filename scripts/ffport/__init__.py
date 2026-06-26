@@ -12,7 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import builder, features, merge, patches, templates, version as ver_mod, yaml, deps_port
+from . import builder, features, merge, patches, templates, version as ver_mod, yaml_utils, deps_port
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 YAML_DIR = REPO_ROOT / "ffmpeg"
@@ -61,7 +61,7 @@ def cmd_deps(args):
 
 def cmd_get_revision(args):
     """Print the revision number from a version YAML chain."""
-    docs, _ = yaml.resolve_chain(args.yaml)
+    docs, _ = yaml_utils.resolve_chain(args.yaml)
     merged = {}
     for doc in docs:
         merged = merge.deep_merge(merged, doc)
@@ -72,7 +72,7 @@ def _generate(yaml_name, version=None, sha512=None, build_date=None,
               port_name="ffmpeg", output=None, ref=None):
     """Generate port directory for a given YAML config and optional version."""
     # 1. Resolve YAML chain
-    docs, family = yaml.resolve_chain(yaml_name)
+    docs, family = yaml_utils.resolve_chain(yaml_name)
     print(f"  Family: {family}")
 
     # 2. Deep merge
