@@ -1,0 +1,20 @@
+diff --git a/configure b/configure
+index 55da57d..e363dfc 100755
+--- a/configure
++++ b/configure
+@@ -5878,3 +5878,13 @@
+-enabled  zlib && check_lib zlib   zlib.h      zlibVersion    -lz
+-enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
++case "$cc" in
++    cl.exe*)
++        LIBPREF=""
++        LIBSUF=".lib"
++        SLIBPREF=""
++        SLIBSUF=".dll"
++        ;;
++esac
++enabled  zlib && { check_lib zlib   zlib.h      zlibVersion    -lz ||
++                   check_lib zlib   zlib.h      zlibVersion    -lzsd; }
++enabled bzlib && { check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2 ||
++                   check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2d; }
+ enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma

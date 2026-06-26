@@ -1,0 +1,28 @@
+From 870d57191541227e8c0729f2c80092cc8ebc5a83 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Fri, 26 Jun 2026 13:24:02 +0800
+Subject: [PATCH] Apply ldflags_filter to per-program extralibs for MSVC
+
+ffplay_extralibs was set to raw sdl2_extralibs (GCC-style -L/-l flags)
+without going through $ldflags_filter, causing LNK4044 warnings on MSVC.
+Apply the filter so -L -> -libpath: and -l -> .lib conversions work.
+echo flattens multi-line filter output to space-separated for Make.
+---
+ configure | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index 09ba934..5308794 100644
+--- a/configure
++++ b/configure
+@@ -3323,7 +3323,7 @@ ffmpeg_select="aformat_filter anull_filter atrim_filter format_filter
+                null_filter
+                trim_filter"
+ ffplay_deps="avcodec avformat swscale swresample sdl2"
+-ffplay_extralibs='$sdl2_extralibs'
++ffplay_extralibs='$(echo $($ldflags_filter $sdl2_extralibs))'
+ ffplay_select="rdft crop_filter transpose_filter hflip_filter vflip_filter rotate_filter"
+ ffprobe_deps="avcodec avformat"
+ ffserver_deps="avformat fork sarestart"
+-- 
+2.47.1.windows.2

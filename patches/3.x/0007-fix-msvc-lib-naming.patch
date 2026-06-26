@@ -4,14 +4,14 @@ Date: Sun, 14 Jun 2026 19:46:00 +0800
 Subject: [PATCH] Fix MSVC library naming for static builds
 
 ---
- configure | 7 +++++++
- 1 file changed, 7 insertions(+)
+ configure | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
 
 diff --git a/configure b/configure
 index f164e15..761c0d7 100644
 --- a/configure
 +++ b/configure
-@@ -3998,6 +3998,13 @@ msvc_common_flags(){
+@@ -3998,6 +3998,18 @@ msvc_common_flags(){
              -march=*)             ;;
 -            -lz)                  echo zlib.lib ;;
 +            -lz)                  echo zs.lib ;;
@@ -22,6 +22,11 @@ index f164e15..761c0d7 100644
 +            -lmfx)                echo libmfx.lib ;;
 +            -lmp3lame)            echo libmp3lame.lib ;;
 +            -lopengl32)           echo opengl32.lib ;;
++            -lssl)                echo libssl.lib ;;
++            -lcrypto)             echo libcrypto.lib ;;
++            -ltesseract)          echo tesseract55.lib ;;
++            -lcurl)               echo libcurl.lib ;;
++            -lpng)                echo libpng16.lib ;;
 +            -lm)                  ;;
              -lstdc++)             ;;
              -l*)                  echo ${flag#-l}.lib ;;

@@ -1,0 +1,27 @@
+From ac6b8467b143bdb3be7f37bd7001aa163857041b Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Fri, 26 Jun 2026 13:48:19 +0800
+Subject: [PATCH] Clear LIBM on MSVC Windows
+
+On MSVC Windows, -lm is unnecessary because math functions are in the
+default CRT. Clear LIBM on win32/win64 to prevent -lm from appearing
+in generated .pc files, which would cause LNK1104 (missing m.lib)
+when downstream projects use pkgconf to link against FFmpeg.
+---
+ configure | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/configure b/configure
+index 9a49bcc..9a2fd7d 100644
+--- a/configure
++++ b/configure
+@@ -5883,6 +5883,7 @@ enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
+ check_lib libdl dlfcn.h "dlopen dlsym" || check_lib libdl dlfcn.h "dlopen dlsym" -ldl
+ 
+ check_lib libm math.h sin -lm && LIBM="-lm"
++case "$target_os" in win32|win64) LIBM= ;; esac
+ 
+ atan2f_args=2
+ copysign_args=2
+-- 
+2.47.1.windows.2
