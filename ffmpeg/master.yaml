@@ -1,5 +1,5 @@
 extends: "base"
-revision: 0
+revision: 1
 
 source:
   method: git
