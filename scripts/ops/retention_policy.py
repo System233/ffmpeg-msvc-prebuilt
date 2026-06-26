@@ -34,7 +34,7 @@ from typing import Any
 
 import yaml
 
-from naming import parse_version_dir, VERSION_DIR_RE
+from naming import build_release_tag, parse_version_dir, VERSION_DIR_RE
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,8 @@ def get_release_tag(data: dict[str, Any], file_path: Path) -> str:
     tag = data.get("release_tag")
     if tag and isinstance(tag, str):
         return tag
-    return f"ffmpeg-{file_path.parent.name}"
+    info = parse_version_dir(file_path.parent.name)
+    return build_release_tag(version=info["version"], revision=info["revision"])
 
 
 def get_variant_ids(data: dict[str, Any]) -> list[str]:

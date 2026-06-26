@@ -31,6 +31,9 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts.ops.naming import build_data_path
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,7 +67,6 @@ def scan_variants(
     and ``triplets`` (the active triplet list).
     """
     repo_root = _repo_root()
-    naming_script = str(repo_root / "scripts" / "ops" / "naming.py")
 
     triplets = _env_list("TRIPLETS", "arm-windows arm64-windows x86-windows x64-windows")
     licenses = _env_list("LICENSES", "lgpl gpl")
@@ -97,31 +99,11 @@ def scan_variants(
             for linkage in linkages:
                 variant_key = f"{triplet}-{linkage}-{license_}"
 
-                # Determine the data branch path via the shared naming script
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        naming_script,
-                        "data-path",
-                        "--version", ver,
-                        "--revision", rev,
-                        "--triplet", triplet,
-                        "--linkage", linkage,
-                        "--license", license_,
-                    ],
-                    cwd=repo_root,
-                    capture_output=True,
-                    text=True,
+                # Determine the data branch path via the shared naming module
+                path = build_data_path(
+                    version=ver, revision=int(rev),
+                    triplet=triplet, linkage=linkage, license=license_,
                 )
-                if result.returncode != 0:
-                    print(
-                        f"ERROR: naming.py data-path failed for {variant_key}: "
-                        f"{result.stderr.strip()}",
-                        file=sys.stderr,
-                    )
-                    sys.exit(1)
-
-                path = result.stdout.strip()
 
                 # Check whether this variant already exists on the data branch
                 check = subprocess.run(

@@ -22,16 +22,13 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from scripts.ops.naming import build_release_tag
+
 
 # ---------------------------------------------------------------------------
 # Tag determination
 # ---------------------------------------------------------------------------
-
-
-def _find_naming_py() -> str:
-    """Resolve the absolute path to ``scripts/ops/naming.py`` relative to this file."""
-    this_dir = Path(__file__).resolve().parent  # scripts/ci/
-    return str(this_dir.parent / "ops" / "naming.py")
 
 
 def determine_tag(artifacts_dir: Path) -> Optional[str]:
@@ -58,22 +55,9 @@ def determine_tag(artifacts_dir: Path) -> Optional[str]:
         print("Error: no version field in var file", file=sys.stderr)
         sys.exit(1)
 
-    naming_py = _find_naming_py()
-    result = subprocess.run(
-        [sys.executable, naming_py, "release-tag",
-         "--version", version, "--revision", str(revision)],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(
-            f"Error running naming.py release-tag: {result.stderr.strip()}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    tag = result.stdout.strip()
+    tag = build_release_tag(version=version, revision=revision)
     if not tag:
-        print("Error: empty tag from naming.py release-tag", file=sys.stderr)
+        print("Error: empty tag from build_release_tag", file=sys.stderr)
         sys.exit(1)
 
     return tag

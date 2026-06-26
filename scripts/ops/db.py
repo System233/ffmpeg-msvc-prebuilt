@@ -34,7 +34,7 @@ import os
 import shutil
 import subprocess
 from lts import is_lts
-from naming import parse_variant_id as naming_parse, major_version, build_data_path, make_version_dir, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
+from naming import build_release_tag, build_variant_id, parse_variant_id as naming_parse, major_version, build_data_path, make_version_dir, parse_version_dir as naming_parse_version_dir, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
 
 
 # ---------------------------------------------------------------------------
@@ -358,40 +358,32 @@ def cmd_merge(args: argparse.Namespace) -> None:
     lts = first.get("lts", False)
     ffmpeg_ref = first.get("ffmpeg_ref", "")
 
-    # Determine major and version_id from path
-    major = version_dir.parent.name
+    # Determine version_id from path
     version_id = version_dir.name
 
     # Derive metadata from version_id if variant files don't have them
     # (migrated variants from old YAML format may not include these fields)
     if not version or not ffmpeg_ref:
-        # Unified format: "{ffmpeg_ref}-r{revision}"
-        if "-r" in version_id:
-            parts = version_id.split("-r")
-            derived_ffmpeg_ref = parts[0]  # "n8.1.1" or "n8.2-dev-1-gabc1234"
-            derived_revision = int(parts[1]) if parts[1].isdigit() else None
-            derived_version = derived_ffmpeg_ref.removeprefix("n")
-            # Strip git describe suffix for version: "8.1.1-1234-gabc" → "8.1.1"
-            derived_version = derived_version.split("-")[0] if "-" in derived_version else derived_version
-            derived_lts = False
+        dir_info = naming_parse_version_dir(version_id)
+        derived_version = dir_info["version"]
+        derived_revision = dir_info["revision"]
+
+        if not version:
+            version = derived_version
+        if revision is None:
+            revision = derived_revision
+        if not ffmpeg_ref:
+            ffmpeg_ref = f"n{derived_version}"
+        if not lts:
             try:
                 ver_parts = derived_version.split(".")
                 major_num = int(ver_parts[0])
                 minor_num = int(ver_parts[1])
-                derived_lts = is_lts(major_num, minor_num)
+                lts = is_lts(major_num, minor_num)
             except (IndexError, ValueError):
                 pass
 
-            if not version:
-                version = derived_version
-            if revision is None:
-                revision = derived_revision
-            if not ffmpeg_ref:
-                ffmpeg_ref = derived_ffmpeg_ref
-            if not lts:
-                lts = derived_lts
-
-    release_tag = f"ffmpeg-{version_id}"
+    release_tag = build_release_tag(version=version, revision=revision)
     release_url = make_release_url(release_tag)
 
     # Preserve existing release_id, created, and lts if version.yaml exists
@@ -655,7 +647,13 @@ def cmd_migrate(args: argparse.Namespace) -> None:
                 # The variant file should include the variant_id if present in old data
                 # Old format may not have variant_id, so compute it
                 if "variant_id" not in v:
-                    v["variant_id"] = f"ffmpeg-{version_id}-{variant_key}"
+                    v_triplet = v.get("triplet", "")
+                    v_linkage = v.get("linkage", "")
+                    v_license = v.get("license", "")
+                    v["variant_id"] = build_variant_id(
+                        version=version_id, revision=revision or 0,
+                        triplet=v_triplet, linkage=v_linkage, license=v_license,
+                    )
 
                 write_yaml_atomic(v, variant_path)
 
@@ -663,7 +661,8 @@ def cmd_migrate(args: argparse.Namespace) -> None:
             revision = old_data.get("revision")
             lts = old_data.get("lts", False)
             ffmpeg_ref = old_data.get("ffmpeg_ref", "")
-            release_tag = old_data.get("release_tag", f"ffmpeg-{version_id}")
+            release_tag = old_data.get("release_tag") or build_release_tag(
+                version=version, revision=revision or 0)
             release_id = old_data.get("release_id")
             existing_created = old_data.get("created")
             existing_updated = old_data.get("updated")
