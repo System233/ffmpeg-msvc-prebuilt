@@ -22,3 +22,4 @@ patches:
   - 3.x/0016-fix-msvc-static-ldlib.patch
   - 3.x/0017-fix-msvc-sdl2-extralibs.patch
   - 3.x/0018-fix-msvc-remove-libm.patch
+  - 3.x/0019-fix-arm64-arch-name-detect-3.4.patch
