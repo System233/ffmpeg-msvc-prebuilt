@@ -193,6 +193,13 @@ def _create_pr(
 
     body_file = Path(fix_report_dir) / "fix_report.md"
     body = _make_body(body_file, run_id)
+
+    # Ensure the label exists before referencing it in gh pr create
+    subprocess.run(
+        ["gh", "label", "create", f"ffmpeg-{yaml_name}", "--color", "FBCA04", "--force"],
+        capture_output=True,
+    )
+
     cmd = [
         "gh",
         "pr",
