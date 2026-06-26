@@ -1,0 +1,16 @@
+diff --git a/configure b/configure
+index 55da57d..6ae1f9f 100644
+--- a/configure
++++ b/configure
+@@ -3785,7 +3785,10 @@
+         nm_default="dumpbin -symbols"
+         ar_default="lib"
+         case "$arch" in
+-        arm*)
++        aarch64)
++            as_default="armasm64"
++            ;;
++        arm*)
+             as_default="armasm"
+             ;;
+         esac
