@@ -34,21 +34,24 @@ jobs:
   # combination via --only-downloads, so per-version builds never need to
   # fetch from the internet (shared download cache for all architectures).
   dl-seed:
-    if: ${{ !inputs.skip }}
     runs-on: windows-2022
     permissions: {}
     steps:
       - uses: actions/checkout@v6
+        if: ${{ !inputs.skip }}
 
       - uses: ./.github/actions/setup-python
+        if: ${{ !inputs.skip }}
         with:
           requirements: 'requirements.txt'
 
       - name: Generate ffmpeg-deps port
+        if: ${{ !inputs.skip }}
         run: |
           python scripts/ffport.py deps
 
       - name: Compute port hash for download cache
+        if: ${{ !inputs.skip }}
         id: porthash
         run: |
           $hash = python scripts/ci/compute_port_hash.py
@@ -56,6 +59,7 @@ jobs:
           "port_hash=$hash" | Add-Content -Path $env:GITHUB_OUTPUT
 
       - name: Quick cache check
+        if: ${{ !inputs.skip }}
         id: dl-check
         uses: actions/cache/restore@v5
         with:
@@ -64,12 +68,13 @@ jobs:
           lookup-only: true
 
       - uses: ./.github/actions/vcpkg-bootstrap
+        if: ${{ !inputs.skip }}
         with:
           tag: ${{ env.VCPKG_TAG }}
           vcpkg-root: ${{ runner.temp }}/vcpkg
 
       - name: Restore vcpkg downloads cache (all triplets)
-        if: steps.dl-check.outputs.cache-hit != 'true'
+        if: ${{ !inputs.skip && steps.dl-check.outputs.cache-hit != 'true' }}
         id: dl-cache
         uses: actions/cache/restore@v5
         with:
@@ -79,7 +84,7 @@ jobs:
             vcpkg-dl-all-${{ env.VCPKG_TAG }}-
 
       - name: Download sources for all triplets
-        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
+        if: ${{ !inputs.skip && steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true' }}
         env:
           VCPKG_ROOT: ${{ runner.temp }}/vcpkg
           VCPKG_OVERLAY_PORTS: ports
@@ -89,14 +94,14 @@ jobs:
           & "${{ github.workspace }}/scripts/ci/dl_seed.ps1"
 
       - name: Save vcpkg downloads cache
-        if: steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true'
+        if: ${{ !inputs.skip && steps.dl-check.outputs.cache-hit != 'true' && steps.dl-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/vcpkg/downloads
           key: vcpkg-dl-all-${{ env.VCPKG_TAG }}-${{ steps.porthash.outputs.port_hash }}
 
       - name: Upload build logs (dl-seed)
-        if: failure() && steps.dl-check.outputs.cache-hit != 'true'
+        if: ${{ !inputs.skip && failure() && steps.dl-check.outputs.cache-hit != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: build-logs-${{ inputs.name }}-dl-seed
@@ -112,7 +117,6 @@ jobs:
   # compute ABI hash → save with exact key for deterministic retrieval.
   # Runs once per triplet globally — not per-version.
   seed:
-    if: ${{ !inputs.skip }}
     needs: [dl-seed]
     runs-on: windows-2022
     permissions: {}
@@ -122,16 +126,20 @@ jobs:
         triplet: ["arm-windows", "arm64-windows", "x86-windows", "x64-windows"]
     steps:
       - uses: actions/checkout@v6
+        if: ${{ !inputs.skip }}
 
       - uses: ./.github/actions/setup-python
+        if: ${{ !inputs.skip }}
         with:
           requirements: 'requirements.txt'
 
       - name: Generate ffmpeg-deps port
+        if: ${{ !inputs.skip }}
         run: |
           python scripts/ffport.py deps
 
       - uses: ./.github/actions/vcpkg-restore-caches
+        if: ${{ !inputs.skip }}
         with:
           vcpkg-tag: ${{ env.VCPKG_TAG }}
           vcpkg-root: ${{ runner.temp }}/vcpkg
@@ -140,7 +148,7 @@ jobs:
           fail-on-miss-root: 'true'
 
       - name: Patch vcvarsall.bat for ARM Windows SDK
-        if: matrix.triplet == 'arm-windows'
+        if: ${{ !inputs.skip && matrix.triplet == 'arm-windows' }}
         run: |
           $patched = $false
           $vsPaths = & vswhere -all -legacy -property installationPath
@@ -157,6 +165,7 @@ jobs:
           }
 
       - name: Install ffmpeg-deps (all features) + merge ABI hashes
+        if: ${{ !inputs.skip }}
         id: abi-hash
         env:
           VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,readwrite"
@@ -200,6 +209,7 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "value=$merged"
 
       - name: Check if exact binary cache already exists
+        if: ${{ !inputs.skip }}
         id: bin-save-check
         uses: actions/cache/restore@v5
         with:
@@ -208,14 +218,14 @@ jobs:
           lookup-only: true
 
       - name: Save binary cache with exact ABI key
-        if: steps.bin-save-check.outputs.cache-hit != 'true'
+        if: ${{ !inputs.skip && steps.bin-save-check.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/vcpkg-cache
           key: vcpkg-seed-${{ env.VCPKG_TAG }}-${{ matrix.triplet }}-${{ steps.abi-hash.outputs.value }}
 
       - name: Upload build logs (seed)
-        if: success() || failure()
+        if: ${{ !inputs.skip && (success() || failure()) }}
         uses: actions/upload-artifact@v6
         with:
           name: build-logs-${{ inputs.name }}-seed-${{ matrix.triplet }}

@@ -283,7 +283,7 @@ jobs:
 
   # == Finalize: merge variants into data branch, create/update release ======
   finalize:
-    needs: build
+    needs: [build, scan]
     if: success() || failure()
     concurrency:
       group: data-branch
@@ -332,7 +332,7 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: ffmpeg-*
+          pattern: ffmpeg-${{ inputs.yaml }}-r${{ needs.scan.outputs.revision }}_*
           path: ${{ github.workspace }}/artifacts/
           merge-multiple: true
 
