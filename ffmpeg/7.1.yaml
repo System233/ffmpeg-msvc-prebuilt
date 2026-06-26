@@ -32,6 +32,7 @@ patches:
   - 7.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
   - 7.x/0041-add-const-for-opengl-definition.patch
   - 7.x/0043-fix-miss-head-7.1.patch
+  - 7.x/0044-fix-vulkan-debug-callback-abi.patch
   - 7.x/0050-lensfun-0.3.4-compat-7.x.patch
   - 7.x/0051-lensfun-configure-fix-7.x.patch
   - 7.x/0052-svtav1-3.x-compat-7.x.patch
