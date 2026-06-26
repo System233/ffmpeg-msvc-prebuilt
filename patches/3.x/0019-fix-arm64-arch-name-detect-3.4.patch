@@ -2,21 +2,21 @@ diff --git a/configure b/configure
 index 55da57d..6ae1f9f 100644
 --- a/configure
 +++ b/configure
-@@ -3785,7 +3785,7 @@
-          nm_default="dumpbin -symbols"
-          ar_default="lib"
-          case "$arch" in
+@@ -3786,7 +3786,7 @@
+         nm_default="dumpbin -symbols"
+         ar_default="lib"
+         case "$arch" in
 -        aarch64)
 +        aarch64|arm64)
-              as_default="armasm64"
-              ;;
-          arm*)
-@@ -5399,7 +5399,7 @@
- 
+             as_default="armasm64"
+             ;;
+         arm*)
+@@ -5399,7 +5399,8 @@
+
  if enabled_any arm aarch64 || enabled_all ppc altivec && enabled asm; then
      nogas=:
 -    enabled_any arm aarch64 && nogas=die
-+    enabled_any arm aarch64 && [ "$toolchain" != "msvc" ] && nogas=die
++    enabled_any arm aarch64 && [ "$toolchain" = "msvc" ] && disable asm
++    enabled_any arm aarch64 && nogas=die
      enabled_all ppc altivec && [ $target_os_default != aix ] && nogas=warn
      as_noop=-v
- 
