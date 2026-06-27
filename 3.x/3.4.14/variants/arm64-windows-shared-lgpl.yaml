@@ -1,0 +1,105 @@
+variant_id: ffmpeg-3.4.14_arm64-windows-shared-lgpl
+version: 3.4.14
+revision: 0
+arch: arm64
+triplet: arm64-windows
+linkage: shared
+license: lgpl
+lts: false
+ffmpeg_ref: n3.4.14
+build_date: '2026-06-27T11:13:17.909115+00:00'
+assets:
+  binary:
+    file: ffmpeg-3.4.14_arm64-windows-shared-lgpl.zip
+    size: 23028952
+    digest: sha256:d3afce00d29c9e404c525d434d1782b5cd9669a4455e0f551f5fd77adf826173
+  develop:
+    file: ffmpeg-3.4.14_arm64-windows-shared-lgpl-develop.zip
+    size: 209016887
+    digest: sha256:7e39dd18a10877ba6fd1da3795601bf637695afcf5b89a9a9b9292c769eec872
+features:
+- all
+- all-lgpl
+- app
+- ass
+- avcodec
+- avdevice
+- avfilter
+- avformat
+- base
+- bluray
+- bzip2
+- d3d11va
+- dxva2
+- ffmpeg
+- ffplay
+- ffprobe
+- fontconfig
+- freetype
+- fribidi
+- gme
+- iconv
+- ilbc
+- lgpl
+- license-nonfree
+- lzma
+- modplug
+- mp3lame
+- mysofa
+- opencl
+- opengl
+- openh264
+- openmpt
+- openssl
+- opus
+- sdl2
+- snappy
+- soxr
+- speex
+- ssh
+- swresample
+- swscale
+- tesseract
+- theora
+- vorbis
+- vpx
+- w32threads
+- webp
+- windows-hw
+- xml2
+- zlib
+- zmq
+dependencies:
+- bzip2
+- ffmpeg
+- fontconfig
+- freetype
+- fribidi
+- libass
+- libbluray
+- libgme
+- libiconv
+- libilbc
+- liblzma
+- libmodplug
+- libmysofa
+- libopenmpt
+- libssh
+- libtheora
+- libvorbis
+- libvpx
+- libwebp
+- libxml2
+- mp3lame
+- opencl
+- opengl
+- openh264
+- openssl
+- opus
+- sdl2
+- snappy
+- soxr
+- speex
+- tesseract
+- zeromq
+- zlib
