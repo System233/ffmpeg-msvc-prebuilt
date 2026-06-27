@@ -48,6 +48,7 @@ env:
   GIT_AUTHOR_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
   GIT_COMMITTER_NAME: ffmpeg-dev[bot]
   GIT_COMMITTER_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
+  MAX_AUTO_HEAL_COMMITS: 3
   TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'call' }}
   OPENCODE_VERSION: 1.17.9
   OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
@@ -152,8 +153,8 @@ jobs:
           BASE_SHA="${{ needs.check.outputs.base_sha }}"
           COMMIT_COUNT=$(git rev-list --count ${BASE_SHA}..HEAD)
           echo "Total auto-fix commits: $COMMIT_COUNT"
-          if [ "$COMMIT_COUNT" -gt 10 ]; then
-            echo "::error::Auto-fix commits exceed limit (10). Aborting."
+          if [ "$COMMIT_COUNT" -gt ${{ env.MAX_AUTO_HEAL_COMMITS }} ]; then
+            echo "::error::Auto-fix commits exceed limit (${{ env.MAX_AUTO_HEAL_COMMITS }}). Aborting."
             exit 1
           fi
 

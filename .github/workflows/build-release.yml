@@ -158,6 +158,7 @@ jobs:
     needs: [seed-setup, scan]
     if: ${{ !cancelled() && needs.scan.outputs.matrix != '[]' }}
     runs-on: windows-2022
+    timeout-minutes: 180
     permissions: {}
     strategy:
       fail-fast: false
