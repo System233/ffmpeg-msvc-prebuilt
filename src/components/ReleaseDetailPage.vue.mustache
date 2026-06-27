@@ -83,7 +83,12 @@ const filteredVariants = computed(() => {
   if (!release.value?.variants) return []
   const q = variantSearch.value.toLowerCase()
   return release.value.variants.filter((v: any) => {
-    if (q && !v.assets.binary.file.toLowerCase().includes(q)) return false
+    if (q) {
+      const inFile = v.assets.binary.file.toLowerCase().includes(q)
+      const inFeat = v.features?.some((f: string) => f.toLowerCase().includes(q))
+      const inDep  = v.dependencies?.some((d: string) => d.toLowerCase().includes(q))
+      if (!inFile && !inFeat && !inDep) return false
+    }
     if (selectedArch.value && v.arch !== selectedArch.value) return false
     if (selectedLinkage.value && v.linkage !== selectedLinkage.value) return false
     if (selectedLicense.value && v.license !== selectedLicense.value) return false
@@ -109,6 +114,7 @@ const licenses = computed(() => {
 function toggleArch(val: string) { selectedArch.value = selectedArch.value === val ? null : val }
 function toggleLinkage(val: string) { selectedLinkage.value = selectedLinkage.value === val ? null : val }
 function toggleLicense(val: string) { selectedLicense.value = selectedLicense.value === val ? null : val }
+function searchVariant(q: string) { variantSearch.value = q }
 
 function fmtSize(b: number): string {
   if (!b) return '—'
@@ -319,7 +325,7 @@ function ffmpegRefUrl(ref: string): string | null {
         <!-- Search -->
         <div class="flex items-center gap-1.5 self-end">
           <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-xs shrink-0" />
-          <input v-model="variantSearch" type="text" :placeholder="'[[filter.search]]'"
+          <input v-model="variantSearch" type="text" :placeholder="'[[release.variantSearch]]'"
             class="w-full sm:w-[200px] px-2 py-1.5 rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0c0c0e] text-xs placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white" />
         </div>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -416,7 +422,7 @@ function ffmpegRefUrl(ref: string): string | null {
                   </div>
                   <div v-if="v.features?.length" class="flex flex-wrap gap-1">
                     <TooltipTag v-for="f in v.features" :key="f" :tooltip="compDesc[f] || f">
-                      <span class="px-1.5 py-0.5 text-xs font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded">
+                      <span @click.stop="searchVariant(f)" class="px-1.5 py-0.5 text-xs font-medium badge-indigo border border-indigo-200/30 dark:border-indigo-800/30 rounded cursor-pointer">
                         {{ f }}
                       </span>
                     </TooltipTag>
@@ -430,7 +436,7 @@ function ffmpegRefUrl(ref: string): string | null {
                   </div>
                   <div v-if="v.dependencies?.length" class="flex flex-wrap gap-1">
                     <TooltipTag v-for="d in v.dependencies" :key="d" :tooltip="compDesc[d] || d">
-                      <span class="px-1.5 py-0.5 text-xs font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded">
+                      <span @click.stop="searchVariant(d)" class="px-1.5 py-0.5 text-xs font-medium badge-amber border border-amber-200/30 dark:border-amber-800/30 rounded cursor-pointer">
                         {{ d }}
                       </span>
                     </TooltipTag>

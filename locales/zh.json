@@ -64,7 +64,7 @@
     "ffmpegRef": "FFmpeg 引用",
     "status": "状态",
     "progress": "构建进度",
-    "metadata": "完整构建元数据",
+    "metadata": "变体详情",
     "available": "个变体可用",
     "variantDetails": "变体详情",
     "copyHash": "复制哈希",
@@ -73,9 +73,10 @@
     "howToUse": "如何使用",
     "howToUseDesc": "下载压缩包，解压到文件夹，并将 bin/ 目录添加到系统 PATH 环境变量。MSVC 构建版本需要安装最新的 Visual C++ 运行库。",
     "selectBuild": "选择一个构建版本开始",
-    "selectBuildDesc": "使用左侧筛选器缩小选择范围，点击一个构建版本查看其详细元数据。",
+    "selectBuildDesc": "使用筛选器缩小选择范围，点击一个构建版本查看其详细元数据。",
     "loading": "正在加载元数据...",
     "backToCatalog": "返回构建列表",
+    "variantSearch": "按文件名、功能或依赖搜索...",
     "errorDesc": "目标构建不存在或已被移除。",
     "copied": "已复制！",
     "tooltips": {
@@ -92,7 +93,7 @@
       "progress": "已完成变体数 / 总变体数",
       "triplet": "Vcpkg 目标三元组：架构-平台",
       "lts": "长期支持版 — 稳定发布，长期维护更新",
-      "latest": "该版本线中的最新构建",
+      "latest": "最高版本的稳定构建",
       "dev": "基于最新源码的快照构建版本",
       "hash": "SHA-256 哈希值，用于校验文件完整性"
     }
@@ -116,16 +117,19 @@
   "filter": {
     "search": "搜索构建...",
     "allMajors": "所有主版本",
-    "ltsOnly": "仅LTS(长期支持)",
+    "ltsOnly": "仅 LTS（长期支持）",
     "completeOnly": "仅完成版本"
   },
   "footer": {
     "message": "FFmpeg Windows MSVC 预构建二进制文件",
     "copy": "© 2026 FFmpeg MSVC 预构建版。基于 MIT 协议开源。",
+    "resourcesTitle": "资源",
+    "supportTitle": "支持",
     "links": {
       "github": "源代码",
       "issues": "报告问题",
-      "releases": "所有构建"
+      "releases": "所有构建",
+      "ffmpegHelp": "FFmpeg 帮助"
     }
   }
 }
