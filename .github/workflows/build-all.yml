@@ -62,6 +62,7 @@ jobs:
     if: needs.scan.outputs.matrix != '[]'
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         config: ${{ fromJSON(needs.scan.outputs.matrix) }}
     uses: ./.github/workflows/build-release.yml
