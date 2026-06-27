@@ -69,4 +69,10 @@ jobs:
     with:
       yaml: ${{ matrix.config.version }}
       skip_seed: true
+      skip_pages: true
     secrets: inherit
+
+  pages:
+    needs: build
+    if: success()
+    uses: ./.github/workflows/pages.yml

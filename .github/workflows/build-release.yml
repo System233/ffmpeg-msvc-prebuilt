@@ -49,6 +49,10 @@ on:
         description: 'Skip dl-seed and seed (caller already ran them)'
         type: boolean
         default: false
+      skip_pages:
+        description: 'Skip GitHub Pages deployment (caller will deploy)'
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -75,6 +79,10 @@ on:
         type: string
         required: false
       skip_seed:
+        type: boolean
+        required: false
+        default: false
+      skip_pages:
         type: boolean
         required: false
         default: false
@@ -415,7 +423,7 @@ jobs:
   # == Trigger pages rebuild ================================================─
   trigger-pages:
     needs: finalize
-    if: ${{ success() && !inputs.dry_run }}
+    if: ${{ success() && !inputs.dry_run && !inputs.skip_pages }}
     uses: ./.github/workflows/pages.yml
 
   # == Auto-heal: diagnose and create fix PR on build failure ==============─
