@@ -81,6 +81,10 @@ on:
 
 # ==─ Global environment ======================================================
 env:
+  GIT_AUTHOR_NAME: ffmpeg-dev
+  GIT_AUTHOR_EMAIL: ffmpeg-dev@users.noreply.github.com
+  GIT_COMMITTER_NAME: ffmpeg-dev
+  GIT_COMMITTER_EMAIL: ffmpeg-dev@users.noreply.github.com
   VCPKG_TAG: 2026.06.01
   PYTHONIOENCODING: utf-8
   TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
@@ -363,12 +367,6 @@ jobs:
             python scripts/ops/db.py import "$f" || echo "  WARNING: import failed for $f"
           done
         shell: bash
-
-      - name: Configure git identity
-        if: inputs.dry_run != true
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Commit and push data branch
         if: inputs.dry_run != true

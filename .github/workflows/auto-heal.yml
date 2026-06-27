@@ -44,6 +44,10 @@ on:
         type: string
 
 env:
+  GIT_AUTHOR_NAME: ffmpeg-dev[bot]
+  GIT_AUTHOR_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
+  GIT_COMMITTER_NAME: ffmpeg-dev[bot]
+  GIT_COMMITTER_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
   TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'call' }}
   OPENCODE_VERSION: 1.17.9
   OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
@@ -201,8 +205,6 @@ jobs:
           OPCODE_MODEL: ${{ secrets.OPCODE_MODEL || 'opencode/deepseek-v4-flash-free' }}
           OPCODE_KEY_ENV: ${{ secrets.OPCODE_KEY_ENV || 'OPENCODE_API_KEY' }}
           OPCODE_API_KEY: ${{ secrets.OPCODE_API_KEY }}
-          GIT_AUTHOR_NAME: "ffmpeg-dev[bot]"
-          GIT_AUTHOR_EMAIL: "ffmpeg-dev[bot]@users.noreply.github.com"
         run: |
           export "$OPCODE_KEY_ENV"="$OPCODE_API_KEY"
           python scripts/ci/agent_repair.py \
@@ -265,19 +267,6 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Get bot user ID
-        id: bot-user
-        run: |
-          ID=$(gh api /users/ffmpeg-dev[bot] --jq .id)
-          echo "user-id=$ID" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-
-      - name: Configure git identity
-        run: |
-          git config user.name "ffmpeg-dev[bot]"
-          git config user.email "ffmpeg-dev[bot]@users.noreply.github.com"
-
       - name: Apply fix and push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -286,7 +275,6 @@ jobs:
           python scripts/ci/apply_fix.py \
             --action "${{ needs.check.outputs.action }}" \
             --branch "${{ needs.check.outputs.branch }}" \
-            --bot-user-id "${{ steps.bot-user.outputs.user-id }}" \
             --yaml "${{ inputs.yaml }}" \
             ${{ needs.check.outputs.bump_revision == 'true' && '--bump-revision' || '' }} \
             ${{ needs.check.outputs.bump_revision == 'true' && format('--base-revision {0}', needs.check.outputs.base_revision) || '' }} \

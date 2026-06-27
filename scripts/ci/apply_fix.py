@@ -41,8 +41,6 @@ def _make_body(body_path: Path | None, run_id: str) -> str:
 
 def _apply_patch(
     patch_dir: str,
-    bot_user_name: str,
-    bot_user_id: str,
     gh_token: str,
     github_repository: str,
 ) -> None:
@@ -290,9 +288,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--branch", required=True, help="Target branch name.")
     parser.add_argument(
-        "--bot-user-id", required=True, help="Bot GitHub user ID (used in email)."
-    )
-    parser.add_argument(
         "--yaml",
         default="",
         help="YAML name for title / bump fallback (e.g. '8.1.1').",
@@ -334,15 +329,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         _die("GITHUB_REPOSITORY is required")
 
     # -- optional environment variables with defaults --
-    bot_user_name = os.environ.get("BOT_USER_NAME", "ffmpeg-dev[bot]")
     patch_dir = os.environ.get("PATCH_DIR", "patch-input")
     fix_report_dir = os.environ.get("FIX_REPORT_DIR", "fix-report")
 
     # -- Phase 1: apply patch --
     _apply_patch(
         patch_dir=patch_dir,
-        bot_user_name=bot_user_name,
-        bot_user_id=args.bot_user_id,
         gh_token=gh_token,
         github_repository=github_repository,
     )
