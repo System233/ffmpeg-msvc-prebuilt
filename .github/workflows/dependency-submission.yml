@@ -52,8 +52,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VCPKG_FEATURE_FLAGS: dependencygraph
-          VCPKG_OVERLAY_PORTS: ../../ports
-          VCPKG_OVERLAY_TRIPLETS: ../../triplets
+          VCPKG_OVERLAY_PORTS: ports
+          VCPKG_OVERLAY_TRIPLETS: triplets
           VCPKG_ROOT: ${{ runner.temp }}/vcpkg
           TRIPLETS: ${{ env.TRIPLETS }}
           VCPKG_INSTALL_OPTIONS: --clean-after-build
