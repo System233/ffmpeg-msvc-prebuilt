@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useData, withBase } from 'vitepress'
-import { releasesIndex, releasesByMajor, majors } from '../../.vitepress/generated/releases-index'
+import { releasesIndex, releasesByMajor, majors, latestRelease } from '../../.vitepress/generated/releases-index'
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
@@ -19,19 +19,31 @@ function fmtDate(iso: string): string {
   })
 }
 
+function compareVersions(a: string, b: string): number {
+  const parseNums = (v: string) => (v.match(/^(\d+(?:\.\d+)*)/)?.[1] ?? '').split('.').map(Number)
+  const ap = parseNums(a), bp = parseNums(b)
+  const n = Math.max(ap.length, bp.length)
+  for (let i = 0; i < n; i++) {
+    const va = ap[i] ?? 0, vb = bp[i] ?? 0
+    if (va !== vb) return va - vb
+  }
+  return 0
+}
+
 const featuredReleases = computed(() => {
   if (!releasesIndex.length) return []
 
-  // 1. Get snapshot (latest dev build)
-  const snapshot = releasesIndex.find(r => r.ffmpeg_ref.includes('-dev'))
+  // 1. Latest snapshot (first row)
+  const snapshot = releasesIndex.find(r => r.snapshot)
 
-  // 2. Per-major: pick latest release for each version family
+  // 2. Per-major latest stable, sorted by version descending
   const perMajor = majors
     .filter(m => m !== 'master')
-    .map(m => releasesByMajor[m]?.[0])
+    .map(m => releasesByMajor[m]?.find(r => !r.snapshot))
     .filter(Boolean)
+    .sort((a, b) => compareVersions(b.version, a.version))
 
-  // Snapshot first, then per-major latest (deduped)
+  // Snapshot first, then per-major latest
   const combined = snapshot ? [snapshot, ...perMajor] : [...perMajor]
   return Array.from(new Map(combined.map(r => [r.id, r])).values())
 })
@@ -114,8 +126,8 @@ const localizedFeatures = [
               <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2">
                   <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
-                  <TooltipTag v-if="r.ffmpeg_ref.includes('-dev')" :tooltip="'[[release.tooltips.dev]]'"><span class="badge badge-blue">[[release.master]]</span></TooltipTag>
-                  <TooltipTag v-else-if="releasesIndex.length > 0 && r.id === releasesIndex[0].id" :tooltip="'[[release.tooltips.latest]]'"><span class="badge bg-blue-600 text-white border-blue-600">Latest</span></TooltipTag>
+                  <TooltipTag v-if="r.snapshot" :tooltip="'[[release.tooltips.dev]]'"><span class="badge badge-blue">[[release.master]]</span></TooltipTag>
+                  <TooltipTag v-else-if="latestRelease && r.id === latestRelease.id" :tooltip="'[[release.tooltips.latest]]'"><span class="badge bg-blue-600 text-white border-blue-600">Latest</span></TooltipTag>
                   <TooltipTag v-if="r.lts" :tooltip="'[[release.tooltips.lts]]'"><span class="badge badge-green">LTS</span></TooltipTag>
                 </div>
                 <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>

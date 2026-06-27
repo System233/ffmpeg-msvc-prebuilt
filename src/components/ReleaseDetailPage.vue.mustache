@@ -202,7 +202,7 @@ function ffmpegRefUrl(ref: string): string | null {
         </h1>
         <div class="flex items-center gap-2">
           <span v-if="release.lts" class="badge badge-green">[[release.lts]]</span>
-          <span v-if="release.ffmpeg_ref?.includes('-dev')" class="badge badge-blue">[[release.master]]</span>
+          <span v-if="release.snapshot" class="badge badge-blue">[[release.master]]</span>
           <!-- <span class="badge badge-outline">r{{ release.revision }}</span> -->
         </div>
       </div>

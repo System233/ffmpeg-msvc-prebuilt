@@ -9,6 +9,7 @@ export interface ReleaseIndexItem {
   major: string
   revision: number | null
   lts: boolean
+  snapshot: boolean
   ffmpeg_ref: string
   release_tag: string
   release_url: string
@@ -173,6 +174,7 @@ function parseRelease(
     major,
     revision,
     lts: Boolean(raw.lts ?? false),
+    snapshot: isSnapshot(String(raw.version ?? '')),
     ffmpeg_ref: String(raw.ffmpeg_ref ?? ''),
     release_tag: String(raw.release_tag ?? ''),
     release_url: String(raw.release_url ?? ''),
@@ -186,6 +188,28 @@ function parseRelease(
     linkages,
     variants,
   }
+}
+
+function isSnapshot(version: string): boolean {
+  return !/^\d+(\.\d+)*$/.test(version)
+}
+
+function parseVersionNums(version: string): number[] {
+  const m = version.match(/^(\d+(?:\.\d+)*)/)
+  if (!m) return []
+  return m[1].split('.').map(Number)
+}
+
+function compareVersions(a: string, b: string): number {
+  const ap = parseVersionNums(a)
+  const bp = parseVersionNums(b)
+  const n = Math.max(ap.length, bp.length)
+  for (let i = 0; i < n; i++) {
+    const va = ap[i] ?? 0
+    const vb = bp[i] ?? 0
+    if (va !== vb) return va - vb
+  }
+  return 0
 }
 
 function timestampComment(): string {
@@ -212,6 +236,7 @@ export interface ReleaseIndexItem {
   major: string
   revision: number | null
   lts: boolean
+  snapshot: boolean
   ffmpeg_ref: string
   release_tag: string
   release_url: string
@@ -254,6 +279,7 @@ export interface ReleaseData {
   major: string
   revision: number | null
   lts: boolean
+  snapshot: boolean
   ffmpeg_ref: string
   release_tag: string
   release_url: string
@@ -305,12 +331,10 @@ export function main(): void {
   }
 
   releases.sort((a, b) => {
-    const aTime = new Date(a.created).getTime()
-    const bTime = new Date(b.created).getTime()
-    if (isNaN(aTime) && isNaN(bTime)) return 0
-    if (isNaN(aTime)) return 1
-    if (isNaN(bTime)) return -1
-    return bTime - aTime
+    // Stable first, snapshots last
+    if (a.snapshot !== b.snapshot) return a.snapshot ? 1 : -1
+    // Within same group, sort by semantic version descending
+    return compareVersions(b.version, a.version)
   })
 
   const releasesIndex: ReleaseIndexItem[] = releases.map((r) => {
@@ -326,7 +350,7 @@ export function main(): void {
   }
 
   const latestRelease: ReleaseIndexItem | null =
-    releasesIndex.length > 0 ? releasesIndex[0] : null
+    releasesIndex.find(r => !r.snapshot) ?? null
 
   const majors = Object.keys(releasesByMajor).sort()
 

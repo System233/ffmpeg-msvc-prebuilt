@@ -148,7 +148,7 @@ function fmtDate(iso: string): string {
                 <div class="flex items-center gap-2">
                   <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
                   <TooltipTag :tooltip="'[[release.tooltips.lts]]'"><span v-if="r.lts" class="badge badge-green text-xs px-1.5 py-0">LTS</span></TooltipTag>
-                  <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.ffmpeg_ref.includes('-dev')" class="badge badge-blue text-xs px-1.5 py-0">[[release.master]]</span></TooltipTag>
+                  <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.snapshot" class="badge badge-blue text-xs px-1.5 py-0">[[release.master]]</span></TooltipTag>
                 </div>
                 <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>

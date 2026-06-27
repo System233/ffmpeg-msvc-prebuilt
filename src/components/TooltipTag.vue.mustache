@@ -1,20 +1,42 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+
 defineProps<{
   tooltip: string
   color?: 'indigo' | 'amber' | 'purple' | 'blue'
 }>()
+
+const show = ref(false)
+const pos = ref({ left: '0px', bottom: '0px' })
+const el = ref<HTMLElement>()
+
+function onEnter() {
+  const trigger = el.value
+  if (!trigger) return
+  const rect = trigger.getBoundingClientRect()
+  pos.value = {
+    left: rect.left + rect.width / 2 + 'px',
+    bottom: window.innerHeight - rect.top + 'px',
+  }
+  show.value = true
+}
+
+function onLeave() {
+  show.value = false
+}
 </script>
 
 <template>
-<span class="group relative inline-flex cursor-pointer rounded transition-all hover:ring-2"
+<span ref="el" class="group relative inline-flex cursor-pointer rounded transition-all hover:ring-2"
   :class="{
     'hover:ring-indigo-400/40 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/20': !color || color === 'indigo',
     'hover:ring-amber-400/40 hover:bg-amber-100/50 dark:hover:bg-amber-900/20': color === 'amber',
     'hover:ring-purple-400/40 hover:bg-purple-100/50 dark:hover:bg-purple-900/20': color === 'purple',
     'hover:ring-blue-400/40 hover:bg-blue-100/50 dark:hover:bg-blue-900/20': color === 'blue',
-  }">
+  }" @mouseenter="onEnter" @mouseleave="onLeave">
   <slot />
-  <span class="invisible opacity-0 transition-all group-hover:visible group-hover:opacity-100 absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded shadow-lg z-50 pointer-events-none">
+  <span v-if="show" class="fixed z-50 pointer-events-none whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded shadow-lg"
+    :style="{ left: pos.left, bottom: pos.bottom, transform: 'translateX(-50%)', marginBottom: '6px' }">
     {{ tooltip }}
   </span>
 </span>
