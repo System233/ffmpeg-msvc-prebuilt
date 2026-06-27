@@ -76,6 +76,27 @@ def run_push(base: str, head: str) -> list[dict[str, str]]:
     return [{"version": c["version"]} for c in data["changed"] if _has_required_source(c["version"])]
 
 
+def _latest_per_family(versions: list[str]) -> list[str]:
+    """Filter to only the latest version per major.minor family."""
+    families: dict[str, list[tuple[tuple[int, ...], str]]] = {}
+    for ver in versions:
+        parts = ver.split(".")
+        family = ".".join(parts[:2]) if len(parts) >= 2 else ver
+        try:
+            key = tuple(int(p) for p in parts)
+        except ValueError:
+            key = (0,)
+        families.setdefault(family, []).append((key, ver))
+
+    result = []
+    for _, members in families.items():
+        members.sort(key=lambda x: x[0], reverse=True)
+        result.append(members[0][1])
+
+    print(f"Latest per family: {sorted(result)}", file=sys.stderr)
+    return result
+
+
 def run_all() -> list[dict[str, str]]:
     """List all versions and filter to only those needing at least one build."""
     list_result = subprocess.run(
@@ -94,6 +115,9 @@ def run_all() -> list[dict[str, str]]:
 
     # Filter to versions with both sha512 and ref in their resolved YAML chain
     all_versions = [v for v in all_versions if _has_required_source(v)]
+
+    # Only build the latest version per major.minor family
+    all_versions = _latest_per_family(all_versions)
 
     # Fetch data branch once — shared across all version checks
     subprocess.run(["git", "fetch", "origin", "data"],
