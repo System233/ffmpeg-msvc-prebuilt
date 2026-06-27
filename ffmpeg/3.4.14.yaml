@@ -25,3 +25,4 @@ patches:
   - 3.x/0019-fix-armasm64-flags.patch
   - 3.x/0020-fix-armasm-label-dot.patch
   - 3.x/0021-fix-makedef-arm64.patch
+  - 3.x/0022-fix-avutil-extralibs.patch

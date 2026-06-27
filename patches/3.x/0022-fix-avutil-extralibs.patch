@@ -1,0 +1,36 @@
+From 88a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9 Mon Sep 17 00:00:00 2001
+From: System233 <cdkeylzh@outlook.com>
+Date: Sat, 27 Jun 2026 14:00:00 +0800
+Subject: [PATCH] Include global extralibs in extralibs_avutil
+
+On Windows, libavutil uses Crypt* functions (CryptAcquireContextA,
+CryptReleaseContext, CryptGenRandom) from advapi32.dll. The configure
+script detects this via check_lib wincrypt and adds -ladvapi32 to the
+global $extralibs variable. However, extralibs_avutil was set to
+"$LIBRT $LIBDRM $LIBM" without $extralibs, unlike avcodec/avformat/
+avdevice/avfilter which use "$extralibs". This caused libavutil.pc to
+omit -ladvapi32, leading to unresolved external symbol errors when
+downstream projects link against avutil without the transitive
+dependency chain providing advapi32.
+
+Fix by appending $extralibs to extralibs_avutil.
+---
+ configure | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configure b/configure
+index c2ddab0..360c066 100644
+--- a/configure
++++ b/configure
+@@ -7128,7 +7128,7 @@ source_path=${source_path}
+ LIBPREF=${LIBPREF}
+ LIBSUF=${LIBSUF}
+ 
+-extralibs_avutil="$LIBRT $LIBDRM $LIBM"
++extralibs_avutil="$LIBRT $LIBDRM $LIBM $extralibs"
+ extralibs_avcodec="$extralibs"
+ extralibs_avformat="$extralibs"
+ extralibs_avdevice="$extralibs"
+-- 
+2.47.1.windows.2
+
