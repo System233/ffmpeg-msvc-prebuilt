@@ -1,0 +1,21 @@
+diff --git a/compat/windows/makedef b/compat/windows/makedef
+--- a/compat/windows/makedef
++++ b/compat/windows/makedef
+@@ -59,13 +59,13 @@
+ prefix=""
+ arch=$(dumpbin -headers ${libname} |
+        tr '\t' ' ' |
+-       grep '^ \+.\+machine \+(.\+)' |
++       grep '^ \+.\+machine \+([^)]*)' |
+        head -1 |
+-       sed -e 's/^ \{1,\}.\{1,\} \{1,\}machine \{1,\}(\(...\)).*/\1/')
++       sed -e 's/^ \{1,\}.\{1,\} \{1,\}machine \{1,\}(\([^)]*\)).*/\1/')
+ 
+ if [ "${arch}" = "x86" ]; then
+     prefix="_"
+ else
+-    if [ "${arch}" != "ARM" ] && [ "${arch}" != "x64" ]; then
++    if [ "${arch}" != "ARM" ] && [ "${arch}" != "ARM64" ] && [ "${arch}" != "x64" ]; then
+         echo "Unknown machine type." >&2
+         exit 1
+     fi

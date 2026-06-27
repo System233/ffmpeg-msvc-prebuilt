@@ -22,3 +22,6 @@ patches:
   - 3.x/0016-fix-msvc-static-ldlib.patch
   - 3.x/0017-fix-msvc-sdl2-extralibs.patch
   - 3.x/0018-fix-msvc-remove-libm.patch
+  - 3.x/0019-fix-armasm64-flags.patch
+  - 3.x/0020-fix-armasm-label-dot.patch
+  - 3.x/0021-fix-makedef-arm64.patch

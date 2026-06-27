@@ -7,7 +7,7 @@ index 55da57d..6ae1f9f 100644
          ar_default="lib"
          case "$arch" in
 -        arm*)
-+        aarch64)
++        aarch64|arm64)
 +            as_default="armasm64"
 +            ;;
 +        arm*)
