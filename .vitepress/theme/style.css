@@ -162,3 +162,9 @@ svg.iconify {
 .VPDoc {
   padding-bottom: 0 !important;
 }
+
+.VPDocFooter {
+  margin: 0;
+  padding: 0;
+  display: none;
+}

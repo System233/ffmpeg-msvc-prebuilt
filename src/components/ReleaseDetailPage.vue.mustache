@@ -191,7 +191,7 @@ function ffmpegRefUrl(ref: string): string | null {
 </script>
 
 <template>
-<div v-if="release" class="space-y-12 pb-20">
+<div v-if="release" class="space-y-12">
   <!-- Header -->
   <header class="space-y-6">
     <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-gray-500">
@@ -382,16 +382,16 @@ function ffmpegRefUrl(ref: string): string | null {
         @click="toggleVariantExpanded(variantId(v.assets.binary.file))">
 
         <!-- Compact Row (always visible) -->
-        <div class="flex items-center gap-2 min-w-0 px-3 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
+        <div class="flex items-center gap-1 sm:gap-2 min-w-0 px-3 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
           <Icon icon="fa6-solid:chevron-right"
             class="text-xs w-3 shrink-0 text-gray-400 transition-transform duration-200"
             :class="expandedVariantId === variantId(v.assets.binary.file) ? 'rotate-90' : ''" />
-          <span class="text-sm font-mono font-bold text-gray-600 dark:text-gray-300 truncate max-w-[180px] shrink-0">{{ release.version }}</span>
-          <Icon icon="fa6-solid:circle" class="text-xs shrink-0 text-gray-300 dark:text-gray-600" />
-          <span class="text-sm font-mono font-bold text-purple-500 dark:text-purple-400 shrink-0">[{{ v.triplet }}]</span>
-          <span class="text-sm font-mono font-medium text-blue-500 dark:text-blue-400 lowercase shrink-0">[{{ v.linkage }}]</span>
-          <span class="text-sm font-mono font-medium text-amber-500 dark:text-amber-400 uppercase shrink-0">[{{ v.license }}]</span>
-          <div class="ml-auto flex items-center gap-5 shrink-0">
+          <span class="hidden sm:inline text-sm font-mono font-bold text-gray-600 dark:text-gray-300 truncate max-w-[120px] shrink-0">{{ release.version }}</span>
+          <span class="hidden sm:inline"><Icon icon="fa6-solid:circle" class="text-xs shrink-0 text-gray-300 dark:text-gray-600" /></span>
+          <span class="text-xs sm:text-sm font-mono font-bold text-purple-500 dark:text-purple-400 truncate min-w-0">{{ v.triplet }}</span>
+          <span class="text-xs sm:text-sm font-mono font-medium text-blue-500 dark:text-blue-400 lowercase shrink-0">{{ v.linkage }}</span>
+          <span class="text-xs sm:text-sm font-mono font-medium text-amber-500 dark:text-amber-400 uppercase shrink-0">{{ v.license }}</span>
+          <div class="ml-auto flex items-center gap-3 sm:gap-5 shrink-0">
             <TooltipTag :tooltip="'[[variant.tooltip.binary]]'">
               <a :href="v.download_url" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 text-sm font-bold whitespace-nowrap no-underline!" @click.stop>
                 <Icon icon="fa6-solid:download" class="text-sm" />
