@@ -75,9 +75,9 @@ function fmtDate(iso: string): string {
       <div class="flex items-center gap-2 w-full sm:w-[320px] shrink-0">
         <div class="flex items-center gap-2 w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#0c0c0e] focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
           <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-sm shrink-0" />
-          <input v-model="search" type="text" :placeholder="'[[filter.search]]'"
+          <input v-model="search" type="text" :placeholder="'[[filter.search]]'" aria-label="[[filter.search]]"
             class="flex-1 min-w-0 bg-transparent border-none outline-none text-sm placeholder:text-gray-400 dark:text-white" />
-          <button v-if="search" @click="search = ''" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0">
+          <button v-if="search" @click="search = ''" aria-label="Clear search" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0">
             <Icon icon="fa6-solid:xmark" class="text-sm" />
           </button>
         </div>
@@ -106,14 +106,12 @@ function fmtDate(iso: string): string {
 
       <!-- Toggles -->
       <div class="flex items-center gap-4">
-        <label class="cursor-pointer select-none">
-          <div @click="ltsOnly = !ltsOnly"
-            class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all cursor-pointer"
-            :class="ltsOnly ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent'">
-            <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-xs" />
-            [[filter.ltsOnly]]
-          </div>
-        </label>
+        <button @click="ltsOnly = !ltsOnly" role="switch" :aria-checked="ltsOnly"
+          class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          :class="ltsOnly ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent'">
+          <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-xs" />
+          [[filter.ltsOnly]]
+        </button>
       </div>
     </div>
   </header>
@@ -124,13 +122,13 @@ function fmtDate(iso: string): string {
       <table class="m-0 border-none">
         <thead>
           <tr>
-            <th class="w-[30%] cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('version')">
+            <th class="w-[30%] cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('version')" @keydown.enter="toggleSort('version')" @keydown.space.prevent="toggleSort('version')" tabindex="0" role="button" :aria-sort="sortColumn === 'version' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
               <span class="inline-flex items-center gap-1">
                 [[release.version]]
                 <Icon v-if="sortColumn === 'version'" :icon="sortDirection === 'asc' ? 'fa6-solid:arrow-up' : 'fa6-solid:arrow-down'" class="text-xs" />
               </span>
             </th>
-            <th class="hidden sm:table-cell cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('date')">
+            <th class="hidden sm:table-cell cursor-pointer select-none hover:text-blue-600 transition-colors" @click="toggleSort('date')" @keydown.enter="toggleSort('date')" @keydown.space.prevent="toggleSort('date')" tabindex="0" role="button" :aria-sort="sortColumn === 'date' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'">
               <span class="inline-flex items-center gap-1">
                 [[release.releasedOn]]
                 <Icon v-if="sortColumn === 'date'" :icon="sortDirection === 'asc' ? 'fa6-solid:arrow-up' : 'fa6-solid:arrow-down'" class="text-xs" />
@@ -138,19 +136,19 @@ function fmtDate(iso: string): string {
             </th>
             <th class="hidden md:table-cell text-center">[[release.variants]]</th>
             <th class="text-right">[[release.architectures]]</th>
-            <th class="text-center w-24"></th>
+            <th class="text-center w-24 max-sm:hidden"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="r in filtered" :key="r.id" class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
             <td>
               <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
                   <TooltipTag :tooltip="'[[release.tooltips.lts]]'"><span v-if="r.lts" class="badge badge-green text-xs px-1.5 py-0">LTS</span></TooltipTag>
                   <TooltipTag :tooltip="'[[release.tooltips.dev]]'"><span v-if="r.snapshot" class="badge badge-blue text-xs px-1.5 py-0">[[release.master]]</span></TooltipTag>
                 </div>
-                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
+                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter truncate block max-w-full">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>
             </td>
             <td class="hidden sm:table-cell text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
@@ -162,7 +160,7 @@ function fmtDate(iso: string): string {
                 <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-xs px-1.5 py-0">{{ a }}</span></TooltipTag>
               </div>
             </td>
-            <td class="text-center">
+            <td class="text-center max-sm:hidden">
               <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-xs font-bold mx-auto">
                 [[variant.download]]
               </a>

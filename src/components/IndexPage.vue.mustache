@@ -72,22 +72,22 @@ const localizedFeatures = [
     </div>
 
     <div class="flex flex-wrap justify-center gap-2">
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/build-release.yml" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/build-release.yml" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/build-release.yml?label=Build&logo=github" alt="Build" class="h-7" />
       </a>
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/master-build.yml" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/master-build.yml" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/master-build.yml?label=Master&logo=github" alt="Master" class="h-7" />
       </a>
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/pages.yml" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/actions/workflows/pages.yml" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/github/actions/workflow/status/System233/ffmpeg-msvc-prebuilt/pages.yml?branch=web&label=Pages&logo=github" alt="Pages" class="h-7" />
       </a>
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/releases/latest" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/releases/latest" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/github/v/release/System233/ffmpeg-msvc-prebuilt?display_name=tag&label=Release&logo=github" alt="Release" class="h-7" />
       </a>
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/blob/main/LICENSE" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/badge/license-MIT%20%2F%20GPL%20%2F%20LGPL-blue" alt="License" class="h-7" />
       </a>
-      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/commits/main" target="_blank">
+      <a href="https://github.com/System233/ffmpeg-msvc-prebuilt/commits/main" target="_blank" rel="noopener noreferrer">
         <img src="https://img.shields.io/github/last-commit/System233/ffmpeg-msvc-prebuilt" alt="Last Commit" class="h-7" />
       </a>
     </div>
@@ -96,7 +96,7 @@ const localizedFeatures = [
       <a :href="withBase(`/${localeIndex}/releases`)" class="btn-primary px-8 h-12 text-base font-bold">
         [[hero.viewAll]]
       </a>
-      <a :href="GITHUB_REPO_URL" target="_blank" class="btn-secondary px-8 h-12 text-base font-bold">
+      <a :href="GITHUB_REPO_URL" target="_blank" rel="noopener noreferrer" class="btn-secondary px-8 h-12 text-base font-bold">
         <Icon icon="fa6-brands:github" class="mr-2" />
         [[hero.github]]
       </a>
@@ -117,20 +117,20 @@ const localizedFeatures = [
             <th class="w-[30%]">[[release.version]]</th>
             <th class="hidden sm:table-cell">[[release.releasedOn]]</th>
             <th class="text-center">[[release.architectures]]</th>
-            <th class="text-center w-24"></th>
+            <th class="text-center w-24 max-sm:hidden"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="r in featuredReleases" :key="r.id" class="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
             <td>
               <div class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="font-bold text-gray-900 dark:text-white no-underline hover:text-blue-600 transition-colors">{{ r.version }}</a>
                   <TooltipTag v-if="r.snapshot" :tooltip="'[[release.tooltips.dev]]'"><span class="badge badge-blue">[[release.master]]</span></TooltipTag>
                   <TooltipTag v-else-if="latestRelease && r.id === latestRelease.id" :tooltip="'[[release.tooltips.latest]]'"><span class="badge bg-blue-600 text-white border-blue-600">Latest</span></TooltipTag>
                   <TooltipTag v-if="r.lts" :tooltip="'[[release.tooltips.lts]]'"><span class="badge badge-green">LTS</span></TooltipTag>
                 </div>
-                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
+                <TooltipTag :tooltip="'[[release.tooltips.revision]]'"><span class="text-xs font-mono text-gray-400 uppercase tracking-tighter truncate block max-w-full">r{{ r.revision }} • {{ r.release_tag }}</span></TooltipTag>
               </div>
             </td>
             <td class="hidden sm:table-cell text-xs text-gray-500 font-medium whitespace-nowrap">{{ fmtDate(r.created) }}</td>
@@ -139,7 +139,7 @@ const localizedFeatures = [
                 <TooltipTag v-for="a in r.archs" :key="a" :tooltip="a === 'x64' ? '[[release.tooltips.x64]]' : a === 'x86' ? '[[release.tooltips.x86]]' : a === 'arm64' ? '[[release.tooltips.arm64]]' : '[[release.tooltips.arm32]]'"><span class="badge badge-purple lowercase text-xs px-1.5 py-0">{{ a }}</span></TooltipTag>
               </div>
             </td>
-            <td class="text-center">
+            <td class="text-center max-sm:hidden">
               <a :href="withBase(`/${localeIndex}/releases/${r.id}`)" class="btn-primary h-7 px-4 text-xs font-bold mx-auto">
                 [[variant.download]]
               </a>

@@ -19,8 +19,8 @@ function scrollToTop() {
 </script>
 
 <template>
-<button v-if="show" @click="scrollToTop"
-  class="fixed bottom-6 right-6 z-50 w-10 h-10 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center">
+<button v-if="show" @click="scrollToTop" aria-label="Scroll to top"
+  class="fixed bottom-6 right-6 z-50 w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-400 transition-all flex items-center justify-center">
   <Icon icon="fa6-solid:arrow-up" class="text-sm" />
 </button>
 </template>

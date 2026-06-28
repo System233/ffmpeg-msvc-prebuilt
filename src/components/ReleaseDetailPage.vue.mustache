@@ -213,7 +213,7 @@ function ffmpegRefUrl(ref: string): string | null {
           <!-- <span class="badge badge-outline">r{{ release.revision }}</span> -->
         </div>
       </div>
-      <a v-if="release.release_url" :href="release.release_url" target="_blank" class="btn-secondary h-8 px-3 text-xs gap-2 font-bold">
+      <a v-if="release.release_url" :href="release.release_url" target="_blank" rel="noopener noreferrer" class="btn-secondary h-8 px-3 text-xs gap-2 font-bold">
         <Icon icon="fa6-brands:github" />
         [[release.viewOnGitHub]]
       </a>
@@ -227,7 +227,7 @@ function ffmpegRefUrl(ref: string): string | null {
       <div class="space-y-1">
         <span class="text-xs font-bold uppercase tracking-widest text-gray-400">[[release.ffmpegRef]]</span>
         <div class="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
-          <a v-if="release.ffmpeg_ref" :href="ffmpegRefUrl(release.ffmpeg_ref)" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+          <a v-if="release.ffmpeg_ref" :href="ffmpegRefUrl(release.ffmpeg_ref)" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
             {{ release.ffmpeg_ref }}
             <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-xs inline-block ml-0.5" />
           </a>
@@ -245,7 +245,7 @@ function ffmpegRefUrl(ref: string): string | null {
       <div class="space-y-1">
         <span class="text-xs font-bold uppercase tracking-widest text-gray-400">[[release.releaseTag]]</span>
         <div class="text-xs text-gray-600 dark:text-gray-400 truncate">
-          <a :href="GITHUB_REPO_URL + '/releases/tag/' + release.release_tag" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
+          <a :href="GITHUB_REPO_URL + '/releases/tag/' + release.release_tag" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline no-underline font-bold">
             {{ release.release_tag }}
             <Icon icon="fa6-solid:arrow-up-right-from-square" class="text-xs inline-block ml-0.5" />
           </a>
@@ -279,14 +279,14 @@ function ffmpegRefUrl(ref: string): string | null {
         </thead>
         <tbody>
           <tr v-for="arch in availableArchs" :key="arch">
-            <td class="font-bold text-gray-900 dark:text-white uppercase text-xs py-3 whitespace-nowrap">
+            <th scope="row" class="font-bold text-gray-900 dark:text-white uppercase text-xs py-3 whitespace-nowrap text-left">
               <TooltipTag :tooltip="tooltipMap[arch]">
                 <div class="flex items-center gap-2">
                   <Icon icon="fa6-solid:microchip" class="text-gray-300" />
                   {{ archLabel[arch] || arch }}
                 </div>
               </TooltipTag>
-            </td>
+            </th>
             <td v-for="c in getCombos()" :key="c" class="text-center! py-2">
               <template v-if="cellAt(arch, c)">
                 <div class="inline-flex items-start gap-2">
@@ -305,7 +305,7 @@ function ffmpegRefUrl(ref: string): string | null {
                     </TooltipTag>
                   </div>
                   <TooltipTag :tooltip="'[[variant.tooltip.viewDetails]]'">
-                    <button @click="scrollToVariant(variantId(cellAt(arch, c).assets.binary.file))" class="mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer shrink-0">
+                    <button @click="scrollToVariant(variantId(cellAt(arch, c).assets.binary.file))" aria-label="View variant details" class="mt-0.5 inline-flex items-center justify-center w-7 h-7 sm:w-4 sm:h-4 rounded-full border border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer shrink-0">
                       <Icon icon="fa6-solid:chevron-down" class="text-xs" />
                     </button>
                   </TooltipTag>
@@ -333,9 +333,9 @@ function ffmpegRefUrl(ref: string): string | null {
         <div class="flex items-center gap-1.5 self-end w-full sm:w-auto">
           <div class="flex items-center gap-1.5 w-full sm:w-[260px] px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0c0c0e] focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all shadow-sm">
             <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-xs shrink-0" />
-            <input v-model="variantSearch" type="text" :placeholder="'[[release.variantSearch]]'"
+            <input v-model="variantSearch" type="text" :placeholder="'[[release.variantSearch]]'" aria-label="[[release.variantSearch]]"
               class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs placeholder:text-gray-400 dark:text-white" />
-            <button v-if="variantSearch" @click="variantSearch = ''" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0">
+            <button v-if="variantSearch" @click="variantSearch = ''" aria-label="Clear search" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0">
               <Icon icon="fa6-solid:xmark" class="text-xs" />
             </button>
           </div>
@@ -386,12 +386,15 @@ function ffmpegRefUrl(ref: string): string | null {
 
     <div class="border border-gray-200 dark:border-gray-800 rounded-md max-w-full">
       <div v-for="(v, idx) in filteredVariants" :key="v.assets.binary.file" :id="variantId(v.assets.binary.file)"
-        class="transition-all cursor-pointer select-none"
+        class="transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-blue-400"
         :class="[
           idx < filteredVariants.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : '',
           highlightedVariant === variantId(v.assets.binary.file) ? 'ring-2 ring-blue-400/50 bg-blue-50/40 dark:bg-blue-900/10' : ''
         ]"
-        @click="toggleVariantExpanded(variantId(v.assets.binary.file))">
+        @click="toggleVariantExpanded(variantId(v.assets.binary.file))"
+        @keydown.enter="toggleVariantExpanded(variantId(v.assets.binary.file))"
+        @keydown.space.prevent="toggleVariantExpanded(variantId(v.assets.binary.file))"
+        role="button" :aria-expanded="expandedVariantId === variantId(v.assets.binary.file) ? 'true' : 'false'" tabindex="0">
 
         <!-- Compact Row (always visible) -->
         <div class="flex items-center gap-1 sm:gap-2 min-w-0 px-3 py-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
@@ -463,7 +466,7 @@ function ffmpegRefUrl(ref: string): string | null {
                 </TooltipTag>
                 <code class="flex-1 text-xs font-mono text-gray-400 truncate">{{ (v.assets.binary.digest || ':').split(':').slice(1).join(':') }}</code>
                 <div class="relative">
-                  <button @click="copyText(v.assets.binary.digest, v.assets.binary.file)" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 shrink-0 cursor-pointer" :title="'[[release.copyHash]]'">
+                  <button @click="copyText(v.assets.binary.digest, v.assets.binary.file)" aria-label="[[release.copyHash]]" class="text-blue-600 dark:text-blue-400 hover:text-blue-700 shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 rounded">
                     <Icon icon="fa6-solid:copy" class="text-xs" />
                   </button>
                   <span v-if="copiedVariantId === v.assets.binary.file" class="absolute -top-7 right-0 whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-xs px-2 py-0.5 rounded shadow-lg z-50 pointer-events-none">
@@ -477,7 +480,7 @@ function ffmpegRefUrl(ref: string): string | null {
         </div>
       </div>
     </div>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300 font-medium">
+    <div class="flex flex-wrap items-center justify-start sm:justify-end gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300 font-medium">
       <span class="inline-flex items-center gap-1"><Icon icon="fa6-solid:download" class="text-xs shrink-0 text-blue-600 dark:text-blue-400" /> [[variant.tooltip.binary]]</span>
       <span class="inline-flex items-center gap-1"><Icon icon="fa6-solid:cube" class="text-xs shrink-0 text-blue-600 dark:text-blue-400" /> [[variant.tooltip.develop]]</span>
     </div>

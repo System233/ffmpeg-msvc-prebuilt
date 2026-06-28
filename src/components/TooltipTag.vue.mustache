@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   tooltip: string
   color?: 'indigo' | 'amber' | 'purple' | 'blue'
 }>()
@@ -9,33 +9,44 @@ defineProps<{
 const show = ref(false)
 const pos = ref({ left: '0px', bottom: '0px' })
 const el = ref<HTMLElement>()
+const tipId = `tt-${Math.random().toString(36).slice(2, 9)}`
+let timer: ReturnType<typeof setTimeout> | null = null
 
 function onEnter() {
-  const trigger = el.value
-  if (!trigger) return
-  const rect = trigger.getBoundingClientRect()
-  pos.value = {
-    left: rect.left + rect.width / 2 + 'px',
-    bottom: window.innerHeight - rect.top + 'px',
-  }
-  show.value = true
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(() => {
+    const trigger = el.value
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const maxW = 280
+    const cx = rect.left + rect.width / 2
+    const minCx = maxW / 2 + 8
+    const maxCx = window.innerWidth - maxW / 2 - 8
+    pos.value = {
+      left: Math.max(minCx, Math.min(cx, maxCx)) + 'px',
+      bottom: window.innerHeight - rect.top + 'px',
+    }
+    show.value = true
+  }, 200)
 }
 
 function onLeave() {
+  if (timer) clearTimeout(timer)
+  timer = null
   show.value = false
 }
 </script>
 
 <template>
-<span ref="el" class="group relative inline-flex cursor-pointer rounded transition-all hover:ring-2"
+<span ref="el" class="group relative inline-flex cursor-help rounded transition-all hover:ring-2"
   :class="{
     'hover:ring-indigo-400/40 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/20': !color || color === 'indigo',
     'hover:ring-amber-400/40 hover:bg-amber-100/50 dark:hover:bg-amber-900/20': color === 'amber',
     'hover:ring-purple-400/40 hover:bg-purple-100/50 dark:hover:bg-purple-900/20': color === 'purple',
     'hover:ring-blue-400/40 hover:bg-blue-100/50 dark:hover:bg-blue-900/20': color === 'blue',
-  }" @mouseenter="onEnter" @mouseleave="onLeave">
+  }" @mouseenter="onEnter" @mouseleave="onLeave" @focus="onEnter" @blur="onLeave" :aria-describedby="show ? tipId : undefined">
   <slot />
-  <span v-if="show" class="fixed z-50 pointer-events-none whitespace-nowrap bg-gray-800 dark:bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded shadow-lg"
+  <span v-if="show" :id="tipId" role="tooltip" class="fixed z-50 pointer-events-none bg-gray-800 dark:bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded shadow-lg max-w-[280px]"
     :style="{ left: pos.left, bottom: pos.bottom, transform: 'translateX(-50%)', marginBottom: '6px' }">
     {{ tooltip }}
   </span>
