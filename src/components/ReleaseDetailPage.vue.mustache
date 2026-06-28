@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useData, withBase } from 'vitepress'
-import { ref, watchEffect, computed, nextTick } from 'vue'
+import { ref, watchEffect, computed, nextTick, type Ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
 import TooltipTag from './TooltipTag.vue'
@@ -13,11 +13,12 @@ const { params, localeIndex } = useData()
 const release = ref<any>(null)
 const error = ref(false)
 
-// Filters for metadata section (Single-select with toggle)
-const selectedArch = ref<string | null>(null)
-const selectedLinkage = ref<string | null>(null)
-const selectedLicense = ref<string | null>(null)
+// Filters for metadata section (Multi-select, default all selected)
+const selectedArchs = ref<Set<string>>(new Set())
+const selectedLinkages = ref<Set<string>>(new Set())
+const selectedLicenses = ref<Set<string>>(new Set())
 const variantSearch = ref('')
+
 const copiedVariantId = ref('')
 let copyTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -89,9 +90,9 @@ const filteredVariants = computed(() => {
       const inDep  = v.dependencies?.some((d: string) => d.toLowerCase().includes(q))
       if (!inFile && !inFeat && !inDep) return false
     }
-    if (selectedArch.value && v.arch !== selectedArch.value) return false
-    if (selectedLinkage.value && v.linkage !== selectedLinkage.value) return false
-    if (selectedLicense.value && v.license !== selectedLicense.value) return false
+    if (selectedArchs.value.size > 0 && !selectedArchs.value.has(v.arch)) return false
+    if (selectedLinkages.value.size > 0 && !selectedLinkages.value.has(v.linkage)) return false
+    if (selectedLicenses.value.size > 0 && !selectedLicenses.value.has(v.license)) return false
     return true
   })
 })
@@ -111,9 +112,48 @@ const licenses = computed(() => {
   return lic.sort()
 })
 
-function toggleArch(val: string) { selectedArch.value = selectedArch.value === val ? null : val }
-function toggleLinkage(val: string) { selectedLinkage.value = selectedLinkage.value === val ? null : val }
-function toggleLicense(val: string) { selectedLicense.value = selectedLicense.value === val ? null : val }
+// Initialize filters with all available options when release loads
+watchEffect(() => {
+  const a = availableArchs.value
+  const l = linkages.value
+  const lic = licenses.value
+  if (a.length && selectedArchs.value.size === 0) selectedArchs.value = new Set(a)
+  if (l.length && selectedLinkages.value.size === 0) selectedLinkages.value = new Set(l)
+  if (lic.length && selectedLicenses.value.size === 0) selectedLicenses.value = new Set(lic)
+})
+
+let lastClick: { val: string; time: number; s: Ref<Set<string>>; all: string[] } | null = null
+
+function toggleSet(s: Ref<Set<string>>, val: string, all: string[], event?: MouseEvent) {
+  const now = Date.now()
+  // Double-click detection: same item + same set within 300ms
+  if (lastClick && lastClick.val === val && lastClick.s === s && now - lastClick.time < 300) {
+    lastClick = null
+    s.value = new Set(all)
+    return
+  }
+  lastClick = { val, time: now, s, all }
+
+  if (event?.altKey) {
+    s.value = new Set([val])
+  } else {
+    const next = new Set(s.value)
+    if (next.has(val)) {
+      next.delete(val)
+      if (next.size === 0) {
+        // Deselecting the last item → invert: select all others
+        s.value = new Set(all.filter(x => x !== val))
+        return
+      }
+    } else {
+      next.add(val)
+    }
+    s.value = next
+  }
+}
+function toggleArch(val: string, event?: MouseEvent) { toggleSet(selectedArchs, val, availableArchs.value, event) }
+function toggleLinkage(val: string, event?: MouseEvent) { toggleSet(selectedLinkages, val, linkages.value, event) }
+function toggleLicense(val: string, event?: MouseEvent) { toggleSet(selectedLicenses, val, licenses.value, event) }
 function searchVariant(q: string) { variantSearch.value = q }
 function shortArch(triplet: string): string { return triplet.split('-')[0] }
 
@@ -346,9 +386,9 @@ function ffmpegRefUrl(ref: string): string | null {
             <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">[[release.architectures]]</span>
             <div class="flex flex-wrap gap-1.5">
               <TooltipTag v-for="a in availableArchs" :key="a" :tooltip="tooltipMap[a]">
-                <button @click="toggleArch(a)"
+                <button @click="toggleArch(a, $event)"
                   class="badge uppercase cursor-pointer"
-                  :class="selectedArch === a ? 'badge-purple ring-2 ring-purple-400' : 'badge-outline hover:border-purple-400'">
+                  :class="selectedArchs.has(a) ? 'badge-purple ring-2 ring-purple-400' : 'badge-outline hover:border-purple-400'">
                   {{ a }}
                 </button>
               </TooltipTag>
@@ -359,9 +399,9 @@ function ffmpegRefUrl(ref: string): string | null {
             <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">[[release.linkages]]</span>
             <div class="flex flex-wrap gap-1.5">
               <TooltipTag v-for="l in linkages" :key="l" :tooltip="tooltipMap[l]">
-                <button @click="toggleLinkage(l)"
+                <button @click="toggleLinkage(l, $event)"
                   class="badge lowercase cursor-pointer"
-                  :class="selectedLinkage === l ? 'badge-blue ring-2 ring-blue-400' : 'badge-outline hover:border-blue-400'">
+                  :class="selectedLinkages.has(l) ? 'badge-blue ring-2 ring-blue-400' : 'badge-outline hover:border-blue-400'">
                   {{ l }}
                 </button>
               </TooltipTag>
@@ -372,9 +412,9 @@ function ffmpegRefUrl(ref: string): string | null {
             <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">[[release.licenses]]</span>
             <div class="flex flex-wrap gap-1.5">
               <TooltipTag v-for="l in licenses" :key="l" :tooltip="tooltipMap[l]">
-                <button @click="toggleLicense(l)"
+                <button @click="toggleLicense(l, $event)"
                   class="badge uppercase cursor-pointer"
-                  :class="selectedLicense === l ? 'badge-amber ring-2 ring-amber-400' : 'badge-outline hover:border-amber-400'">
+                  :class="selectedLicenses.has(l) ? 'badge-amber ring-2 ring-amber-400' : 'badge-outline hover:border-amber-400'">
                   {{ l }}
                 </button>
               </TooltipTag>

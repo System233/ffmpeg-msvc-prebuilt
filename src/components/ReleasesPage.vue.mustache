@@ -11,7 +11,8 @@ const { localeIndex } = useData()
 
 const search = ref('')
 const majorFilter = ref('all')
-const ltsOnly = ref(false)
+const showLTS = ref(true)
+const showSnapshot = ref(true)
 const sortColumn = ref<'version' | 'date'>('version')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 
@@ -31,7 +32,8 @@ const filtered = computed(() => {
       if (!r.version.toLowerCase().includes(q) && !r.release_tag.toLowerCase().includes(q)) return false
     }
     if (majorFilter.value !== 'all' && r.major !== majorFilter.value) return false
-    if (ltsOnly.value && !r.lts) return false
+    if (!showLTS.value && r.lts) return false
+    if (!showSnapshot.value && r.snapshot) return false
     return true
   })
 
@@ -105,13 +107,20 @@ function fmtDate(iso: string): string {
       <div class="h-6 w-px bg-gray-200 dark:bg-gray-800 hidden md:block"></div>
 
       <!-- Toggles -->
-      <div class="flex items-center gap-4">
-        <button @click="ltsOnly = !ltsOnly" role="switch" :aria-checked="ltsOnly"
-          class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold border transition-all cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-blue-400"
-          :class="ltsOnly ? 'bg-green-600 text-white border-green-600' : 'border-gray-200 dark:border-gray-800 text-gray-500 bg-white dark:bg-transparent'">
-          <Icon :icon="ltsOnly ? 'fa6-solid:circle-check' : 'fa6-solid:circle'" class="text-xs" />
-          [[filter.ltsOnly]]
-        </button>
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">Type</span>
+        <div class="flex flex-wrap gap-1.5">
+          <button @click="showLTS = !showLTS"
+            class="badge uppercase cursor-pointer"
+            :class="showLTS ? 'badge-green ring-2 ring-green-400' : 'badge-outline hover:border-green-400'">
+            [[filter.ltsOnly]]
+          </button>
+          <button @click="showSnapshot = !showSnapshot"
+            class="badge uppercase cursor-pointer"
+            :class="showSnapshot ? 'badge-blue ring-2 ring-blue-400' : 'badge-outline hover:border-blue-400'">
+            [[filter.snapshotOnly]]
+          </button>
+        </div>
       </div>
     </div>
   </header>

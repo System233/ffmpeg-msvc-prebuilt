@@ -118,7 +118,8 @@
   "filter": {
     "search": "搜索构建...",
     "allMajors": "所有主版本",
-    "ltsOnly": "仅 LTS（长期支持）",
+    "ltsOnly": "LTS",
+    "snapshotOnly": "开发版",
     "completeOnly": "仅完成版本"
   },
   "footer": {

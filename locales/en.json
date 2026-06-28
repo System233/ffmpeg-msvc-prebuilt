@@ -118,7 +118,8 @@
   "filter": {
     "search": "Search versions...",
     "allMajors": "All Versions",
-    "ltsOnly": "LTS Only",
+    "ltsOnly": "LTS",
+    "snapshotOnly": "Snapshot",
     "completeOnly": "Complete Only"
   },
   "footer": { 
