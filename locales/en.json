@@ -1,5 +1,7 @@
 {
-  "site": { "title": "FFmpeg MSVC Prebuilt" },
+  "site": {
+    "title": "FFmpeg MSVC Prebuilt"
+  },
   "hero": {
     "title": "FFmpeg MSVC Prebuilt",
     "subtitle": "Ready-to-use FFmpeg binaries for Windows, compiled with Microsoft Visual C++. All dependencies included — download, extract, and run.",
@@ -14,7 +16,7 @@
       {
         "icon": "fa6-solid:microchip",
         "title": "Modern Architectures",
-        "desc": "Native builds for x64, x86, and ARM64 Windows platforms optimized for modern CPUs."
+        "desc": "Native builds for x64, x86, and ARM/ARM64 Windows platforms optimized for modern CPUs."
       },
       {
         "icon": "fa6-solid:box-archive",
@@ -28,8 +30,8 @@
       }
     ]
   },
-  "releases": { 
-    "title": "Releases", 
+  "releases": {
+    "title": "Releases",
     "empty": "No releases match your filters.",
     "cataloged": "artifacts cataloged",
     "totalFound": "total releases found",
@@ -62,9 +64,9 @@
     "ffmpegRef": "FFmpeg Ref",
     "status": "Status",
     "progress": "Build Progress",
-    "metadata": "Variant Details",
-    "available": "variants available",
-    "variantDetails": "Variant Details",
+    "metadata": "Artifact Details",
+    "available": "artifacts available",
+    "variantDetails": "Artifact Details",
     "copyHash": "Copy Hash",
     "noFeatures": "No specific features listed.",
     "noDeps": "No external dependencies.",
@@ -109,7 +111,7 @@
     "tooltip": {
       "binary": "Executables, headers and libraries",
       "develop": "Executables, headers and libraries, plus debug libraries and PDB files",
-      "viewDetails": "Variant details"
+      "viewDetails": "Artifact details"
     },
     "shared": "Shared",
     "static": "Static",
@@ -118,11 +120,13 @@
   "filter": {
     "search": "Search versions...",
     "allMajors": "All Versions",
+    "majorVersion": "Version",
+    "type": "Type",
     "ltsOnly": "LTS",
     "snapshotOnly": "Snapshot",
     "completeOnly": "Complete Only"
   },
-  "footer": { 
+  "footer": {
     "message": "FFmpeg Prebuilt Binaries for Windows MSVC",
     "copy": "© 2026 FFmpeg MSVC Prebuilt. MIT Licensed.",
     "resourcesTitle": "Resources",

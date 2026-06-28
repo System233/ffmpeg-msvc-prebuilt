@@ -16,7 +16,7 @@
       {
         "icon": "fa6-solid:microchip",
         "title": "现代架构支持",
-        "desc": "为 x64、x86 和 ARM64 Windows 平台提供原生构建，针对现代 CPU 进行了优化。"
+        "desc": "为 x64、x86 和 ARM/ARM64 Windows 平台提供原生构建，针对现代 CPU 进行了优化。"
       },
       {
         "icon": "fa6-solid:box-archive",
@@ -64,8 +64,8 @@
     "ffmpegRef": "FFmpeg 引用",
     "status": "状态",
     "progress": "构建进度",
-    "metadata": "变体详情",
-    "available": "个变体可用",
+    "metadata": "构建产物",
+    "available": "个构建产物可用",
     "variantDetails": "变体详情",
     "copyHash": "复制哈希",
     "noFeatures": "未列出具体功能。",
@@ -109,7 +109,7 @@
     "tooltip": {
       "binary": "可执行文件、头文件和库文件",
       "develop": "可执行文件、头文件和库文件，以及调试库和 PDB 文件",
-      "viewDetails": "变体详情"
+      "viewDetails": "构建产物详情"
     },
     "shared": "动态",
     "static": "静态",
@@ -118,6 +118,8 @@
   "filter": {
     "search": "搜索构建...",
     "allMajors": "所有主版本",
+    "majorVersion": "主版本",
+    "type": "类型",
     "ltsOnly": "LTS",
     "snapshotOnly": "开发版",
     "completeOnly": "仅完成版本"

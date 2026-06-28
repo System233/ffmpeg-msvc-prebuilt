@@ -90,7 +90,7 @@ function fmtDate(iso: string): string {
     <div class="flex flex-wrap items-center gap-6 pt-6 border-t border-gray-100 dark:border-gray-800">
       <!-- Major Version (Radio) -->
       <div class="flex items-center gap-3">
-        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">Versions</span>
+        <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">[[filter.majorVersion]]</span>
         <div class="flex flex-wrap gap-2">
           <label v-for="m in ['all', ...majors]" :key="m" class="cursor-pointer">
             <input type="radio" name="major" :value="m" v-model="majorFilter" class="sr-only peer" />
@@ -108,7 +108,7 @@ function fmtDate(iso: string): string {
 
       <!-- Toggles -->
       <div class="flex items-center gap-2">
-        <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">Type</span>
+        <span class="text-xs font-bold uppercase tracking-widest text-gray-400 shrink-0">[[filter.type]]</span>
         <div class="flex flex-wrap gap-1.5">
           <button @click="showLTS = !showLTS"
             class="badge uppercase cursor-pointer"
