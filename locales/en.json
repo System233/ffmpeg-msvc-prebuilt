@@ -102,7 +102,10 @@
     "features": "Enabled Features",
     "dependencies": "Linked Dependencies",
     "download": "Download",
+    "binary": "Binary",
     "develop": "SDK",
+    "binaryShort": "Binary",
+    "developShort": "SDK",
     "tooltip": {
       "binary": "Executables, headers and libraries",
       "develop": "Executables, headers and libraries, plus debug libraries and PDB files",

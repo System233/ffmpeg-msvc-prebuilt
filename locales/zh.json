@@ -104,6 +104,7 @@
     "features": "启用的功能",
     "dependencies": "链接的依赖库",
     "download": "下载",
+    "binary": "二进制",
     "develop": "SDK",
     "tooltip": {
       "binary": "可执行文件、头文件和库文件",

@@ -72,20 +72,20 @@ function fmtDate(iso: string): string {
       </div>
 
       <!-- Search -->
-      <div class="flex items-center gap-3 w-full max-w-xs group">
-        <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-sm group-focus-within:text-blue-500 transition-colors shrink-0" />
-        <div class="relative flex-1">
+      <div class="flex items-center gap-2 w-full sm:w-[320px] shrink-0">
+        <div class="flex items-center gap-2 w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-[#0c0c0e] focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 transition-all">
+          <Icon icon="fa6-solid:magnifying-glass" class="text-gray-400 text-sm shrink-0" />
           <input v-model="search" type="text" :placeholder="'[[filter.search]]'"
-            class="block w-full px-3 py-2 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0c0c0e] text-sm placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none dark:text-white" />
-          <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
-            <Icon icon="fa6-solid:xmark" class="text-gray-400 text-xs hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer" />
+            class="flex-1 min-w-0 bg-transparent border-none outline-none text-sm placeholder:text-gray-400 dark:text-white" />
+          <button v-if="search" @click="search = ''" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0">
+            <Icon icon="fa6-solid:xmark" class="text-sm" />
           </button>
         </div>
       </div>
     </div>
 
     <!-- Toolbar -->
-    <div class="flex flex-wrap items-center gap-8 pt-6 border-t border-gray-100 dark:border-gray-800">
+    <div class="flex flex-wrap items-center gap-6 pt-6 border-t border-gray-100 dark:border-gray-800">
       <!-- Major Version (Radio) -->
       <div class="flex items-center gap-3">
         <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mr-1">Versions</span>
