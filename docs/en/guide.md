@@ -1,5 +1,6 @@
 ---
 title: Guide
+description: How to choose and use prebuilt FFmpeg binaries for Windows with MSVC — understand variants, file naming, and what's included.
 ---
 
 # Guide

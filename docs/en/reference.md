@@ -1,6 +1,9 @@
 ---
 title: Feature Reference
+description: Complete reference of all FFmpeg build features, configure flags, dependencies, and platform support for MSVC Windows builds.
 ---
+
+# Feature Reference
 
 ## Core Libraries
 

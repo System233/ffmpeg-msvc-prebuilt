@@ -460,8 +460,19 @@ function generateFeatureReference(): void {
 
   const allFeatures = raw.features as Record<string, Record<string, unknown>>
   const NL = '\n'
-  const frontmatter = `---\ntitle: Feature Reference\n---\n\n`
-  const zhFrontmatter = `---\ntitle: 功能参考\n---\n\n`
+
+  function loadLocales(lang: string): Record<string, unknown> {
+    const p = path.join(webDir, 'locales', `${lang}.json`)
+    return JSON.parse(fs.readFileSync(p, 'utf-8'))
+  }
+
+  const enLocale = loadLocales('en')
+  const zhLocale = loadLocales('zh')
+  const refEn = enLocale.reference as Record<string, string>
+  const refZh = zhLocale.reference as Record<string, string>
+
+  const frontmatter = `---\ntitle: ${refEn.title}\ndescription: ${refEn.description}\n---\n\n# ${refEn.heading}\n\n`
+  const zhFrontmatter = `---\ntitle: ${refZh.title}\ndescription: ${refZh.description}\n---\n\n# ${refZh.heading}\n\n`
 
   function escapeMd(text: string): string {
     return text.replace(/\|/g, '\\|')

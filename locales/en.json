@@ -32,6 +32,7 @@
   },
   "releases": {
     "title": "Releases",
+    "description": "Browse all available FFmpeg MSVC prebuilt releases for Windows — filter by version, architecture, license, and linkage.",
     "empty": "No releases match your filters.",
     "cataloged": "artifacts cataloged",
     "totalFound": "total releases found",
@@ -125,6 +126,11 @@
     "ltsOnly": "LTS",
     "snapshotOnly": "Snapshot",
     "completeOnly": "Complete Only"
+  },
+  "reference": {
+    "title": "Feature Reference",
+    "description": "Complete reference of all FFmpeg build features, configure flags, dependencies, and platform support for MSVC Windows builds.",
+    "heading": "Feature Reference"
   },
   "footer": {
     "message": "FFmpeg Prebuilt Binaries for Windows MSVC",

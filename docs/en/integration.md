@@ -1,5 +1,6 @@
 ---
 title: Integration
+description: Integrate prebuilt FFmpeg MSVC binaries into your CMake project using FindFFmpeg.cmake — targets, variables, and code snippets.
 ---
 
 # Integrating FFmpeg into Your CMake Project

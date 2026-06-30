@@ -32,6 +32,7 @@
   },
   "releases": {
     "title": "构建列表",
+    "description": "浏览所有可用的 FFmpeg MSVC Windows 预构建版本 — 按版本、架构、许可证和链接方式筛选。",
     "empty": "没有匹配筛选条件的发布。",
     "cataloged": "个构建结果已入库",
     "totalFound": "个构建版本",
@@ -123,6 +124,11 @@
     "ltsOnly": "LTS",
     "snapshotOnly": "开发版",
     "completeOnly": "仅完成版本"
+  },
+  "reference": {
+    "title": "功能参考",
+    "description": "FFmpeg 所有构建功能的完整参考，包括配置选项、依赖关系和平台支持，适用于 MSVC Windows 构建。",
+    "heading": "功能参考"
   },
   "footer": {
     "message": "FFmpeg Windows MSVC 预构建二进制文件",

@@ -1,7 +1,16 @@
 ---
 title: FFmpeg MSVC Prebuilt
-description: Prebuilt FFmpeg binaries for Windows
+description: Prebuilt FFmpeg binaries for Windows with MSVC
 ---
+
+# FFmpeg MSVC Prebuilt
+
+Ready-to-use FFmpeg binaries for Windows, compiled with Microsoft Visual C++. All dependencies included — download, extract, and run.
+
+Choose your language:
+
+- [**English** — FFmpeg MSVC Prebuilt](/en/) — Prebuilt FFmpeg binaries for Windows with MSVC
+- [**中文** — FFmpeg MSVC 预构建](/zh/) — 适用于 Windows 的 FFmpeg MSVC 预构建二进制文件
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
@@ -15,11 +24,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<noscript>
-  <p>Please choose your language / 请选择语言:</p>
-  <ul>
-    <li><a href="./en/">English</a></li>
-    <li><a href="./zh/">中文 (Chinese)</a></li>
-  </ul>
-</noscript>

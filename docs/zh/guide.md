@@ -1,5 +1,6 @@
 ---
 title: 使用指南
+description: 如何选择和使用适用于 Windows 的 FFmpeg MSVC 预构建二进制文件 — 了解变体、文件命名规则和包含内容。
 ---
 
 # 使用指南

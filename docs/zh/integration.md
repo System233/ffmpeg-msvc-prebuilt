@@ -1,5 +1,6 @@
 ---
 title: 开发集成
+description: 通过 FindFFmpeg.cmake 将预构建的 FFmpeg MSVC 二进制文件集成到你的 CMake 项目 — 目标、变量和代码示例。
 ---
 
 # 将 FFmpeg 集成到你的 CMake 项目

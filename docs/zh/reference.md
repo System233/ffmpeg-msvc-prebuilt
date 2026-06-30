@@ -1,6 +1,9 @@
 ---
 title: 功能参考
+description: FFmpeg 所有构建功能的完整参考，包括配置选项、依赖关系和平台支持，适用于 MSVC Windows 构建。
 ---
+
+# 功能参考
 
 ## Core Libraries
 

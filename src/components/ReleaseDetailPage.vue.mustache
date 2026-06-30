@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useData, withBase } from 'vitepress'
-import { ref, watchEffect, computed, nextTick, type Ref } from 'vue'
+import { ref, watchEffect, computed, nextTick, onServerPrefetch, type Ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import SiteFooter from './SiteFooter.vue'
 import TooltipTag from './TooltipTag.vue'
@@ -8,7 +8,7 @@ import ScrollToTop from './ScrollToTop.vue'
 import { GITHUB_REPO_URL } from '../constants'
 import { compDesc } from '../descriptions'
 
-const { params, localeIndex } = useData()
+const { params, localeIndex, frontmatter } = useData()
 
 const release = ref<any>(null)
 const error = ref(false)
@@ -58,7 +58,7 @@ const tooltipMap: Record<string, string> = {
 }
 
 // Use dynamic import to load data based on params.id
-watchEffect(async () => {
+async function loadRelease() {
   const id = params.value?.id
   if (!id) return
 
@@ -70,6 +70,7 @@ watchEffect(async () => {
     if (loader) {
       const mod = await loader()
       release.value = mod.default
+      frontmatter.title = `FFmpeg ${mod.default.version}`
       error.value = false
     } else {
       error.value = true
@@ -78,7 +79,10 @@ watchEffect(async () => {
     console.error('Failed to load release data:', err)
     error.value = true
   }
-})
+}
+
+onServerPrefetch(loadRelease)
+watchEffect(loadRelease)
 
 const filteredVariants = computed(() => {
   if (!release.value?.variants) return []

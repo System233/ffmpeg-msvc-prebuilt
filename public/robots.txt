@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://system233.github.io/ffmpeg-msvc-prebuilt/sitemap.xml
