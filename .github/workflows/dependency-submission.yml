@@ -28,10 +28,17 @@ permissions:
 
 env:
   VCPKG_TAG: 2026.06.01
-  TRIPLETS: "x64-windows x86-windows arm64-windows arm-windows"
 
 jobs:
   submit:
+    strategy:
+      fail-fast: false
+      matrix:
+        triplet:
+          - x64-windows
+          - x86-windows
+          - arm64-windows
+          - arm-windows
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
@@ -66,12 +73,9 @@ jobs:
             Write-Host "No features found in ffmpeg-deps — nothing to submit"
             exit 0
           }
-          $triplets = "$env:TRIPLETS".Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
-          foreach ($triplet in $triplets) {
-            $featureArgs = $features | ForEach-Object { "--x-feature=$_" }
-            Write-Output "Submitting dependency graph for $triplet..."
-            & "$env:VCPKG_ROOT/vcpkg.exe" install `
-              @featureArgs `
-              --triplet=$triplet `
-              --dry-run
-          }
+          $featureArgs = $features | ForEach-Object { "--x-feature=$_" }
+          Write-Output "Submitting dependency graph for ${{ matrix.triplet }}..."
+          & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            @featureArgs `
+            --triplet=${{ matrix.triplet }} `
+            --dry-run
