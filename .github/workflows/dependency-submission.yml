@@ -59,7 +59,6 @@ jobs:
         working-directory: ports/ffmpeg-deps
         env:
           # BUG microsoft/vcpkg-tool#1547, microsoft/vcpkg#48347, microsoft/vcpkg-tool#1850
-          GITHUB_SERVER_URL: ""
           GITHUB_TOKEN: ${{ github.token }}
           VCPKG_FEATURE_FLAGS: dependencygraph
           VCPKG_OVERLAY_PORTS: ../../ports
@@ -68,6 +67,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item Env:GITHUB_SERVER_URL
+          $env:GITHUB_WORKFLOW = "Dependency Submission (${{ matrix.triplet }})"
           $features = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).features.PSObject.Properties.Name
           if (-not $features) {
             Write-Host "No features found in ffmpeg-deps — nothing to submit"
