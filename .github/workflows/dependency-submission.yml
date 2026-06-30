@@ -49,16 +49,29 @@ jobs:
           vcpkg-root: ${{ runner.temp }}/vcpkg
 
       - name: Install overlay port dependencies (dry-run with SBOM)
+        working-directory: ports/ffmpeg-deps
         env:
+          # BUG microsoft/vcpkg-tool#1547, microsoft/vcpkg#48347, microsoft/vcpkg-tool#1850
+          GITHUB_SERVER_URL: ""
           GITHUB_TOKEN: ${{ github.token }}
           VCPKG_FEATURE_FLAGS: dependencygraph
-          VCPKG_OVERLAY_PORTS: ports
-          VCPKG_OVERLAY_TRIPLETS: triplets
+          VCPKG_OVERLAY_PORTS: ../../ports
+          VCPKG_OVERLAY_TRIPLETS: ../../triplets
           VCPKG_ROOT: ${{ runner.temp }}/vcpkg
-          TRIPLETS: ${{ env.TRIPLETS }}
-          VCPKG_INSTALL_OPTIONS: --clean-after-build
         shell: pwsh
         run: |
-          # BUG microsoft/vcpkg-tool#1547, microsoft/vcpkg#48347, microsoft/vcpkg-tool#1850
-          Remove-Item Env:GITHUB_SERVER_URL -ErrorAction SilentlyContinue
-          & "${{ github.workspace }}/scripts/ci/submit_deps.ps1"
+          Remove-Item Env:GITHUB_SERVER_URL
+          $features = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).features.PSObject.Properties.Name
+          if (-not $features) {
+            Write-Host "No features found in ffmpeg-deps — nothing to submit"
+            exit 0
+          }
+          $triplets = "$env:TRIPLETS".Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+          foreach ($triplet in $triplets) {
+            $featureArgs = $features | ForEach-Object { "--x-feature=$_" }
+            Write-Output "Submitting dependency graph for $triplet..."
+            & "$env:VCPKG_ROOT/vcpkg.exe" install `
+              @featureArgs `
+              --triplet=$triplet `
+              --dry-run
+          }
