@@ -26,6 +26,7 @@ export default defineConfig({
     ['meta', { name: 'og:image', content: `${SITE_URL}/favicon.svg` }],
     ['meta', { name: 'og:url', content: SITE_URL }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['script', { src: 'https://static.cloudflareinsights.com/beacon.min.js', 'data-cf-beacon': '{"token": "0bcc9c61ea7f40ef9a5c74afc9df4e61"}', defer: true }],
   ],
 
   locales: {
