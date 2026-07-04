@@ -346,7 +346,7 @@ jobs:
         id: artifact-prefix
         run: |
           prefix=$(python scripts/ops/naming.py variant-prefix \
-            --version "${{ inputs.yaml }}" \
+            --version "${{ inputs.ref || inputs.yaml }}" \
             --revision "${{ needs.scan.outputs.revision }}")
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
 
