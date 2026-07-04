@@ -317,6 +317,13 @@ jobs:
         with:
           requirements: 'requirements.txt'
 
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-contents: write
+
       # Checkout data branch
       - name: Checkout data branch
         id: checkout-data
@@ -325,6 +332,7 @@ jobs:
           ref: data
           path: data
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
         continue-on-error: true
 
       - name: Ensure data branch working directory
@@ -398,7 +406,7 @@ jobs:
       - name: Create or append GitHub Release
         if: inputs.dry_run != true && steps.release_tag.outputs.tag != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           ARGS="--tag ${{ steps.release_tag.outputs.tag }} --artifacts-dir ${{ github.workspace }}/artifacts --yaml ${{ inputs.yaml }}"
           [ -n "${{ inputs.ref }}" ] && ARGS="$ARGS --ref ${{ inputs.ref }}"
