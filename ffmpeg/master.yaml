@@ -34,6 +34,11 @@ build:
     FFMPEG_NEED_BIN2C: ON
     FFMPEG_NEED_OPSTOOL: "ON"
 
+features:
+  shaderc:
+    flag: ""
+    depends: []
+
 patches:
   # - 8.x/0002-fix-msvc-link-8.1.patch
   - 8.x/0003-fix-windowsinclude.patch
