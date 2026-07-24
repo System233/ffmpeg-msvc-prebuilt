@@ -24,15 +24,12 @@ build:
   host_deps:
     - name: ffmpeg-bin2c
       host: true
-    - name: ffmpeg-opstool
-      host: true
     - name: vcpkg-cmake-get-vars
       host: true
     - name: vcpkg-pkgconfig-get-modules
       host: true
   cmake_defines:
     FFMPEG_NEED_BIN2C: ON
-    FFMPEG_NEED_OPSTOOL: "ON"
 
 features:
   shaderc:
@@ -56,4 +53,3 @@ patches:
   - 8.x/0051-lensfun-configure-fix-8.x.patch
   - 8.x/0052-fix-msvc-flags-filter-8.2.patch
   - 8.x/0053-fix-host-cc-msvc-8.2.patch
-  - 8.x/0054-fix-opstool-aarch64-8.2.patch
