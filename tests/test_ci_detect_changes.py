@@ -228,6 +228,90 @@ class TestDetectChangesIntegration(unittest.TestCase):
         self.assertFalse(result.found)
         self.assertEqual(result.changed, [])
 
+    # ── master / base skip behavior ─────────────────────────────────────
+
+    def _setup_master_and_base(self):
+        """Create repo with master.yaml and base.yaml (and a normal version)."""
+        (self.repo / "ffmpeg").mkdir(parents=True)
+        (self.repo / "ffmpeg" / ".gitkeep").write_text("")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "first"], self.repo)
+        before = _git(["rev-parse", "HEAD"], self.repo).strip()
+        _git(["rm", "--cached", "ffmpeg/.gitkeep"], self.repo)
+        _git(["commit", "-m", "rm keep"], self.repo)
+        (self.repo / "ffmpeg" / "master.yaml").write_text("revision: 1\n")
+        (self.repo / "ffmpeg" / "base.yaml").write_text("revision: 1\n")
+        (self.repo / "ffmpeg" / "7.1.1.yaml").write_text("revision: 1\n")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "add all"], self.repo)
+        after = _git(["rev-parse", "HEAD"], self.repo).strip()
+        return before, after
+
+    def test_master_skipped_by_default(self):
+        """master.yaml changes should NOT be detected without --include-master."""
+        before, after = self._setup_master_and_base()
+        result = detect_changes(before, after)
+        # Only 7.1.1 should be found, master.base is skipped
+        self.assertTrue(result.found)
+        versions = [c.version for c in result.changed]
+        self.assertIn("7.1.1", versions)
+        self.assertNotIn("master", versions)
+        self.assertNotIn("base", versions)
+
+    def test_master_included_with_flag(self):
+        """master.yaml changes SHOULD be detected when include_master=True."""
+        before, after = self._setup_master_and_base()
+        result = detect_changes(before, after, include_master=True)
+        self.assertTrue(result.found)
+        versions = [c.version for c in result.changed]
+        self.assertIn("7.1.1", versions)
+        self.assertIn("master", versions)
+        self.assertNotIn("base", versions)
+
+    def test_base_always_skipped(self):
+        """base.yaml should never be detected regardless of include_master."""
+        before, after = self._setup_master_and_base()
+        result = detect_changes(before, after, include_master=True)
+        versions = [c.version for c in result.changed]
+        self.assertNotIn("base", versions)
+        result2 = detect_changes(before, after, include_master=False)
+        versions2 = [c.version for c in result2.changed]
+        self.assertNotIn("base", versions2)
+
+    def test_master_only_change_no_flag(self):
+        """Only master.yaml changed, no --include-master → empty result."""
+        (self.repo / "ffmpeg").mkdir(parents=True)
+        (self.repo / "ffmpeg" / ".gitkeep").write_text("")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "first"], self.repo)
+        before = _git(["rev-parse", "HEAD"], self.repo).strip()
+        _git(["rm", "--cached", "ffmpeg/.gitkeep"], self.repo)
+        _git(["commit", "-m", "rm keep"], self.repo)
+        (self.repo / "ffmpeg" / "master.yaml").write_text("revision: 2\n")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "add master"], self.repo)
+        after = _git(["rev-parse", "HEAD"], self.repo).strip()
+        result = detect_changes(before, after)
+        self.assertFalse(result.found, "master-only change should be skipped")
+
+    def test_master_only_change_with_flag(self):
+        """Only master.yaml changed, with --include-master → found."""
+        (self.repo / "ffmpeg").mkdir(parents=True)
+        (self.repo / "ffmpeg" / ".gitkeep").write_text("")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "first"], self.repo)
+        before = _git(["rev-parse", "HEAD"], self.repo).strip()
+        _git(["rm", "--cached", "ffmpeg/.gitkeep"], self.repo)
+        _git(["commit", "-m", "rm keep"], self.repo)
+        (self.repo / "ffmpeg" / "master.yaml").write_text("revision: 2\n")
+        _git(["add", "-A"], self.repo)
+        _git(["commit", "-m", "add master"], self.repo)
+        after = _git(["rev-parse", "HEAD"], self.repo).strip()
+        result = detect_changes(before, after, include_master=True)
+        self.assertTrue(result.found, "master should be found with --include-master")
+        self.assertEqual(result.changed[0].version, "master")
+        self.assertEqual(result.changed[0].revision, 2)
+
 
 def _git(args: list[str], cwd: Path) -> str:
     import subprocess
