@@ -97,11 +97,13 @@ def get_revision(content: str) -> int:
 
 # ── Core detection ──────────────────────────────────────────────────────────
 
-def detect_changes(before: str, after: str) -> DetectionResult:
+def detect_changes(before: str, after: str, include_master: bool = False) -> DetectionResult:
     """Return which versions need a rebuild between *before* and *after*."""
     changed_files = git_diff_names(before, after, "ffmpeg/*.yaml")
 
-    SKIP_STEMS = {"base", "master"}
+    SKIP_STEMS = {"base"}
+    if not include_master:
+        SKIP_STEMS.add("master")
     changed_stems = set()
     for line in changed_files:
         m = re.match(r"ffmpeg/(.+)\.yaml$", line)
@@ -153,6 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Head (new) commit (default: HEAD).",
     )
     parser.add_argument("--json", action="store_true", help="Output as JSON.")
+    parser.add_argument("--include-master", action="store_true",
+                        help="Include master.yaml in change detection (default: skip).")
     return parser
 
 
@@ -179,7 +183,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     try:
-        result = detect_changes(base, head)
+        result = detect_changes(base, head, include_master=args.include_master)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
