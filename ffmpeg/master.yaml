@@ -39,7 +39,7 @@ features:
 patches:
   # - 8.x/0002-fix-msvc-link-8.1.patch
   - 8.x/0003-fix-windowsinclude.patch
-  - 8.x/0056-dependencies-master.patch
+  - 8.x/0060-dependencies-master.patch
   # - 8.x/0005-fix-nasm-8.1.patch
   - 8.x/0007-fix-lib-naming-8.1.patch
   - 8.x/0013-define-WINVER-8.1.patch
@@ -53,4 +53,4 @@ patches:
   - 8.x/0051-lensfun-configure-fix-8.x.patch
   - 8.x/0052-fix-msvc-flags-filter-8.2.patch
   - 8.x/0053-fix-host-cc-msvc-8.2.patch
-  - 8.x/0059-fix-sws-vulkan-makefile-master.patch
+  - 8.x/0061-fix-sws-vulkan-makefile-master.patch
