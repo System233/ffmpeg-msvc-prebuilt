@@ -126,6 +126,10 @@ def create_or_upload(
     value = ref or yaml_val or ""
     is_snapshot = ref is not None and ref != ""
 
+    # Snapshot releases are prereleases — never the "latest" release.
+    # Stable tagged releases remain the latest.
+    release_flags = ["--prerelease", "--latest=false"] if is_snapshot else []
+
     # Build title if not explicitly provided
     if title is None:
         title = _build_title(value, is_snapshot=is_snapshot)
@@ -151,6 +155,18 @@ def create_or_upload(
         if result.returncode != 0:
             print("Error uploading assets", file=sys.stderr)
             sys.exit(result.returncode)
+        # Fix the prerelease flag on pre-existing snapshot releases
+        # (created before prerelease support was added).
+        if is_snapshot:
+            edit = subprocess.run(
+                ["gh", "release", "edit", tag, *release_flags],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if edit.returncode != 0:
+                print("Error marking release as prerelease", file=sys.stderr)
+                sys.exit(edit.returncode)
     else:
         print(f"Creating release {tag}")
         result = subprocess.run(
@@ -158,6 +174,7 @@ def create_or_upload(
                 "gh", "release", "create", tag, *zips,
                 "--title", title,
                 "--notes", notes,
+                *release_flags,
             ],
             env=env,
         )

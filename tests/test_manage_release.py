@@ -3,9 +3,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
-from manage_release import _build_title, _build_notes, determine_tag
+from manage_release import _build_title, _build_notes, create_or_upload, determine_tag
 
 
 class TestBuildTitle(unittest.TestCase):
@@ -141,6 +142,109 @@ class TestDetermineTag(unittest.TestCase):
             d = Path(tmp)
             tag = determine_tag(d)
             self.assertIsNone(tag)
+
+
+class TestCreateOrUploadPrerelease(unittest.TestCase):
+    """Verify snapshot releases are created as prereleases, stable are not."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        (self.dir / "ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip").write_bytes(b"zip")
+        (self.dir / "ffmpeg-n8.0-1234-gabc-r1_x64-windows-shared-gpl.zip").write_bytes(b"zip")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, ref=None, yaml_val="8.1.1"):
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "fake"}, clear=False):
+            with mock.patch("subprocess.run") as mock_run:
+                def fake_run(cmd, **kwargs):
+                    r = mock.MagicMock()
+                    r.returncode = 0
+                    # gh release view succeeds → "already exists" path
+                    if cmd[0:2] == ["gh", "release", "view"]:
+                        r.returncode = 0
+                    return r
+                mock_run.side_effect = fake_run
+                create_or_upload(
+                    tag="ffmpeg-8.1.1-r2",
+                    artifacts_dir=self.dir,
+                    ref=ref,
+                    yaml_val=yaml_val,
+                )
+                return mock_run.call_args_list
+
+    def test_snapshot_create_has_prerelease_flag(self):
+        """Creating a new snapshot release passes --prerelease --latest=false."""
+        with mock.patch("subprocess.run") as mock_run:
+            def fake_run(cmd, **kwargs):
+                r = mock.MagicMock()
+                # view fails (release missing) → create path; everything else succeeds
+                r.returncode = 1 if cmd[0:3] == ["gh", "release", "view"] else 0
+                return r
+            mock_run.side_effect = fake_run
+            with mock.patch.dict("os.environ", {"GH_TOKEN": "fake"}, clear=False):
+                create_or_upload(
+                    tag="ffmpeg-n8.0-1234-gabc-r1",
+                    artifacts_dir=self.dir,
+                    ref="n8.0-1234-gabc",
+                    yaml_val=None,
+                )
+        create_cmd = next(args[0] for args, _ in mock_run.call_args_list
+                          if args[0][0:3] == ["gh", "release", "create"])
+        self.assertIn("--prerelease", create_cmd)
+        self.assertIn("--latest=false", create_cmd)
+
+    def test_stable_create_no_prerelease_flag(self):
+        """Creating a new stable release does NOT pass prerelease flags."""
+        with mock.patch("subprocess.run") as mock_run:
+            def fake_run(cmd, **kwargs):
+                r = mock.MagicMock()
+                r.returncode = 1 if cmd[0:3] == ["gh", "release", "view"] else 0
+                return r
+            mock_run.side_effect = fake_run
+            with mock.patch.dict("os.environ", {"GH_TOKEN": "fake"}, clear=False):
+                create_or_upload(
+                    tag="ffmpeg-8.1.1-r2",
+                    artifacts_dir=self.dir,
+                    ref=None,
+                    yaml_val="8.1.1",
+                )
+        create_cmd = next(args[0] for args, _ in mock_run.call_args_list
+                          if args[0][0:3] == ["gh", "release", "create"])
+        self.assertNotIn("--prerelease", create_cmd)
+        self.assertNotIn("--latest=false", create_cmd)
+
+    def test_snapshot_existing_gets_prerelease_edit(self):
+        """Existing snapshot release gets flagged via gh release edit."""
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=0)  # view succeeds → upload path
+            with mock.patch.dict("os.environ", {"GH_TOKEN": "fake"}, clear=False):
+                create_or_upload(
+                    tag="ffmpeg-n8.0-1234-gabc-r1",
+                    artifacts_dir=self.dir,
+                    ref="n8.0-1234-gabc",
+                    yaml_val=None,
+                )
+        edit_cmd = next(args[0] for args, _ in mock_run.call_args_list
+                        if args[0][0:3] == ["gh", "release", "edit"])
+        self.assertIn("--prerelease", edit_cmd)
+        self.assertIn("--latest=false", edit_cmd)
+
+    def test_stable_existing_no_prerelease_edit(self):
+        """Existing stable release does NOT get a prerelease edit."""
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=0)  # view succeeds → upload path
+            with mock.patch.dict("os.environ", {"GH_TOKEN": "fake"}, clear=False):
+                create_or_upload(
+                    tag="ffmpeg-8.1.1-r2",
+                    artifacts_dir=self.dir,
+                    ref=None,
+                    yaml_val="8.1.1",
+                )
+        cmds = [args[0] for args, _ in mock_run.call_args_list]
+        self.assertFalse(any(cmd[0:3] == ["gh", "release", "edit"] for cmd in cmds))
 
 
 if __name__ == "__main__":
