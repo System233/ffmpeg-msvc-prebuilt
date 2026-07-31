@@ -53,4 +53,4 @@ patches:
   - 8.x/0051-lensfun-configure-fix-8.x.patch
   - 8.x/0052-fix-msvc-flags-filter-8.2.patch
   - 8.x/0053-fix-host-cc-msvc-8.2.patch
-  - 8.x/0059-fix-sws-vulkan-makefile-master.patch
+  - 8.x/0061-fix-sws-vulkan-makefile-master.patch

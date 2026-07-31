@@ -1,0 +1,14 @@
+diff --git a/libswscale/Makefile b/libswscale/Makefile
+index b53b8153..dd3771fc 100644
+--- a/libswscale/Makefile
++++ b/libswscale/Makefile
+@@ -39,9 +39,7 @@ OBJS-$(CONFIG_UNSTABLE) +=                              \
+        uops.o                                           \
+        uops_backend.o                                   \
+ 
+-ifeq ($(CONFIG_UNSTABLE),yes)
+ include $(SRC_PATH)/libswscale/vulkan/Makefile
+-endif
+ 
+ # Objects duplicated from other libraries for shared builds
+ SHLIBOBJS                    += log2_tab.o half2float.o
