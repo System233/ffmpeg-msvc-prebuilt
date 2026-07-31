@@ -79,13 +79,35 @@ jobs:
           ' changes.json)
           echo "matrix=$include" >> "$GITHUB_OUTPUT"
 
+  # Resolve master ref/sha512 when the PR touches master.yaml — mirror of
+  # master-build.yml get-metadata.  Job always runs (build depends on it);
+  # the step is skipped when the matrix has no master.
+  master-metadata:
+    needs: detect
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.meta.outputs.describe }}
+      sha512: ${{ steps.meta.outputs.sha512 }}
+    steps:
+      - name: Get master build metadata
+        id: meta
+        if: ${{ contains(needs.detect.outputs.matrix, '"master"') }}
+        run: |
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
+          DESCRIBE=$(git -C ffmpeg-src describe --tags --abbrev=7)
+          COMMIT=$(git -C ffmpeg-src rev-parse HEAD)
+          SHA512=$(curl -sL "https://github.com/FFmpeg/FFmpeg/archive/${COMMIT}.tar.gz" | sha512sum | cut -d' ' -f1)
+          echo "describe=$DESCRIBE" >> "$GITHUB_OUTPUT"
+          echo "sha512=$SHA512" >> "$GITHUB_OUTPUT"
+
   seed-setup:
     uses: ./.github/workflows/seed-setup.yml
     with:
       name: pr
 
   build:
-    needs: [seed-setup, detect]
+    needs: [seed-setup, detect, master-metadata]
     if: needs.detect.outputs.matrix != '[]'
     strategy:
       fail-fast: false
@@ -94,6 +116,8 @@ jobs:
     uses: ./.github/workflows/build-release.yml
     with:
       yaml: ${{ matrix.version }}
+      ref: ${{ matrix.version == 'master' && needs.master-metadata.outputs.ref || '' }}
+      sha512: ${{ matrix.version == 'master' && needs.master-metadata.outputs.sha512 || '' }}
       dry_run: true
       pr_number: ${{ needs.detect.outputs.pr_number }}
       skip_seed: true
