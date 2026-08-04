@@ -28,6 +28,8 @@ import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ZERO_SHA = "0" * 40
 
@@ -91,8 +93,11 @@ def git_diff_names(before: str, after: str, pattern: str) -> list[str]:
 
 def get_revision(content: str) -> int:
     """Extract ``revision`` field from YAML content, default 0."""
-    m = re.search(r"^revision:\s*(\d+)", content, re.MULTILINE)
-    return int(m.group(1)) if m else 0
+    data = yaml.safe_load(content)
+    if not isinstance(data, dict):
+        return 0
+    revision = data.get("revision")
+    return int(revision) if revision is not None else 0
 
 
 # ── Core detection ──────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scripts.ops.naming import build_release_tag
 
@@ -42,14 +44,13 @@ def determine_tag(artifacts_dir: Path) -> Optional[str]:
         return None
 
     var_file = var_files[0]
-    version = ""
-    revision = 0
     with open(var_file) as f:
-        for line in f:
-            if line.startswith("version:"):
-                version = line.split(":", 1)[1].strip()
-            elif line.startswith("revision:"):
-                revision = int(line.split(":", 1)[1].strip())
+        # Parse as YAML so quoted values like `version: '9.0'` (pyyaml
+        # quotes X.Y float-looking versions) are unquoted correctly.
+        data = yaml.safe_load(f)
+
+    version = str(data.get("version", "")) if isinstance(data, dict) else ""
+    revision = int(data.get("revision", 0)) if isinstance(data, dict) else 0
 
     if not version:
         print("Error: no version field in var file", file=sys.stderr)

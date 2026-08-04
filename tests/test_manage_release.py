@@ -136,6 +136,22 @@ class TestDetermineTag(unittest.TestCase):
             tag = determine_tag(d)
             self.assertEqual(tag, "ffmpeg-7.1.5")
 
+    def test_quoted_x_y_version(self):
+        """X.Y version serialized as quoted '9.0' must not leak quotes into the tag."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            # yaml.dump quotes '9.0' because it looks like a YAML float
+            import yaml
+            var = {
+                "variant_id": "ffmpeg-9.0_x64-windows-shared-gpl",
+                "version": "9.0",
+                "revision": 0,
+            }
+            with open(d / "ffmpeg-9.0_x64-windows-shared-gpl.var.yaml", "w", encoding="utf-8") as fh:
+                yaml.dump(var, fh, default_flow_style=False, sort_keys=False)
+            tag = determine_tag(d)
+            self.assertEqual(tag, "ffmpeg-9.0")
+
     def test_no_var_files(self):
         """When no .var.yaml files exist, returns None."""
         with tempfile.TemporaryDirectory() as tmp:

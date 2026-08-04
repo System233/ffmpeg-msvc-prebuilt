@@ -38,10 +38,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 # Direct import of naming helpers — same single source of truth used by
 # scan_variants.py, apply_fix.py, and manage_release.py.
@@ -152,9 +153,12 @@ def read_yaml_revision(yaml_name: str) -> int | None:
     yaml_path = REPO_ROOT / "ffmpeg" / f"{yaml_name}.yaml"
     if not yaml_path.exists():
         return None
-    content = yaml_path.read_text(encoding="utf-8")
-    m = re.search(r"^revision:\s*(\d+)", content, re.MULTILINE)
-    return int(m.group(1)) if m else None
+    with open(yaml_path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    if not isinstance(data, dict):
+        return None
+    revision = data.get("revision")
+    return int(revision) if revision is not None else None
 
 
 # ── Environment ──────────────────────────────────────────────────────────────
