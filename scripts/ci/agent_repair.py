@@ -183,6 +183,16 @@ def main() -> None:
         log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
         if not log_result.stdout.strip():
             print(f"No changes on attempt {attempt}")
+            if attempt < max_retries:
+                # Agent made no changes — give feedback and retry instead of
+                # silently ending (opencode may exit cleanly without acting).
+                _generate_feedback(
+                    attempt,
+                    ["Agent made no changes — you MUST modify files to fix the build failure"],
+                    feedback_file,
+                )
+                continue
+            # Retries exhausted with no changes — fall through to failure path.
             break
 
         # Count commits; squash if > 1 (bash: COMMIT_COUNT=$(git rev-list --count ...))
@@ -236,7 +246,7 @@ def main() -> None:
                 if not violations:
                     sys.exit(0)
         # (bash: echo "[ERROR] Max retries exhausted with violations" >&2; exit 1)
-        print("[ERROR] Max retries exhausted with violations", file=sys.stderr)
+        print("[ERROR] Max retries exhausted without a valid fix", file=sys.stderr)
         sys.exit(1)
 
 

@@ -339,23 +339,21 @@ class TestAgentRepair(unittest.TestCase):
         _copy,
         _signal,
     ):
-        """opencode runs but makes no commits; script breaks early."""
+        """opencode runs but makes no commits; script retries then fails."""
         mock_run.side_effect = _make_run_side_effect({
             "git log --oneline": (0, ""),  # empty = no commits
         })
 
-        try:
+        with self.assertRaises(SystemExit) as ctx:
             agent_repair.main()
-        except SystemExit as e:
-            self.fail(f"main() raised SystemExit({e.code})")
+        self.assertEqual(ctx.exception.code, 1)
 
-        # Only one iteration (breaks early)
-        # opencode was called once
+        # Retried until max_retries exhausted (3 attempts), not early break
         opencode_calls = [
             c for c in mock_run.call_args_list
             if c.args and c.args[0] and c.args[0][0] == "opencode"
         ]
-        self.assertEqual(len(opencode_calls), 1)
+        self.assertEqual(len(opencode_calls), 3)
 
     # ── 9. Multiple commits squashed into one ────────────────────────────────
 
