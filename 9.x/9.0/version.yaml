@@ -7,11 +7,144 @@ release_tag: ffmpeg-9.0
 release_id: null
 release_url: https://github.com/System233/ffmpeg-msvc-prebuilt/releases/tag/ffmpeg-9.0
 created: '2026-08-04T17:50:36Z'
-updated: '2026-08-04T17:50:39Z'
-variant_count: 15
+updated: '2026-08-04T18:33:16Z'
+variant_count: 16
 total_variants: 24
 complete: false
 variants:
+- variant_id: ffmpeg-9.0_arm-windows-shared-gpl
+  version: '9.0'
+  revision: 0
+  arch: arm
+  triplet: arm-windows
+  linkage: shared
+  license: gpl
+  lts: false
+  ffmpeg_ref: n9.0
+  build_date: '2026-08-04T18:32:21.386868+00:00'
+  assets:
+    binary:
+      file: ffmpeg-9.0_arm-windows-shared-gpl.zip
+      size: 29230744
+      digest: sha256:fab4a00b35582073ea35f6b40fcc85cf0a5886204c609ff8bc52985281c351fe
+    develop:
+      file: ffmpeg-9.0_arm-windows-shared-gpl-develop.zip
+      size: 288833208
+      digest: sha256:e9cc05fccb715ac3244195dfd7f296c17b515553f48b567c66195bca56b43c6a
+  features:
+  - all
+  - all-gpl
+  - amf
+  - aom
+  - app
+  - ass
+  - avcodec
+  - avdevice
+  - avfilter
+  - avformat
+  - base
+  - bluray
+  - bzip2
+  - d3d11va
+  - d3d12va
+  - dav1d
+  - dvdnav
+  - dvdread
+  - dxva2
+  - ffmpeg
+  - ffplay
+  - ffprobe
+  - fontconfig
+  - freetype
+  - fribidi
+  - gme
+  - gpl
+  - harfbuzz
+  - iconv
+  - ilbc
+  - jxl
+  - lgpl
+  - license-gpl
+  - lzma
+  - mediafoundation
+  - modplug
+  - mp3lame
+  - mysofa
+  - opencl
+  - opengl
+  - openh264
+  - openjpeg
+  - openmpt
+  - openssl
+  - opus
+  - sdl2
+  - shaderc
+  - snappy
+  - soxr
+  - speex
+  - srt
+  - ssh
+  - swresample
+  - swscale
+  - tesseract
+  - theora
+  - vorbis
+  - vpx
+  - vulkan
+  - w32threads
+  - webp
+  - windows-hw
+  - x264
+  - x265
+  - xml2
+  - zlib
+  - zmq
+  dependencies:
+  - amd-amf
+  - aom
+  - bzip2
+  - dav1d
+  - ffmpeg
+  - fontconfig
+  - freetype
+  - fribidi
+  - harfbuzz
+  - libass
+  - libbluray
+  - libdvdnav
+  - libdvdread
+  - libgme
+  - libiconv
+  - libilbc
+  - libjxl
+  - liblzma
+  - libmodplug
+  - libmysofa
+  - libopenmpt
+  - libsrt
+  - libssh
+  - libtheora
+  - libvorbis
+  - libvpx
+  - libwebp
+  - libxml2
+  - mp3lame
+  - opencl
+  - opengl
+  - openh264
+  - openjpeg
+  - openssl
+  - opus
+  - sdl2
+  - snappy
+  - soxr
+  - speex
+  - tesseract
+  - vulkan
+  - x264
+  - x265
+  - zeromq
+  - zlib
 - variant_id: ffmpeg-9.0_arm-windows-shared-lgpl
   version: '9.0'
   revision: 0
