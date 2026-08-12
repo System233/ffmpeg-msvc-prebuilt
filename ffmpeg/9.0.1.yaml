@@ -1,0 +1,43 @@
+build:
+  base_options: --enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect
+    --enable-debug --disable-unstable
+  cmake_defines:
+    FFMPEG_NEED_BIN2C: true
+  debug:
+    options: --disable-optimizations
+  host_deps:
+  - host: true
+    name: ffmpeg-bin2c
+  - host: true
+    name: vcpkg-cmake-get-vars
+  - host: true
+    name: vcpkg-pkgconfig-get-modules
+  release:
+    options: --enable-optimizations
+extends: base
+features:
+  shaderc:
+    depends: []
+    flag: ''
+patches:
+- 8.x/0003-fix-windowsinclude.patch
+- 8.x/0056-dependencies-master.patch
+- 8.x/0007-fix-lib-naming-8.1.patch
+- 8.x/0013-define-WINVER-8.1.patch
+- 8.x/0024-fix-osx-host-c11-8.1.patch
+- 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
+- 8.x/0045-use-prebuilt-bin2c-8.1.patch
+- 8.x/0046-fix-msvc-detection-8.1.patch
+- 8.x/0047-fix-msvc-utf8.patch
+- 8.x/0050-lensfun-0.3.4-compat-8.x.patch
+- 8.x/0051-lensfun-configure-fix-8.x.patch
+- 8.x/0052-fix-msvc-flags-filter-8.2.patch
+- 8.x/0053-fix-host-cc-msvc-8.2.patch
+- 8.x/0061-fix-sws-vulkan-makefile-master.patch
+- 9.x/0001-fix-sws-chroma-pos-9.x.patch
+revision: 0
+source:
+  method: git
+  ref: n${VERSION}
+  repo: ffmpeg/ffmpeg
+  sha512: 41aa687cec4e93d0ffde21ea96faa48e4344fda0e9d2c9c71adfb68fedadf03beb274ec712eb1e082bf64fdcee87c55a47bb5c78d5193934be3f3f06e5e792b2
