@@ -45,7 +45,7 @@ patches:
   - 8.x/0013-define-WINVER-8.1.patch
   - 8.x/0024-fix-osx-host-c11-8.1.patch
   - 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
-  - 8.x/0057-use-prebuilt-bin2c-master.patch
+  - 8.x/0062-use-prebuilt-bin2c-master.patch
   - 8.x/0046-fix-msvc-detection-8.1.patch
   - 8.x/0047-fix-msvc-utf8.patch
   # - 8.x/0048-backport-23039.patch
