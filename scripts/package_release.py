@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 
 from ffport.version import parse_version
 
-from ops.lts import is_lts
+from ops.lts import is_lts_version
 
 from ops.naming import (
     build_variant_id, build_zip_name, build_var_yaml_name, clean_version,
@@ -488,10 +488,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
         arch = triplet.split("-")[0]
 
-        ref_ver = clean_ver.split("-")[0].split(".")
-        major_num = int(ref_ver[0])
-        minor_num = int(ref_ver[1])
-        lts = is_lts(major_num, minor_num)
+        lts = is_lts_version(version_final)
 
         build_date = datetime.now(timezone.utc).isoformat()
 

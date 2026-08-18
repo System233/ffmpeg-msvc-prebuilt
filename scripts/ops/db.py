@@ -33,7 +33,7 @@ import yaml
 import os
 import shutil
 import subprocess
-from lts import is_lts
+from lts import is_lts_version, is_release_version
 from naming import build_release_tag, build_variant_id, parse_variant_id as naming_parse, major_version, build_data_path, make_version_dir, parse_version_dir as naming_parse_version_dir, ARCH_NAMES, VALID_LINKAGES, VALID_LICENSES
 
 
@@ -355,7 +355,6 @@ def cmd_merge(args: argparse.Namespace) -> None:
     first = all_variants[0]
     version = first.get("version", "")
     revision = first.get("revision")
-    lts = first.get("lts", False)
     ffmpeg_ref = first.get("ffmpeg_ref", "")
 
     # Determine version_id from path
@@ -374,14 +373,11 @@ def cmd_merge(args: argparse.Namespace) -> None:
             revision = derived_revision
         if not ffmpeg_ref:
             ffmpeg_ref = f"n{derived_version}"
-        if not lts:
-            try:
-                ver_parts = derived_version.split(".")
-                major_num = int(ver_parts[0])
-                minor_num = int(ver_parts[1])
-                lts = is_lts(major_num, minor_num)
-            except (IndexError, ValueError):
-                pass
+
+    # LTS is authoritative from the FFmpeg version string: dev snapshots
+    # (e.g. 9.1-dev-...) are never LTS, official releases follow the
+    # LTS series formula.
+    lts = is_lts_version(version)
 
     release_tag = build_release_tag(version=version, revision=revision)
     release_url = make_release_url(release_tag)
@@ -397,9 +393,9 @@ def cmd_merge(args: argparse.Namespace) -> None:
         existing_created = existing_data.get("created")
         existing_lts = existing_data.get("lts")
 
-    # Override lts with existing value if present (it may have been manually
-    # set and differ from the formula-based derivation above).
-    if existing_lts is not None:
+    # Override lts with the existing value only for official releases
+    # (it may have been manually set); snapshots are always non-LTS.
+    if existing_lts is not None and is_release_version(version):
         lts = existing_lts
 
     merged = {
@@ -695,6 +691,59 @@ def cmd_migrate(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: fix-lts
+# ---------------------------------------------------------------------------
+
+def cmd_fix_lts(args: argparse.Namespace) -> None:
+    """Recompute ``lts`` for every version and correct stale values.
+
+    Dev snapshots (e.g. ``9.1-dev-...``) must never be flagged as LTS.
+    Corrects both ``version.yaml`` and every variant file in place.
+    """
+    del args
+    if not DATA_DIR.is_dir():
+        print(f"ERROR: data dir not found: {DATA_DIR}", file=sys.stderr)
+        sys.exit(1)
+
+    checked = 0
+    corrected = 0
+    for major_dir in sorted(DATA_DIR.iterdir()):
+        if not major_dir.is_dir():
+            continue
+        for version_dir in sorted(major_dir.iterdir()):
+            version_yaml_path = version_dir / "version.yaml"
+            if not version_yaml_path.is_file():
+                continue
+
+            checked += 1
+            data = load_yaml(version_yaml_path)
+            version = data.get("version", "")
+            correct = is_lts_version(version)
+            rel = version_dir.relative_to(DATA_DIR)
+            dir_changed = False
+
+            if data.get("lts") != correct:
+                data["lts"] = correct
+                write_yaml_atomic(data, version_yaml_path)
+                dir_changed = True
+
+            variants_dir = version_dir / "variants"
+            if variants_dir.is_dir():
+                for variant_file in sorted(variants_dir.glob("*.yaml")):
+                    variant = load_yaml(variant_file)
+                    if variant.get("lts") != correct:
+                        variant["lts"] = correct
+                        write_yaml_atomic(variant, variant_file)
+                        dir_changed = True
+
+            if dir_changed:
+                corrected += 1
+                print(f"FIXED {rel} -> lts: {correct}")
+
+    print(f"Checked {checked} version(s), corrected {corrected}.")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -740,6 +789,9 @@ def main() -> None:
     # migrate
     subparsers.add_parser("migrate", help="Migrate old data structure to new")
 
+    # fix-lts
+    subparsers.add_parser("fix-lts", help="Recompute lts for all data versions (dev snapshots are never LTS)")
+
     args = parser.parse_args()
 
     # Dispatch
@@ -761,6 +813,8 @@ def main() -> None:
         cmd_remove_release(args)
     elif args.command == "migrate":
         cmd_migrate(args)
+    elif args.command == "fix-lts":
+        cmd_fix_lts(args)
     else:
         parser.print_help()
         sys.exit(1)
