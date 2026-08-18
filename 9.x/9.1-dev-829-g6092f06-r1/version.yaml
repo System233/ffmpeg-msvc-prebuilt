@@ -1,6 +1,6 @@
 version: 9.1-dev-829-g6092f06
 revision: 1
-lts: true
+lts: false
 schema_version: 1
 ffmpeg_ref: n9.1-dev-829-g6092f06
 release_tag: ffmpeg-9.1-dev-829-g6092f06-r1

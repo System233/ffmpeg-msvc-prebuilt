@@ -5,7 +5,7 @@ arch: arm
 triplet: arm-windows
 linkage: shared
 license: gpl
-lts: true
+lts: false
 ffmpeg_ref: n9.1-dev-829-g6092f06
 build_date: '2026-08-14T14:23:33.978985+00:00'
 assets:
