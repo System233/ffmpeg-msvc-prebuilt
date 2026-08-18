@@ -173,7 +173,9 @@ function parseRelease(
     version: String(raw.version ?? ''),
     major,
     revision,
-    lts: Boolean(raw.lts ?? false),
+    // Dev snapshots (e.g. 9.1-dev-...) must never render as LTS, even if a
+    // stale data record says otherwise.
+    lts: Boolean(raw.lts ?? false) && !isSnapshot(String(raw.version ?? '')),
     snapshot: isSnapshot(String(raw.version ?? '')),
     ffmpeg_ref: String(raw.ffmpeg_ref ?? ''),
     release_tag: String(raw.release_tag ?? ''),
