@@ -1,0 +1,13 @@
+diff --git a/configure b/configure
+index 79731eb..e40921e 100644
+--- a/configure
++++ b/configure
+@@ -8100,7 +8100,7 @@ elif enabled_any msvc icl; then
+         fi
+     fi
+     # enable utf-8 source processing
+-    check_cflags -utf-8
++    check_allcflags -utf-8
+ fi
+ 
+ case $as_type in
