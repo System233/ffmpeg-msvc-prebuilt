@@ -1,3 +1,28 @@
+diff --git a/Makefile b/Makefile
+index b8ecf5b..1d00c9c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -49,13 +49,19 @@ all: all-yes
+ 
+ # cl.exe cannot write make dependency files directly, the mscl helper
+ # converts its -showIncludes output into .d files.
+-MSCL := $(if $(filter -showIncludes,$(CC_DEPFLAGS) $(CXX_DEPFLAGS) $(OBJCC_DEPFLAGS) $(AS_DEPFLAGS) $(HOSTCC_DEPFLAGS)),ffbuild/mscl$(HOSTEXESUF))
++#
++# This port cross-compiles from an x64 host to arm/arm64 targets with MSVC.
++# Building the mscl helper with the target cl.exe produces a binary for the
++# target architecture, which cannot run on the host. Disable the helper and
++# let cl.exe emit its -showIncludes records directly; GNU make dependency
++# files are not needed for these clean CI builds.
++MSCL :=
+ ifneq ($(MSCL),)
+ MSCLCC := $(HOSTCC)
+ $(foreach V,CC CXX OBJCC HOSTCC AS,\
+     $(if $(filter -showIncludes,$($(V)_DEPFLAGS)),$(eval $(V) := $(MSCL) $($(V)))))
+ HOSTPROGS += ffbuild/mscl
+ 
+ ffbuild/mscl.o: $(SRC_PATH)/compat/windows/mscl.c
+ 	$(MSCLCC) $(HOSTCCFLAGS) $(HOSTCC_C) $(HOSTCC_O) $<
+ endif
 diff --git a/configure b/configure
 index 8a4c8ca..6114e05 100644
 --- a/configure
