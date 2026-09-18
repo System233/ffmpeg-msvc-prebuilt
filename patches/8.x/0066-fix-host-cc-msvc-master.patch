@@ -1,0 +1,12 @@
+diff --git a/configure b/configure
+index 8a4c8ca..6114e05 100644
+--- a/configure
++++ b/configure
+@@ -4980,6 +4980,7 @@ case "$toolchain" in
+         # issues with msys/win32 path conversion for MSVC parameters
+         # such as -Fo<file> or -out:<file>.
+         TMPDIR=.
++        host_cc_default=$cc_default
+         test "$toolchain" != "msvc" && requested_sanitizers="${toolchain#msvc-}"
+     ;;
+     icl)

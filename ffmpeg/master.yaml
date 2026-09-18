@@ -47,10 +47,11 @@ patches:
   - 8.x/0040-ffmpeg-add-av_stream_get_first_dts-for-chromium.patch
   - 8.x/0062-use-prebuilt-bin2c-master.patch
   - 8.x/0046-fix-msvc-detection-8.1.patch
-  - 8.x/0065-fix-msvc-utf8-master.patch
+  # upstream already uses check_allcflags for -utf-8
+  # - 8.x/0065-fix-msvc-utf8-master.patch
   # - 8.x/0048-backport-23039.patch
   - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
   - 8.x/0051-lensfun-configure-fix-8.x.patch
   - 8.x/0052-fix-msvc-flags-filter-8.2.patch
-  - 8.x/0053-fix-host-cc-msvc-8.2.patch
+  - 8.x/0066-fix-host-cc-msvc-master.patch
   - 8.x/0061-fix-sws-vulkan-makefile-master.patch
