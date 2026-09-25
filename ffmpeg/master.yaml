@@ -4,7 +4,7 @@ revision: 1
 source:
   method: git
   repo: ffmpeg/ffmpeg
-  ref: "${FFMPEG_REF}"
+  ref: "97840ddfbbed2750788e7965f4961d7dbe6a4f5f"
   head_ref: "master"
 
 # BUG
