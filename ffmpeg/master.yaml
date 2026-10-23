@@ -35,6 +35,9 @@ features:
   shaderc:
     flag: ""
     depends: []
+  opengl:
+    flag: ""
+    depends: []
 
 patches:
   # - 8.x/0002-fix-msvc-link-8.1.patch
