@@ -1,0 +1,22 @@
+diff --git a/libswscale/aarch64/Makefile b/libswscale/aarch64/Makefile
+index 734ad32..b82c169 100644
+--- a/libswscale/aarch64/Makefile
++++ b/libswscale/aarch64/Makefile
+@@ -14,6 +14,17 @@ NEON-OBJS   += aarch64/hscale.o                 \
+ NEON-OBJS   += aarch64/ops.o                    \
+                aarch64/ops_neon.gen.o           \
+ 
++# When cross-compiling for ARM64 from an x64 host, HOSTCC is the
++# ARM64-targeting cl.exe, so the ops_static build tool would be an ARM64
++# binary that cannot run on the host. Build it with the x64-hosted MSVC
++# toolchain instead.
++ifneq ($(VCToolsInstallDir),)
++HOST_CL  := $(subst \,/,$(VCToolsInstallDir))bin/Hostx64/x64/cl.exe
++HOST_LIB := $(subst ARM64,x64,$(subst arm64,x64,$(LIB)))
++$(SUBDIR)aarch64/ops_static.o: HOSTCC := LIB="$(HOST_LIB)" "$(HOST_CL)"
++$(SUBDIR)aarch64/ops_static$(HOSTEXESUF): HOSTLD := LIB="$(HOST_LIB)" "$(HOST_CL)"
++endif
++
+ $(SUBDIR)aarch64/ops_neon.gen.S: $(SUBDIR)aarch64/ops_static$(HOSTEXESUF)
+ 	$(M)$< > $@.tmp
+ 	$(CP) $@.tmp $@

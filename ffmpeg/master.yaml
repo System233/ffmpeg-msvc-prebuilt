@@ -57,3 +57,4 @@ patches:
   - 8.x/0069-lensfun-configure-fix-master.patch
   - 8.x/0067-fix-msvc-flags-filter-master.patch
   - 8.x/0066-fix-host-cc-msvc-master.patch
+  - 8.x/0070-fix-opstool-host-cc-master.patch
