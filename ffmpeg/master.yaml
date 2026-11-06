@@ -30,6 +30,10 @@ build:
       host: true
   cmake_defines:
     FFMPEG_NEED_BIN2C: ON
+    # The master ref is a short git-describe SHA, which codeload cannot
+    # resolve in /archive/<sha>.tar.gz (404). Build from HEAD instead so
+    # vcpkg resolves the full commit via the GitHub API before downloading.
+    VCPKG_USE_HEAD_VERSION: ON
 
 features:
   shaderc:
