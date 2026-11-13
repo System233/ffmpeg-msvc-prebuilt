@@ -46,7 +46,7 @@ features:
 patches:
   # - 8.x/0002-fix-msvc-link-8.1.patch
   - 8.x/0003-fix-windowsinclude.patch
-  - 8.x/0068-dependencies-master.patch
+  - 8.x/0071-dependencies-master.patch
   # - 8.x/0005-fix-nasm-8.1.patch
   - 8.x/0064-fix-lib-naming-master.patch
   - 8.x/0013-define-WINVER-8.1.patch
