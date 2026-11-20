@@ -3,7 +3,6 @@ build:
     --enable-debug --disable-unstable
   cmake_defines:
     FFMPEG_NEED_BIN2C: true
-    VCPKG_USE_HEAD_VERSION: true
   debug:
     options: --disable-optimizations
   host_deps:
@@ -25,7 +24,7 @@ features:
     flag: ''
 patches:
 - 8.x/0003-fix-windowsinclude.patch
-- 8.x/0068-dependencies-master.patch
+- 9.x/0002-dependencies-9.1.patch
 - 8.x/0064-fix-lib-naming-master.patch
 - 8.x/0013-define-WINVER-8.1.patch
 - 8.x/0024-fix-osx-host-c11-8.1.patch
@@ -36,7 +35,6 @@ patches:
 - 8.x/0069-lensfun-configure-fix-master.patch
 - 8.x/0067-fix-msvc-flags-filter-master.patch
 - 8.x/0066-fix-host-cc-msvc-master.patch
-- 8.x/0070-fix-opstool-host-cc-master.patch
 revision: 0
 source:
   method: git
