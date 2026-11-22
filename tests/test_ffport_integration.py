@@ -1,5 +1,6 @@
 """Integration tests for scripts/ffport/ — exercise real code paths via CLI."""
 import os
+import json
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,39 @@ class TestFfportGenerate(unittest.TestCase):
         self.assertTrue(port_dir.is_dir(), f"{port_dir} not created")
         self.assertIn("portfile.cmake", {f.name for f in port_dir.iterdir()})
         self.assertIn("vcpkg.json", {f.name for f in port_dir.iterdir()})
+
+    def test_lensfun_is_gpl_only(self):
+        """Lensfun must not enter LGPL builds, even when selected on its own."""
+        result = _run("generate", "8.1.2", "-o", str(self._tmpdir))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+        manifest = json.loads((self._tmpdir / "ffmpeg" / "vcpkg.json").read_text())
+        feature_map = manifest["features"]
+
+        def refs(feature):
+            return {
+                subfeature
+                for dep in feature_map[feature].get("dependencies", [])
+                if isinstance(dep, dict) and dep.get("name") == "ffmpeg"
+                for subfeature in dep.get("features", [])
+            }
+
+        def reachable(feature):
+            visited = set()
+            pending = [feature]
+            while pending:
+                current = pending.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                pending.extend(refs(current))
+            return visited
+
+        self.assertNotIn("lensfun", reachable("all-lgpl"))
+        self.assertNotIn("license-gpl", reachable("all-lgpl"))
+        self.assertIn("lensfun", reachable("all-gpl"))
+        self.assertIn("license-gpl", reachable("lensfun"))
+        self.assertIn("lensfun", feature_map["lensfun"]["dependencies"])
 
     def test_generate_master_no_version_fails(self):
         """generate master without --version/--ref fails (can't infer version)."""

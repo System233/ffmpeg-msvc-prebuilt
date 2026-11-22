@@ -172,7 +172,7 @@ features:
     description: "H.264 de/encoding via openh264"
   lensfun:
     flag: "--enable-liblensfun"
-    depends: ["lensfun"]
+    depends: ["lensfun", "@license-gpl"]
     platform: "!arm"
     version: ">=4.1"
     description: "Lens correction via lensfun"
@@ -413,7 +413,6 @@ features:
       - "@snappy"
       - "@openh264"
       - "@jxl"
-      - "@lensfun"
       - "@shaderc"
       - "@svtav1"
       - "@vvenc"
@@ -436,6 +435,7 @@ features:
   gpl:
     description: "All GPL-licensed features"
     depends:
+      - "@lensfun"
       - "@dvdnav"
       - "@dvdread"
       - "@x264"
