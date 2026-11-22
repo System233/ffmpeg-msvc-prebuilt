@@ -1,0 +1,107 @@
+diff --git a/vc_solution/vc11_libmp3lame.vcxproj b/vc_solution/vc11_libmp3lame.vcxproj
+--- a/vc_solution/vc11_libmp3lame.vcxproj
++++ b/vc_solution/vc11_libmp3lame.vcxproj
+@@ -51,7 +51,7 @@
+       <IntrinsicFunctions>true</IntrinsicFunctions>
+       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+       <AdditionalIncludeDirectories>../mpglib;../include;..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;HAVE_MPGLIB;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>NDEBUG;_WINDOWS;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+     </ClCompile>
+     <ResourceCompile>
+@@ -65,7 +65,7 @@
+     <ClCompile>
+       <Optimization>Disabled</Optimization>
+       <AdditionalIncludeDirectories>../mpglib;../include;..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;HAVE_MPGLIB;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>_DEBUG;_WINDOWS;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+       <ProgramDataBaseFileName>$(OutDir)$(TargetName).pdb</ProgramDataBaseFileName>
+       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+@@ -175,12 +175,6 @@
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+     </NASM>
+   </ItemGroup>
+-  <ItemGroup>
+-    <ProjectReference Include="vc11_mpglib.vcxproj">
+-      <Project>{e2dab91a-8248-4625-8a85-2c2c2a390dd8}</Project>
+-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+-    </ProjectReference>
+-  </ItemGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
+     <Import Project="vc11_nasm.targets" />
+diff --git a/vc_solution/vc11_libmp3lame_dll.vcxproj b/vc_solution/vc11_libmp3lame_dll.vcxproj
+--- a/vc_solution/vc11_libmp3lame_dll.vcxproj
++++ b/vc_solution/vc11_libmp3lame_dll.vcxproj
+@@ -55,7 +55,7 @@
+       <IntrinsicFunctions>true</IntrinsicFunctions>
+       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+       <AdditionalIncludeDirectories>../libmp3lame;../;../mpglib;../include;..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;HAVE_MPGLIB;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>NDEBUG;_WINDOWS;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+     </ClCompile>
+     <ResourceCompile>
+@@ -82,7 +82,7 @@
+     <ClCompile>
+       <Optimization>Disabled</Optimization>
+       <AdditionalIncludeDirectories>../libmp3lame;../;../mpglib;../include;..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;HAVE_MPGLIB;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>_DEBUG;_WINDOWS;WIN32;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+     </ClCompile>
+diff --git a/vc_solution/vc11_lame.sln b/vc_solution/vc11_lame.sln
+--- a/vc_solution/vc11_lame.sln
++++ b/vc_solution/vc11_lame.sln
+@@ -9,8 +9,6 @@
+ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmp3lame-static", "vc11_libmp3lame.vcxproj", "{20536101-3B0E-43EF-94F9-080D595DAC57}"
+ EndProject
+ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmp3lame", "vc11_libmp3lame_dll.vcxproj", "{92BD50AA-04D6-4FBF-ACE1-468FAF6778F2}"
+-EndProject
+-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmpghip-static", "vc11_mpglib.vcxproj", "{E2DAB91A-8248-4625-8A85-2C2C2A390DD8}"
+ EndProject
+ Global
+ 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+@@ -30,10 +28,6 @@
+ 		{92BD50AA-04D6-4FBF-ACE1-468FAF6778F2}.Debug|Win32.Build.0 = Debug|Win32
+ 		{92BD50AA-04D6-4FBF-ACE1-468FAF6778F2}.Release|Win32.ActiveCfg = Release|Win32
+ 		{92BD50AA-04D6-4FBF-ACE1-468FAF6778F2}.Release|Win32.Build.0 = Release|Win32
+-		{E2DAB91A-8248-4625-8A85-2C2C2A390DD8}.Debug|Win32.ActiveCfg = Debug|Win32
+-		{E2DAB91A-8248-4625-8A85-2C2C2A390DD8}.Debug|Win32.Build.0 = Debug|Win32
+-		{E2DAB91A-8248-4625-8A85-2C2C2A390DD8}.Release|Win32.ActiveCfg = Release|Win32
+-		{E2DAB91A-8248-4625-8A85-2C2C2A390DD8}.Release|Win32.Build.0 = Release|Win32
+ 	EndGlobalSection
+ 	GlobalSection(SolutionProperties) = preSolution
+ 		HideSolutionNode = FALSE
+diff --git a/include/lame.def b/include/lame.def
+--- a/include/lame.def
++++ b/include/lame.def
+@@ -252,25 +252,6 @@
+ lame_get_bitrate	@502
+ lame_get_samplerate	@503
+ lame_get_maximum_number_of_samples	@504
+-
+-lame_decode_init	@1000
+-lame_decode		@1001
+-lame_decode_headers	@1002
+-lame_decode1		@1003
+-lame_decode1_headers	@1004
+-lame_decode1_headersB	@1005
+-lame_decode_exit	@1006
+-
+-hip_decode_init	@1100
+-hip_decode_exit	@1101
+-hip_decode		@1102
+-hip_decode_headers	@1103
+-hip_decode1		@1104
+-hip_decode1_headers	@1105
+-hip_decode1_headersB	@1106
+-hip_set_debugf	@1107
+-hip_set_errorf	@1108
+-hip_set_msgf	@1109
+ 
+ id3tag_genre_list	@2000
+ id3tag_init   		@2001
