@@ -17,7 +17,7 @@ index f164e15..da0ee65 100644
  enabled libmodplug        && require_pkg_config libmodplug libmodplug libmodplug/modplug.h ModPlug_Load
 -enabled libmp3lame        && require "libmp3lame >= 3.98.3" lame/lame.h lame_set_VBR_quality -lmp3lame
 +enabled libmp3lame        && { check_lib libmp3lame lame/lame.h lame_set_VBR_quality -lmp3lame ||
-+                               require libmp3lame lame/lame.h lame_set_VBR_quality -llibmp3lame-static -llibmpghip-static; }
++                               require libmp3lame lame/lame.h lame_set_VBR_quality -llibmp3lame-static; }
  enabled libmysofa         && require libmysofa "mysofa.h" mysofa_load -lmysofa
  enabled libnpp            && { check_lib libnpp npp.h nppGetLibVersion -lnppig -lnppicc -lnppc ||
                                 check_lib libnpp npp.h nppGetLibVersion -lnppi -lnppc ||
