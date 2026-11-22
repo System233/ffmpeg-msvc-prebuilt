@@ -1,24 +1,9 @@
-# ---------------------------------------------------------------------------
-# dependency-submission.yml — Submit vcpkg dependency graph to GitHub
-#
-# Runs weekly and on dependency-related pushes.  Bootstraps vcpkg, runs
-# --dry-run install for each triplet with the dependencygraph feature
-# flag, so vcpkg auto-submits the dependency tree to GitHub's Dependency
-# Graph API.  Dependabot alerts are then driven from this data.
-#
-# SPEC: docs/ops-spec.md §6 (supply chain)
-# ---------------------------------------------------------------------------
-
 name: Dependency Submission
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - vcpkg-configuration.json
-      - ports/**
-      - ffmpeg/**
+    branches: [main]
+    paths: ['vcpkg-configuration.json', 'ports/**', 'ffmpeg/**', 'ffbuild/**']
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -26,56 +11,19 @@ on:
 permissions:
   contents: write
 
-env:
-  VCPKG_TAG: 2026.06.01
-
 jobs:
   submit:
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
-        triplet:
-          - x64-windows
-          - x86-windows
-          - arm64-windows
-          - arm-windows
-    runs-on: windows-2022
+        triplet: [x64-windows, x86-windows, arm64-windows, arm-windows]
     steps:
       - uses: actions/checkout@v6
-
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
-      - name: Generate ffmpeg-deps port
-        run: python scripts/ffport.py deps
-
-      - uses: ./.github/actions/vcpkg-bootstrap
-        with:
-          tag: ${{ env.VCPKG_TAG }}
-          vcpkg-root: ${{ runner.temp }}/vcpkg
-
-      - name: Install overlay port dependencies (dry-run with SBOM)
-        working-directory: ports/ffmpeg-deps
+          requirements: requirements.txt
+      - name: Submit vcpkg dependency graph
         env:
-          # BUG microsoft/vcpkg-tool#1547, microsoft/vcpkg#48347, microsoft/vcpkg-tool#1850
           GITHUB_TOKEN: ${{ github.token }}
-          VCPKG_FEATURE_FLAGS: dependencygraph
-          VCPKG_OVERLAY_PORTS: ../../ports
-          VCPKG_OVERLAY_TRIPLETS: ../../triplets
-          VCPKG_ROOT: ${{ runner.temp }}/vcpkg
-        shell: pwsh
-        run: |
-          Remove-Item Env:GITHUB_SERVER_URL
-          $env:GITHUB_WORKFLOW = "Dependency Submission (${{ matrix.triplet }})"
-          $features = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).features.PSObject.Properties.Name
-          if (-not $features) {
-            Write-Host "No features found in ffmpeg-deps — nothing to submit"
-            exit 0
-          }
-          $featureArgs = $features | ForEach-Object { "--x-feature=$_" }
-          Write-Output "Submitting dependency graph for ${{ matrix.triplet }}..."
-          & "$env:VCPKG_ROOT/vcpkg.exe" install `
-            @featureArgs `
-            --triplet=${{ matrix.triplet }} `
-            --dry-run
+        run: python -m ffbuild submit-dependencies --triplet "${{ matrix.triplet }}"

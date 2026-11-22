@@ -1,447 +1,226 @@
-# ---------------------------------------------------------------------------
-# build-release.yml — Build & release FFmpeg (MSVC prebuilt)
-#
-# Triggered manually (workflow_dispatch) or called from another workflow
-# (workflow_call).  Builds FFmpeg across a matrix of triplets, licenses,
-# and linkage types, then publishes all artifacts as a GitHub Release.
-#
-# SPEC: ci/SPEC.md §7.1
-# ---------------------------------------------------------------------------
-
 name: Build FFmpeg Release
-
-concurrency:
-  group: ${{ inputs.dry_run && format('dry-run-{0}-{1}', github.run_id, inputs.ref || inputs.yaml) || format('release-{0}', inputs.ref || inputs.yaml) }}
-  cancel-in-progress: ${{ inputs.dry_run }}
 
 on:
   workflow_dispatch:
     inputs:
       yaml:
-        description: "YAML config name (e.g. 8.1.1, master)"
+        description: "FFmpeg YAML version (or master)"
         required: true
         type: string
       ref:
-        description: "Git describe string for snapshot builds (e.g. n8.0-1234-gabc). Omit for tagged releases."
-        required: false
-        type: string
-      target_arch:
-        description: "Limit build architecture (e.g. x64-windows)"
-        required: false
-        type: string
-      target_license:
-        description: "Limit license type (e.g. gpl)"
-        required: false
+        description: "Pinned upstream snapshot describe ref"
         type: string
       sha512:
-        description: "SHA-512 of the source tarball (optional)"
-        required: false
+        description: "Pinned upstream tarball SHA512"
+        type: string
+      target_arch:
+        description: "Optional vcpkg triplet"
+        type: string
+      target_license:
+        description: "Optional license variant"
         type: string
       dry_run:
-        description: 'Skip release creation and data branch push'
         type: boolean
         default: false
-      pr_number:
-        description: 'Pull request number (for PR Build failures)'
-        type: string
-        required: false
-      skip_seed:
-        description: 'Skip dl-seed and seed (caller already ran them)'
+      history:
         type: boolean
         default: false
-      skip_pages:
-        description: 'Skip GitHub Pages deployment (caller will deploy)'
-        type: boolean
-        default: false
-
+      shard_count:
+        type: number
+        default: 1
+      shard_index:
+        type: number
+        default: 0
   workflow_call:
     inputs:
       yaml:
         type: string
-        required: true
+        required: false
+        default: ""
       ref:
         type: string
         required: false
-      target_arch:
-        type: string
-        required: false
-      target_license:
-        type: string
-        required: false
+        default: ""
       sha512:
         type: string
         required: false
-      dry_run:
-        type: boolean
-        required: false
-        default: false
-      pr_number:
+        default: ""
+      target_arch:
         type: string
         required: false
-      skip_seed:
-        type: boolean
+        default: ""
+      target_license:
+        type: string
         required: false
-        default: false
-      skip_pages:
+        default: ""
+      dry_run:
         type: boolean
-        required: false
         default: false
-
-# ==─ Global environment ======================================================
-env:
-  GIT_AUTHOR_NAME: ffmpeg-dev
-  GIT_AUTHOR_EMAIL: ffmpeg-dev@users.noreply.github.com
-  GIT_COMMITTER_NAME: ffmpeg-dev
-  GIT_COMMITTER_EMAIL: ffmpeg-dev@users.noreply.github.com
-  VCPKG_TAG: 2026.06.01
-  PYTHONIOENCODING: utf-8
-  TRIPLETS: "arm-windows arm64-windows x86-windows x64-windows"
-  LICENSES: "lgpl gpl" #nonfree
-  LINKAGES: "shared static"
-  VCPKG_FORCE_DOWNLOADED_BINARIES: 1
-  VCPKG_INSTALL_OPTIONS: --x-abi-tools-use-exact-versions
-
-
-# ==─ Jobs ====================================================================
 
 jobs:
-  # == Scan: check which variants need building, output dynamic matrix ======─
-  scan:
+  plan:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      matrix: ${{ steps.scan.outputs.matrix }}
-      triplets: ${{ steps.scan.outputs.triplets }}
-      revision: ${{ steps.rev.outputs.value }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      triplets: ${{ steps.plan.outputs.triplets }}
+      auto_heal_yaml: ${{ steps.plan.outputs.auto_heal_yaml }}
+      auto_heal_ref: ${{ steps.plan.outputs.auto_heal_ref }}
     steps:
       - uses: actions/checkout@v6
-
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
-      - name: Validate ref format
-        if: inputs.ref != ''
-        run: |
-          if ! echo "${{ inputs.ref }}" | grep -qP '^n\d+\.\d+(\.\d+)?(-\w+)*-\d+-g[0-9a-f]+$'; then
-            echo "::error::ref must be a git describe string (nX.Y.Z-N-gCOMMIT), got '${{ inputs.ref }}'"
-            exit 1
-          fi
-
-      - name: Resolve revision
-        id: rev
-        run: |
-          rev=$(python scripts/ffport.py get-revision "${{ inputs.yaml }}")
-          echo "Revision: $rev"
-          echo "value=$rev" >> "$GITHUB_OUTPUT"
-
-      - name: Scan variants and output dynamic build matrix
-        id: scan
+          requirements: requirements.txt
+      - name: Build plan
+        id: plan
         env:
-          TRIPLETS: ${{ env.TRIPLETS }}
-          LICENSES: ${{ env.LICENSES }}
-          LINKAGES: ${{ env.LINKAGES }}
-        run: |
-          ver="${{ inputs.ref || inputs.yaml }}"
-          rev="${{ steps.rev.outputs.value }}"
-          target_arch="${{ inputs.target_arch }}"
-          target_license="${{ inputs.target_license }}"
+          FFBUILD_VERSION: ${{ inputs.yaml }}
+          FFBUILD_REF: ${{ inputs.ref }}
+          FFBUILD_SHA512: ${{ inputs.sha512 }}
+          FFBUILD_TRIPLET: ${{ inputs.target_arch }}
+          FFBUILD_LICENSE: ${{ inputs.target_license }}
+        run: python -m ffbuild plan --event --version "$FFBUILD_VERSION" --ref "$FFBUILD_REF" --sha512 "$FFBUILD_SHA512" --triplets "$FFBUILD_TRIPLET" --licenses "$FFBUILD_LICENSE" --github-output
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ffbuild-plan
+          path: ffbuild-plan.json
+          retention-days: 5
 
-          FILTER_ARGS=""
-          [ -n "$target_arch" ] && FILTER_ARGS="$FILTER_ARGS --target-arch $target_arch"
-          [ -n "$target_license" ] && FILTER_ARGS="$FILTER_ARGS --target-license $target_license"
-
-          python scripts/ci/scan_variants.py --ver "$ver" --rev "$rev" $FILTER_ARGS --github-output
-
-  seed-setup:
-    uses: ./.github/workflows/seed-setup.yml
-    with:
-      name: ${{ inputs.yaml }}
-      skip: ${{ inputs.skip_seed }}
-
-  # == Build: compile FFmpeg for triplets × licenses × linkages ==============
-  # Matrix is dynamically populated by the scan job — only unbuilt variants.
-  build:
-    needs: [seed-setup, scan]
-    if: ${{ !cancelled() && needs.scan.outputs.matrix != '[]' }}
+  prepare:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
     runs-on: windows-2022
     timeout-minutes: 180
-    permissions: {}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.scan.outputs.matrix) }}
+        triplet: ${{ fromJSON(needs.plan.outputs.triplets) }}
     steps:
       - uses: actions/checkout@v6
-
-      # == Setup steps ====================================================─
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
-      - name: Resolve variant metadata
-        id: vars
-        run: |
-          $ver = "${{ inputs.ref || inputs.yaml }}"
-          $rev = "${{ needs.scan.outputs.revision }}"
-          $triplet = "${{ matrix.triplet }}"
-          $license = "${{ matrix.license }}"
-          $linkage = "${{ matrix.linkage }}"
-
-          $variant_id = & python scripts/ops/naming.py variant-id `
-            --version $ver --revision $rev `
-            --triplet $triplet --linkage $linkage --license $license
-
-          $port_name = "ffmpeg"
-          Write-Output "Variant: $variant_id, Port: $port_name, Linkage: $linkage"
-
-          echo "linkage_name=$linkage" >> $env:GITHUB_OUTPUT
-          echo "variant_id=$variant_id" >> $env:GITHUB_OUTPUT
-          echo "port_name=$port_name" >> $env:GITHUB_OUTPUT
-
-      - uses: ./.github/actions/vcpkg-restore-caches
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
         with:
-          vcpkg-tag: ${{ env.VCPKG_TAG }}
-          vcpkg-root: ${{ runner.temp }}/vcpkg
-          cache-path: ${{ runner.temp }}/vcpkg-cache
-          triplet: ${{ matrix.triplet }}
-          fail-on-miss-root: 'true'
-          fail-on-miss-downloads: 'true'
-          fail-on-miss-binary: 'true'
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - uses: actions/cache@v5
+        id: dependencies
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('ports/**', 'ffmpeg/**', 'triplets/**', 'scripts/ffport/**', 'ffbuild/builder.py', 'vcpkg-configuration.json') }}
+      - name: Prewarm dependent libraries
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        run: python -m ffbuild prepare --triplet "${{ matrix.triplet }}"
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: build-logs-seed-${{ matrix.triplet }}
+          path: ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
 
-      - name: Patch vcvarsall.bat for ARM Windows SDK
-        if: matrix.triplet == 'arm-windows'
-        run: |
-          $patched = $false
-          $vsPaths = & vswhere -all -legacy -property installationPath
-          foreach ($vsPath in $vsPaths) {
-            $vcvarsall = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
-            Write-Output "Patching $vcvarsall"
-            $content = Get-Content $vcvarsall -Raw -Encoding Ascii
-            $content = $content -replace '(set\s+__VCVARSALL_WINSDK\s*=)\S*', '${1}10.0.22621.0'
-            Set-Content $vcvarsall -Value $content -Encoding Ascii -NoNewline
-            $patched = $true
-          }
-          if (-not $patched) {
-            throw "Failed to find vcvarsall.bat via vswhere — ARM patch not applied, build cannot proceed"
-          }
-
-      # == Generate vcpkg port files ================================─
-      - name: Generate port files
-        run: |
-          $args = @("scripts/ffport.py", "generate", "${{ inputs.yaml }}")
-          if ("${{ inputs.ref }}") { $args += "--ref"; $args += "${{ inputs.ref }}" }
-          if ("${{ inputs.sha512 }}") { $args += "--sha512"; $args += "${{ inputs.sha512 }}" }
-          & python $args
-
-      # == Build FFmpeg via vcpkg ====================================
-      - name: Build FFmpeg
+  build:
+    needs: [plan, prepare]
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('ports/**', 'ffmpeg/**', 'triplets/**', 'scripts/ffport/**', 'ffbuild/builder.py', 'vcpkg-configuration.json') }}
+      - name: Compile, test and package
         env:
-          VCPKG_BINARY_SOURCES: "clear;files,${{ runner.temp }}/vcpkg-cache,read"
-          VCPKG_OVERLAY_PORTS: ports
-          VCPKG_OVERLAY_TRIPLETS: triplets
-        run: |
-          $port = "ffmpeg"
-          $features = "all-${{ matrix.license }}"
-          if ("${{ matrix.linkage }}" -eq "static") {
-            $features = "$features,static"
-          }
-          & "${{ runner.temp }}/vcpkg/vcpkg.exe" install "${port}[${features}]" ffmpeg-tester `
-            --triplet=${{ matrix.triplet }} `
-            --recurse `
-            ${{ env.VCPKG_INSTALL_OPTIONS }}
-
-      # == Package release archive + generate variant YAML ==========─
-      - name: Package release archive
-        run: |
-          $vcpkg_root = "${{ runner.temp }}/vcpkg"
-          $port = "${{ steps.vars.outputs.port_name }}"
-          $triplet = "${{ matrix.triplet }}"
-          $license = "${{ matrix.license }}"
-
-          $pkgArgs = @(
-            "--port-dir", "${vcpkg_root}/packages/${port}_${triplet}",
-            "--license", $license
-          )
-          if ("${{ inputs.ref }}") {
-            $pkgArgs += "--ref"; $pkgArgs += "${{ inputs.ref }}"
-          }
-          & python scripts/package_release.py @pkgArgs
-
-      # == Upload artifacts ==========================================
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: python -m ffbuild build --job-env FFBUILD_JOB
+      - uses: actions/upload-artifact@v6
         with:
-          name: ${{ steps.vars.outputs.variant_id }}
+          name: ${{ matrix.id }}
           path: |
             Release/*.zip
             Release/*.var.yaml
-          compression-level: 0
           retention-days: 5
-
-      # == Upload build logs for debugging ==========================
-      # Always runs, even if Step 4 fails, so logs are available for triage.
-      - name: Upload build logs
+          compression-level: 0
+      - uses: actions/upload-artifact@v6
         if: success() || failure()
-        uses: actions/upload-artifact@v6
         with:
-          name: build-logs-${{ inputs.yaml }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          name: build-logs-${{ matrix.yaml }}-${{ matrix.id }}
           path: |
-            ${{ runner.temp }}/vcpkg/buildtrees/*/*.log
-            ${{ runner.temp }}/vcpkg/buildtrees/*/*.err
-            ${{ runner.temp }}/vcpkg/buildtrees/*/*.txt
-          compression-level: 9
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
           retention-days: 7
+          if-no-files-found: ignore
 
-  # == Finalize: merge variants into data branch, create/update release ======
-  finalize:
-    needs: [build, scan]
-    if: success() || failure()
+  publish:
+    needs: [plan, build]
+    if: ${{ needs.build.result == 'success' && github.event_name != 'pull_request' && !inputs.dry_run }}
     concurrency:
       group: data-branch
       cancel-in-progress: false
-      queue: max
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Dry run notice
-        if: inputs.dry_run == true
-        run: |
-          echo "::notice::DRY RUN: Release creation and data branch push will be skipped."
-
       - uses: actions/checkout@v6
-
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
+          requirements: requirements.txt
       - uses: actions/create-github-app-token@v3
-        id: app-token
+        id: bot
         with:
           client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
           private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
           permission-contents: write
-
-      # Checkout data branch
-      - name: Checkout data branch
-        id: checkout-data
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: data
           path: data
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
-        continue-on-error: true
-
-      - name: Ensure data branch working directory
-        id: ensure-data
-        run: |
-          if [ -d data/.git ]; then
-            echo "status=ok" >> "$GITHUB_OUTPUT"
-          else
-            echo "Data branch checkout failed — creating fresh directory"
-            mkdir -p data
-            git -C data init
-            git -C data remote add origin \
-              "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
-            echo "status=created" >> "$GITHUB_OUTPUT"
-          fi
-        shell: bash
-
-      - name: Determine artifact download prefix
-        id: artifact-prefix
-        run: |
-          prefix=$(python scripts/ops/naming.py variant-prefix \
-            --version "${{ inputs.ref || inputs.yaml }}" \
-            --revision "${{ needs.scan.outputs.revision }}")
-          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v8
+          token: ${{ steps.bot.outputs.token }}
+      - uses: actions/download-artifact@v8
         with:
-          pattern: ${{ steps.artifact-prefix.outputs.prefix }}*
-          path: ${{ github.workspace }}/artifacts/
+          name: ffbuild-plan
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ffmpeg-*
+          path: artifacts
           merge-multiple: true
-
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Artifacts ==="
-          ls -la ${{ github.workspace }}/artifacts/ 2>/dev/null || echo "(empty)"
-          echo "=== Var YAMLs ==="
-          ls ${{ github.workspace }}/artifacts/*.var.yaml 2>/dev/null || echo "(none)"
-          echo "=== Zips ==="
-          ls ${{ github.workspace }}/artifacts/*.zip 2>/dev/null || echo "(none)"
-        shell: bash
-
-      - name: Import variant YAMLs (auto-merges into version.yaml)
+      - name: Publish using existing release schema
         env:
-          TOTAL_VARIANTS: 24
-        run: |
-          for f in artifacts/*.var.yaml; do
-            [ -f "$f" ] || continue
-            python scripts/ops/db.py import "$f" || echo "  WARNING: import failed for $f"
-          done
-        shell: bash
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          GIT_AUTHOR_NAME: ffmpeg-dev
+          GIT_AUTHOR_EMAIL: ffmpeg-dev@users.noreply.github.com
+          GIT_COMMITTER_NAME: ffmpeg-dev
+          GIT_COMMITTER_EMAIL: ffmpeg-dev@users.noreply.github.com
+        run: python -m ffbuild publish --artifacts-dir artifacts --data-dir data --plan-file ffbuild-plan.json
 
-      - name: Commit and push data branch
-        if: inputs.dry_run != true
-        run: |
-          python scripts/ci/push_data_branch.py \
-            --message "Build artifacts for ${{ inputs.ref || inputs.yaml }}" \
-            --directory data
-
-      - name: Determine release tag
-        id: release_tag
-        run: |
-          tag=$(python scripts/ci/manage_release.py tag --artifacts-dir "${{ github.workspace }}/artifacts")
-          if [ -z "$tag" ]; then
-            echo "No artifacts — nothing to release" >&2
-            echo "tag=" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create or append GitHub Release
-        if: inputs.dry_run != true && steps.release_tag.outputs.tag != ''
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          ARGS="--tag ${{ steps.release_tag.outputs.tag }} --artifacts-dir ${{ github.workspace }}/artifacts --yaml ${{ inputs.yaml }}"
-          [ -n "${{ inputs.ref }}" ] && ARGS="$ARGS --ref ${{ inputs.ref }}"
-          python scripts/ci/manage_release.py create $ARGS
-
-
-  all-checks-passed:
-      name: all-checks-passed
-      runs-on: ubuntu-latest
-      needs: build
-      if: success() || failure()
-      steps:
-        - name: Check Matrix Status
-          run: |
-            if [ "${{ needs.build.result }}" = "success" ] || [ "${{ needs.build.result }}" = "skipped" ]; then
-              echo "All Matrix builds passed successfully!"
-            else
-              echo "Matrix builds failed!"
-              exit 1
-            fi
-
-  # == Trigger pages rebuild ================================================─
-  trigger-pages:
-    needs: finalize
-    if: ${{ success() && !inputs.dry_run && !inputs.skip_pages }}
-    uses: ./.github/workflows/pages.yml
-
-  # == Auto-heal: diagnose and create fix PR on build failure ==============─
   trigger-auto-heal:
-    needs: build
-    if: ${{ failure() && needs.build.result == 'failure' && (!inputs.dry_run || inputs.pr_number != '') }}
+    needs: [plan, build]
+    if: ${{ failure() && needs.build.result == 'failure' && needs.plan.outputs.auto_heal_yaml != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
     uses: ./.github/workflows/auto-heal.yml
     with:
-      ref: ${{ inputs.ref }}
-      yaml: ${{ inputs.yaml }}
+      yaml: ${{ needs.plan.outputs.auto_heal_yaml }}
+      ref: ${{ needs.plan.outputs.auto_heal_ref }}
+      pr_number: ${{ github.event.pull_request.number || '' }}
       run_id: ${{ github.run_id }}
-      pr_number: ${{ inputs.pr_number }}
     secrets: inherit

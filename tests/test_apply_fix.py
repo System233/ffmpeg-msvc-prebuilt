@@ -125,8 +125,6 @@ class TestApplyPatch(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             _apply_patch(
                 self._patch_dir,
-                self._bot_name,
-                self._bot_id,
                 self._token,
                 self._repo,
             )
@@ -156,8 +154,6 @@ class TestApplyPatch(unittest.TestCase):
         # Should not raise
         _apply_patch(
             self._patch_dir,
-            self._bot_name,
-            self._bot_id,
             self._token,
             self._repo,
         )
@@ -189,8 +185,6 @@ class TestApplyPatch(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             _apply_patch(
                 self._patch_dir,
-                self._bot_name,
-                self._bot_id,
                 self._token,
                 self._repo,
             )
@@ -226,8 +220,6 @@ class TestApplyPatch(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             _apply_patch(
                 self._patch_dir,
-                self._bot_name,
-                self._bot_id,
                 self._token,
                 self._repo,
             )
@@ -257,8 +249,6 @@ class TestApplyPatch(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             _apply_patch(
                 self._patch_dir,
-                self._bot_name,
-                self._bot_id,
                 self._token,
                 self._repo,
             )
@@ -720,8 +710,6 @@ class TestFullFlow(unittest.TestCase):
         # Phase 1
         _apply_patch(
             "patch-input",
-            "ffmpeg-dev[bot]",
-            "12345",
             "gh_token",
             "owner/repo",
         )
@@ -767,8 +755,6 @@ class TestFullFlow(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             _apply_patch(
                 "patch-input",
-                "ffmpeg-dev[bot]",
-                "12345",
                 "gh_token",
                 "owner/repo",
             )

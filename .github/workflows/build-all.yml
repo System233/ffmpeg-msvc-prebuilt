@@ -1,78 +1,64 @@
-# ---------------------------------------------------------------------------
-# build-all.yml — Build all FFmpeg versions
-#
-# Triggered by:
-#   - Schedule (daily 06:00 UTC): scans all versions, builds missing ones
-#   - Push to main with ffmpeg/*.yaml changes: detects changed versions, builds
-#   - Manual workflow_dispatch: same as schedule
-#
-# dl-seed and seed run once globally (not per-version) to avoid redundant
-# source downloads and base dependency builds.  build-release.yml handles
-# per-version FFmpeg compilation, packaging, and release.
-# ---------------------------------------------------------------------------
-
 name: Build All FFmpeg Versions
 
 on:
-  schedule:
-    - cron: "0 6 * * *"
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
-      - 'ffmpeg/*.yaml'
+      - 'ffmpeg/**'
+      - 'patches/**'
+      - 'ports/**'
+      - 'triplets/**'
+      - 'scripts/**'
+      - 'ffbuild/**'
+      - 'vcpkg-configuration.json'
+      - 'requirements.txt'
+      - '.github/workflows/build-all.yml'
+      - '.github/workflows/build-release.yml'
+      - '.github/actions/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ffmpeg/**'
+      - 'patches/**'
+      - 'ports/**'
+      - 'triplets/**'
+      - 'scripts/**'
+      - 'ffbuild/**'
+      - 'vcpkg-configuration.json'
+      - 'requirements.txt'
+  schedule:
+    - cron: '0 6 * * *'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional FFmpeg version to build'
+        type: string
+      history:
+        description: 'Include all historical versions (requires sharding if >256 jobs)'
+        type: boolean
+        default: false
+      shard_count:
+        description: 'Total shards for large historical matrices'
+        type: number
+        default: 1
+      shard_index:
+        description: 'Zero-based shard index'
+        type: number
+        default: 0
 
 jobs:
-  scan:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.scan.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-python
-        with:
-          requirements: 'requirements.txt'
-
-      - name: Scan versions to build
-        id: scan
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
-        run: |
-          if [ "$EVENT_NAME" = "push" ]; then
-            matrix=$(python scripts/ci/scan_versions.py --mode push --base "$BEFORE" --head "$AFTER")
-          else
-            matrix=$(python scripts/ci/scan_versions.py --mode all)
-          fi
-          echo "Versions to build: $matrix"
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
-  seed-setup:
-    uses: ./.github/workflows/seed-setup.yml
-    with:
-      name: global
-
   build:
-    needs: [seed-setup, scan]
-    if: needs.scan.outputs.matrix != '[]'
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        config: ${{ fromJSON(needs.scan.outputs.matrix) }}
     uses: ./.github/workflows/build-release.yml
     with:
-      yaml: ${{ matrix.config.version }}
-      skip_seed: true
-      skip_pages: true
+      yaml: ${{ inputs.version || '' }}
+      dry_run: ${{ github.event_name == 'pull_request' }}
     secrets: inherit
 
-  pages:
+  all-checks-passed:
     needs: build
-    if: success()
-    uses: ./.github/workflows/pages.yml
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$BUILD_RESULT" = success
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
