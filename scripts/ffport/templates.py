@@ -119,6 +119,54 @@ def generate_features_cmake(feat_registry: dict, port_dir: Path,
     (port_dir / "features.cmake").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def generate_constraints_cmake(features: dict, feature_deps: dict,
+                               host_deps: list, port_dir: Path) -> None:
+    """Guard policy for *native* vcpkg install, not only ffbuild callers."""
+    import re
+
+    lines = ["# Generated constraint guards; only depends may activate features.",
+             "set(_FFMPEG_POLICY_PACKAGES \"\")"]
+    for dep in host_deps:
+        name = dep if isinstance(dep, str) else dep.get("name", "")
+        if name:
+            lines.append(f'list(APPEND _FFMPEG_POLICY_PACKAGES "{name}")')
+    for feature, entries in sorted(feature_deps.items()):
+        lines.append(f'if("{feature}" IN_LIST FEATURES)')
+        for dep in entries:
+            name = dep if isinstance(dep, str) else dep.get("name", "")
+            if name:
+                lines.append(f'    list(APPEND _FFMPEG_POLICY_PACKAGES "{name}")')
+        lines.append("endif()")
+    for name, info in sorted(features.items()):
+        license_ = info.get("license")
+        if license_ not in (None, "lgpl", "gpl", "nonfree"):
+            raise ValueError(f"{name}: invalid license policy {license_!r}")
+        checks = []
+        if license_ in ("gpl", "nonfree"):
+            checks.append((f'NOT "license-{license_}" IN_LIST FEATURES',
+                           f"{name} requires explicitly enabled {license_} license mode"))
+        for kind in ("requires", "conflicts"):
+            from .features import _normalise_list
+            for value in _normalise_list(info.get(kind, [])):
+                if not isinstance(value, str) or not re.fullmatch(r"(feature|package):[a-zA-Z0-9_.+-]+", value):
+                    raise ValueError(f"{name}: invalid {kind} constraint {value!r}")
+                typ, required = value.split(":", 1)
+                if typ == "feature" and required not in features:
+                    raise ValueError(f"{name}: unknown feature in {kind}: {required}")
+                collection = "FEATURES" if typ == "feature" else "_FFMPEG_POLICY_PACKAGES"
+                test = f'"{required}" IN_LIST {collection}'
+                checks.append((f"NOT {test}" if kind == "requires" else test,
+                               f"{name}: {kind} {value}"))
+        if checks:
+            lines.append(f'if("{name}" IN_LIST FEATURES)')
+            for condition, message in checks:
+                lines.append(f'    if({condition})')
+                lines.append(f'        message(FATAL_ERROR "FFmpeg feature policy: {message}")')
+                lines.append("    endif()")
+            lines.append("endif()")
+    (port_dir / "constraints.cmake").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _extract_major(version: str) -> str:
     """Extract major version number from a version string."""
     return version.split(".")[0].split("-")[0]

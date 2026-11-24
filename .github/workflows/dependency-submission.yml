@@ -26,4 +26,4 @@ jobs:
       - name: Submit vcpkg dependency graph
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python -m ffbuild submit-dependencies --triplet "${{ matrix.triplet }}"
+        run: python -m ffbuild.ci submit-dependencies --triplet "${{ matrix.triplet }}"

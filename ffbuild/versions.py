@@ -6,11 +6,14 @@ import re
 from pathlib import Path
 from typing import Any
 
-from scripts.ffport import _generate, features, merge, yaml_utils
+from .port import ffmpeg_port_name, generate_port, generate_seed_port
+from .spec import read_spec, resolve_features
 
 ROOT = Path(__file__).resolve().parents[1]
+GENERATED_PORTS = ROOT / "_work" / "ffbuild" / "generated-ports"
 TRIPLETS = ("arm-windows", "arm64-windows", "x86-windows", "x64-windows")
 LICENSES = ("lgpl", "gpl")
+LICENSE_PROFILES = ("lgpl", "gpl", "nonfree")
 LINKAGES = ("shared", "static")
 
 
@@ -22,35 +25,11 @@ def versions() -> list[str]:
 
 
 def config(name: str) -> dict[str, Any]:
-    chain, _ = yaml_utils.resolve_chain(name)
-    resolved: dict[str, Any] = {}
-    for item in chain:
-        resolved = merge.deep_merge(resolved, item)
-    return resolved
+    return read_spec(name)[0]
 
 
 def spec_files(name: str) -> set[str]:
-    """All YAML sources consumed by ffport when resolving this version."""
-    result = {"ffmpeg/base.yaml"}
-    seen: set[str] = set()
-
-    def visit(stem: str) -> None:
-        if stem in seen or stem == "base":
-            return
-        seen.add(stem)
-        parts = stem.split(".")
-        if len(parts) == 3 and all(part.isdigit() for part in parts):
-            visit(".".join(parts[:2]))
-            patch = ROOT / "ffmpeg" / f"{stem}.yaml"
-            if patch.is_file():
-                result.add(f"ffmpeg/{stem}.yaml")
-            return
-        doc = yaml_utils.load_yaml(stem)
-        visit(doc.get("extends", "base"))
-        result.add(f"ffmpeg/{stem}.yaml")
-
-    visit(name)
-    return result
+    return {path.relative_to(ROOT).as_posix() for path in read_spec(name)[1]}
 
 
 def revision(name: str) -> int:
@@ -75,30 +54,23 @@ def latest_per_family(items: list[str]) -> list[str]:
 
 def generate(name: str, *, revision_override: int | None = None,
              ref: str | None = None, sha512: str | None = None,
+             source_version: str | None = None,
              output: Path | None = None) -> Path:
-    """Reuse ffport's library API; no nested Python CLI is spawned."""
-    dest = output or ROOT / "ports"
-    _generate(name, sha512=sha512, ref=ref, output=str(dest))
-    generated = dest / "ffmpeg"
-    if revision_override is not None:
-        import json
+    return generate_port(name, destination=output or GENERATED_PORTS,
+                         source_version=source_version, ref=ref or "",
+                         sha512=sha512 or "", revision=revision_override)
 
-        path = generated / "vcpkg.json"
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        manifest["port-version"] = revision_override
-        path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-        portfile = generated / "portfile.cmake"
-        original = portfile.read_text(encoding="utf-8")
-        patched, count = re.subn(
-            r"(?m)^set\(FFMPEG_PORT_REVISION \d+\)$",
-            f"set(FFMPEG_PORT_REVISION {revision_override})",
-            original,
-        )
-        if count != 1:
-            raise ValueError("FFmpeg generated port is missing its revision marker")
-        portfile.write_text(patched, encoding="utf-8")
-    return generated
+def generate_all(*, output: Path | None = None, master: dict[str, str] | None = None) -> list[Path]:
+    """Generate every buildable release and, if pinned, the master snapshot."""
+    destination = output or GENERATED_PORTS
+    results = [generate(name, output=destination) for name in versions() if has_source(name)]
+    if master is not None:
+        results.append(generate("master", output=destination,
+                                source_version=master["ref"], ref=master["commit"],
+                                sha512=master["sha512"]))
+    generate_seed_port(destination)
+    return results
 
 
 def source_config(name: str, ref: str = "", sha512: str = "") -> dict[str, Any]:
@@ -111,27 +83,18 @@ def source_config(name: str, ref: str = "", sha512: str = "") -> dict[str, Any]:
 
 
 def dependency_names(name: str, license_: str) -> set[str]:
-    """Resolve recursive FFmpeg feature references into vcpkg dependency names."""
-    resolved = config(name)
-    available = features.resolve_features(resolved, name if name != "master" else None)["features"]
-    package_names: set[str] = set()
-    visited: set[str] = set()
-    stack = [f"all-{license_}"]
-    override = resolved.get("dep_overrides", {})
-    while stack:
-        feature = stack.pop()
-        if feature in visited or feature not in available:
-            continue
-        visited.add(feature)
-        for dep in features._normalise_list(available[feature].get("depends", [])):
-            dep_name = dep if isinstance(dep, str) else dep.get("name", "")
-            if not dep_name:
-                continue
-            if dep_name.startswith("@"):
-                stack.append(dep_name[1:])
-            else:
-                package_names.add(override.get(feature, dep_name))
-    for entry in resolved.get("build", {}).get("host_deps", []):
-        package_names.add(entry if isinstance(entry, str) else entry.get("name", ""))
-    package_names.add("ffmpeg-tester")
-    return package_names - {""}
+    compiled = resolve_features(config(name), name if name != "master" else "9.1")
+    active = compiled.closure([f"all-{license_}"])
+    all_packages = (entry for feature in active for entry in compiled.packages.get(feature, ()))
+    names = {p if isinstance(p, str) else p.get("name", "") for p in all_packages}
+    names.update(p if isinstance(p, str) else p.get("name", "")
+                 for p in compiled.host_packages)
+    return (names - {""}) | {"ffmpeg-tester"}
+
+
+def validate_variant(name: str, license_: str) -> list[str]:
+    try:
+        compiled = resolve_features(config(name), name if name != "master" else "9.1")
+        return compiled.policy_errors(compiled.closure([f"all-{license_}"]))
+    except (ValueError, KeyError) as error:
+        return [str(error)]

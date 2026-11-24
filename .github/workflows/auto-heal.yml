@@ -1,196 +1,98 @@
-# ---------------------------------------------------------------------------
-# auto-heal.yml — OpenCode autonomous repair for failed builds
-#
-# Three-job architecture:
-#   1. check         — decode trigger, decide action (push/pr), check PR
-#   2. agent-repair  — diagnose, fix, commit locally (read-only perms)
-#   3. fix-and-push  — apply patch, bump revision, push/Create PR (write perms)
-#
-# Drive logic: check.outputs. action / branch / bump_revision controls
-# downstream behavior without any event type branching.
-# ---------------------------------------------------------------------------
-
 name: OpenCode Auto-Heal
 
 on:
-  workflow_call:
-    inputs:
-      ref:
-        description: "Git ref that failed to build (optional, describe string for snapshot)"
-        required: false
-        type: string
-      yaml:
-        description: "YAML config name"
-        required: true
-        type: string
-      run_id:
-        description: "Failed build run ID"
-        required: true
-        type: string
-      pr_number:
-        description: "Pull request number (for PR Build failures)"
-        required: false
-        type: string
-      base_ref:
-        description: "Branch to base the fix on"
-        required: false
-        type: string
-        default: main
+  workflow_run:
+    workflows: [Build All FFmpeg Versions, Build FFmpeg Release, Build FFmpeg Master]
+    types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Failed PR Build run ID (from Actions page)"
-        required: true
         type: string
+        required: true
+        description: Completed FFmpeg build run ID
+      attempt:
+        type: string
+        required: false
+        description: Optional run attempt (default latest)
 
-env:
-  GIT_AUTHOR_NAME: ffmpeg-dev[bot]
-  GIT_AUTHOR_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
-  GIT_COMMITTER_NAME: ffmpeg-dev[bot]
-  GIT_COMMITTER_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
-  MAX_AUTO_HEAL_COMMITS: 3
-  TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'call' }}
-  OPENCODE_VERSION: 1.17.9
-  OPENCODE_SHA256: 85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9
-  MAX_RETRY_ATTEMPTS: 3
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: autoheal-run-${{ github.event.workflow_run.id || inputs.run_id }}-${{ github.event.workflow_run.run_attempt || inputs.attempt || 'latest' }}
+  cancel-in-progress: false
 
 jobs:
-  # == Job 0: Decide strategy ==============================================
-  # Converts trigger event into actionable data for downstream jobs.
-  check:
+  triage:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
     outputs:
-      skip: ${{ steps.decide.outputs.skip }}
-      action: ${{ steps.decide.outputs.action }}
-      branch: ${{ steps.decide.outputs.branch }}
-      checkout_ref: ${{ steps.decide.outputs.checkout_ref }}
-      bump_revision: ${{ steps.decide.outputs.bump_revision }}
-      run_id: ${{ steps.decide.outputs.run_id }}
-      pr_number: ${{ steps.decide.outputs.pr_number }}
-      pr_author: ${{ steps.decide.outputs.pr_author }}
-      base_sha: ${{ steps.decide.outputs.base_sha }}
-      base_ref: ${{ steps.decide.outputs.base_ref }}
-      head_sha: ${{ steps.decide.outputs.head_sha }}
-      head_ref: ${{ steps.decide.outputs.head_ref }}
-      base_revision: ${{ steps.decide.outputs.base_revision }}
+      matrix: ${{ steps.analyze.outputs.matrix }}
+      has_repairs: ${{ steps.analyze.outputs.has_repairs }}
+      bot_pr: ${{ steps.analyze.outputs.bot_pr }}
+      bot_branch: ${{ steps.analyze.outputs.bot_branch }}
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-
-      - name: Check build log artifacts exist
-        run: |
-          artifacts=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ inputs.run_id }}/artifacts" --jq '.artifacts[] | select(.name | startswith("build-logs-")) | .name')
-          if [ -z "$artifacts" ]; then
-            echo "No build log artifacts found — FFmpeg build never started, skipping auto-heal"
-            exit 1
-          fi
+          ref: main
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Fetch failed run, native ABI plan, jobs and build logs
+        id: analyze
         env:
           GH_TOKEN: ${{ github.token }}
-
-      - uses: ./.github/actions/setup-python
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt || inputs.attempt }}
+        shell: bash
+        run: |
+          args=(--run-id "$RUN_ID" --output autoheal-triage.json --github-output)
+          if [[ -n "$ATTEMPT" ]]; then args+=(--attempt "$ATTEMPT"); fi
+          python -m ffbuild autoheal triage "${args[@]}"
+      - uses: actions/upload-artifact@v6
         with:
-          requirements: 'requirements.txt'
+          name: autoheal-triage
+          path: autoheal-triage.json
+          retention-days: 7
 
-      - name: Decide strategy
-        id: decide
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          INPUT_YAML: ${{ inputs.yaml }}
-          INPUT_REF: ${{ inputs.ref }}
-          INPUT_PR: ${{ inputs.pr_number }}
-          INPUT_BASE_REF: ${{ inputs.base_ref }}
-        run: |
-          ARGS=(--run-id "${{ inputs.run_id }}")
-          [ -n "$INPUT_YAML" ] && ARGS+=(--yaml "$INPUT_YAML")
-          [ -n "$INPUT_REF" ] && ARGS+=(--ref "$INPUT_REF")
-          [ -n "$INPUT_PR" ] && ARGS+=(--pr-number "$INPUT_PR")
-          JSON=$(python scripts/ci/auto_heal_decide.py "${ARGS[@]}" --base-ref "$INPUT_BASE_REF")
-          echo "$JSON" | python scripts/ci/json_to_github_output.py
-
-      - name: Check PR Author Authorization
-        if: steps.decide.outputs.action == 'push'
-        run: python scripts/ci/check_pr_author.py --author "${{ steps.decide.outputs.pr_author }}"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Check only allowed files modified
-        if: steps.decide.outputs.action == 'push'
-        run: |
-          python scripts/ci/check_allowed_files.py \
-            --base "${{ steps.decide.outputs.base_sha }}" \
-            --head "${{ steps.decide.outputs.head_sha }}" \
-            --yaml "${{ inputs.yaml }}"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-  # == Job 1: Diagnose + fix + commit locally ==============================
-  agent-repair:
-    needs: check
-    if: success() && needs.check.outputs.skip != 'true'
-    concurrency:
-      group: auto-heal-repair-${{ needs.check.outputs.branch }}
-      cancel-in-progress: true
+  repair:
+    needs: [triage, sync-pr]
+    if: ${{ always() && needs.triage.outputs.has_repairs == 'true' && (needs.sync-pr.result == 'success' || needs.sync-pr.result == 'skipped') }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.triage.outputs.matrix) }}
+    concurrency:
+      group: autoheal-repair-${{ matrix.branch }}
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read
-
+    env:
+      OPENCODE_VERSION: '1.17.9'
+      OPENCODE_SHA256: '85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9'
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.check.outputs.checkout_ref }}
+          ref: main
           fetch-depth: 0
-
-      - name: Check Loop Count Limit
-        if: needs.check.outputs.action == 'push'
-        id: counter
-        run: |
-          BASE_SHA="${{ needs.check.outputs.base_sha }}"
-          COMMIT_COUNT=$(git rev-list --count ${BASE_SHA}..HEAD)
-          echo "Total auto-fix commits: $COMMIT_COUNT"
-          if [ "$COMMIT_COUNT" -gt ${{ env.MAX_AUTO_HEAL_COMMITS }} ]; then
-            echo "::error::Auto-fix commits exceed limit (${{ env.MAX_AUTO_HEAL_COMMITS }}). Aborting."
-            exit 1
-          fi
-
-      - name: Download Build Log Artifacts
-        uses: actions/download-artifact@v8
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
         with:
-          run-id: ${{ needs.check.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: build-logs-${{ inputs.yaml }}-*
-          path: error_logs
-
+          name: autoheal-triage
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
-      - name: Generate Agent Context
-        run: |
-          python scripts/ci/auto_heal_context.py \
-            --run-id "${{ needs.check.outputs.run_id }}" \
-            --yaml "${{ inputs.yaml }}" \
-            --pr-number "${{ needs.check.outputs.pr_number }}" \
-            --base-sha "${{ needs.check.outputs.base_sha }}" \
-            --base-ref "${{ needs.check.outputs.base_ref }}" \
-            --head-branch "${{ needs.check.outputs.head_ref }}" \
-            --head-sha "${{ needs.check.outputs.head_sha }}" \
-            --trigger "${{ env.TRIGGER }}"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Fetch .opencode from opencode branch
+          requirements: requirements.txt
+      - name: Fetch trusted OpenCode knowledge
         run: |
           git fetch origin opencode --depth 1
           mkdir -p .opencode
-          git archive FETCH_HEAD | tar -x -C .opencode/
-
-      - name: Install opencode CLI
+          git archive FETCH_HEAD | tar -x -C .opencode
+      - name: Install pinned OpenCode
         run: |
           curl -fsSL -o /tmp/opencode.tar.gz \
             "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
@@ -199,85 +101,99 @@ jobs:
           mkdir -p "$HOME/.opencode/bin"
           mv /tmp/opencode "$HOME/.opencode/bin/opencode"
           chmod 755 "$HOME/.opencode/bin/opencode"
-          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-
-      - name: Agent repair loop
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+      - name: Produce version-scoped repair patch
         env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_YAML: ${{ matrix.yaml }}
           OPCODE_MODEL: ${{ secrets.OPCODE_MODEL || 'opencode/deepseek-v4-flash-free' }}
-          OPCODE_KEY_ENV: ${{ secrets.OPCODE_KEY_ENV || 'OPENCODE_API_KEY' }}
           OPCODE_API_KEY: ${{ secrets.OPCODE_API_KEY }}
         run: |
-          export "$OPCODE_KEY_ENV"="$OPCODE_API_KEY"
-          python scripts/ci/agent_repair.py \
-            --action "${{ needs.check.outputs.action }}" \
-            --base-sha "${{ needs.check.outputs.base_sha }}" \
-            --max-retries 3 \
-            --prompt-file scripts/ci/agent_prompt.md \
-            --feedback-file scripts/ci/agent_feedback.md
-
-      - name: Upload patch artifact
-        uses: actions/upload-artifact@v6
+          python -m ffbuild autoheal repair \
+            --triage autoheal-triage.json --yaml "$TARGET_YAML" \
+            --output repair-output
+      - uses: actions/upload-artifact@v6
         with:
-          name: auto-heal-patch-${{ inputs.yaml }}
-          path: patch-output/
-          retention-days: 1
+          name: autoheal-patch-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: repair-output/
+          retention-days: 7
+          if-no-files-found: error
 
-      - name: Upload fix report
-        uses: actions/upload-artifact@v6
-        with:
-          name: fix-report-${{ inputs.yaml }}
-          path: fix_report.md
-          retention-days: 1
-
-  # == Job 2: Apply fix and push/create PR ===============================
-  fix-and-push:
-    needs: [agent-repair, check]
-    concurrency:
-      group: auto-heal-push-${{ needs.check.outputs.branch }}
-      cancel-in-progress: true
+  deliver:
+    needs: [triage, repair]
+    if: ${{ always() && needs.triage.outputs.has_repairs == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.triage.outputs.matrix) }}
+    concurrency:
+      group: autoheal-pr-state-${{ matrix.branch }}
+      cancel-in-progress: false
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.check.outputs.checkout_ref }}
+          ref: main
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Download patch artifact
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          name: auto-heal-patch-${{ inputs.yaml }}
-          path: patch-input
-        continue-on-error: true
-
-      - name: Download fix report
-        uses: actions/download-artifact@v8
+          name: autoheal-triage
+      - uses: actions/download-artifact@v8
         with:
-          name: fix-report-${{ inputs.yaml }}
-          path: fix-report
-        continue-on-error: true
-
+          name: autoheal-patch-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: repair-output
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
       - uses: actions/create-github-app-token@v3
-        id: app-token
+        id: bot
         with:
           client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
           private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-
-      - name: Apply fix and push
+      - name: Validate patch and synchronize bot PR
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          TARGET_YAML: ${{ matrix.yaml }}
         run: |
-          python scripts/ci/apply_fix.py \
-            --action "${{ needs.check.outputs.action }}" \
-            --branch "${{ needs.check.outputs.branch }}" \
-            --yaml "${{ inputs.yaml }}" \
-            ${{ needs.check.outputs.bump_revision == 'true' && '--bump-revision' || '' }} \
-            ${{ needs.check.outputs.bump_revision == 'true' && format('--base-revision {0}', needs.check.outputs.base_revision) || '' }} \
-            --pr-number "${{ needs.check.outputs.pr_number }}" \
-            --run-id ${{ github.run_id }}
+          python -m ffbuild autoheal deliver \
+            --triage autoheal-triage.json --yaml "$TARGET_YAML" \
+            --output repair-output
+
+  sync-pr:
+    needs: triage
+    if: ${{ needs.triage.outputs.bot_pr != '' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: autoheal-pr-state-${{ needs.triage.outputs.bot_branch }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: autoheal-triage
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: actions/create-github-app-token@v3
+        id: bot
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-pull-requests: write
+      - name: Synchronize PR description and CI status comment
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+        run: python -m ffbuild autoheal sync-pr --triage autoheal-triage.json

@@ -28,6 +28,22 @@ from typing import List
 
 from _allowed import find_violations
 
+# Direct script invocation sets sys.path to scripts/ci, not the repository root.
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from ffbuild.autoheal.models import version_name
+
+
+def _require_target_yaml() -> str:
+    path = Path("agent_context.json")
+    if not path.is_file():
+        raise ValueError("Missing agent_context.json with mandatory target_yaml")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Invalid agent context")
+    return version_name(data.get("target_yaml"))
+
 # ── Feedback generation (bash _generate_feedback equivalent) ──────────────────
 
 def _generate_feedback(attempt: int, violations: List[str], feedback_file: str) -> None:
@@ -126,15 +142,12 @@ def main() -> None:
         sys.exit(1)
 
     # ── Read target_yaml from context (bash: read target_yaml from agent_context.json) ─
-    context_path = Path("agent_context.json")
-    target_yaml = None
-    if context_path.is_file():
-        ctx = json.loads(context_path.read_text(encoding="utf-8"))
-        target_yaml = ctx.get("target_yaml")
-    if target_yaml:
-        print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
-    else:
-        print("WARNING: target_yaml not found in context, allowing any ffmpeg/*.yaml", file=sys.stderr)
+    try:
+        target_yaml = _require_target_yaml()
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"ERROR: Auto-Heal target is not authenticated: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
 
     # ── Resolve BASE_SHA (bash: [ -z "$BASE_SHA" ] && BASE_SHA=$(git rev-parse HEAD)) ─
     base_sha = args.base_sha

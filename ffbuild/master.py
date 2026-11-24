@@ -36,3 +36,16 @@ def write_github_output(data: dict[str, str], filename: Path) -> None:
     with filename.open("a", encoding="utf-8") as stream:
         for key, value in data.items():
             stream.write(f"{key}={value}\n")
+
+
+def main() -> None:
+    import os
+
+    record = master_metadata()
+    if os.environ.get("GITHUB_OUTPUT"):
+        write_github_output(record, Path(os.environ["GITHUB_OUTPUT"]))
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

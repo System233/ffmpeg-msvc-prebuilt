@@ -10,13 +10,43 @@ import json
 import subprocess
 from typing import Any
 
-from scripts.ops.naming import build_variant_id
-from .fingerprint import overlay_port_names
+from .identity import variant_name
+from .fingerprint import overlay_port_names, recipe_fingerprint, variant_fingerprint
 from .state import PublishedState
+from .targets import Target, compile_target, load_targets
 from .versions import (
-    LICENSES, LINKAGES, ROOT, TRIPLETS, config, dependency_names,
+    LICENSES, ROOT, config, dependency_names,
     has_source, latest_per_family, revision, spec_files, versions,
 )
+
+
+def plan_native(scan: dict, *, state: PublishedState | None = None,
+                force: bool = False) -> dict[str, Any]:
+    """Filter native vcpkg ABI results by publication state, without hashing.
+
+    The ABI scanner has already resolved the vcpkg graph, including the exact
+    Features and dependency ABI. Neither the Python Feature graph nor Git
+    change heuristics decide build identity here.
+    """
+    if scan.get("schema") != 3 or not isinstance(scan.get("jobs"), list):
+        raise ValueError("Expected a verified native vcpkg ABI scan (schema 3)")
+    state = state if state is not None else PublishedState()
+    jobs = []
+    counts: dict[str, int] = {}
+    for record in scan["jobs"]:
+        if not all(record.get(key) for key in
+                   ("id", "port", "package", "abi_hash", "triplet", "version")):
+            raise ValueError("Native vcpkg scan record is missing its build identity")
+        existing = state.abi_exists(record["version"], int(record["revision"]),
+                                    record["triplet"], record["abi_hash"])
+        if force or not existing:
+            jobs.append(dict(record))
+            counts[record["version"]] = counts.get(record["version"], 0) + 1
+    descriptions = sorted({record["version"] for record in scan["jobs"]})
+    return {"schema": 3, "jobs": jobs, "matrix": jobs,
+            "blocked": scan.get("blocked", []),
+            "versions": [{"version": version, "pending_variants": counts.get(version, 0)}
+                         for version in descriptions]}
 
 
 def changed_paths(base: str, head: str) -> set[str]:
@@ -34,8 +64,9 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
     if not paths:
         return []
     shared = any(
-        p.startswith(("scripts/", "ffbuild/", ".github/actions/", ".github/workflows/"))
-        or p in {"vcpkg-configuration.json", "requirements.txt"}
+        p.startswith(("ffbuild/", "ffvcpkg/", ".github/actions/"))
+        or p in {"vcpkg-configuration.json", "requirements.txt",
+                 ".github/workflows/build-all.yml", ".github/workflows/build-release.yml"}
         for p in paths
     )
     impacted = []
@@ -65,14 +96,11 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
 
 def plan(*, mode: str = "all", version: str = "", base: str = "", head: str = "",
          ref: str = "", sha512: str = "", history: bool = False,
-         triplets: tuple[str, ...] = TRIPLETS, licenses: tuple[str, ...] = LICENSES,
-         linkages: tuple[str, ...] = LINKAGES, state: PublishedState | None = None,
-         force: bool = False, include_master: bool = False) -> dict[str, Any]:
-    """Build plan with the existing revision/variant identity convention.
-
-    PR validation may use force=True, but the established data branch format
-    and revision allocation policy are intentionally untouched.
-    """
+         targets: tuple[Target, ...] | None = None, state: PublishedState | None = None,
+         force: bool = False, include_master: bool = False,
+         commit: str = "") -> dict[str, Any]:
+    """Plan declared vcpkg package specs, not ffbuild license/linkage matrices."""
+    targets = targets if targets is not None else load_targets()
     if version:
         candidates = [version]
     else:
@@ -86,54 +114,85 @@ def plan(*, mode: str = "all", version: str = "", base: str = "", head: str = ""
             candidates = impacted_versions(changes, candidates)
             if include_master and impacted_versions(changes, ["master"]):
                 candidates.append("master")
-    if "master" in candidates and (not ref or not sha512):
+    master_commit = commit
+    if "master" in candidates:
         from .master import master_metadata
-        info = master_metadata()
-        ref = ref or info["ref"]
-        sha512 = sha512 or info["sha512"]
+        # Source identity is per job.  Never copy master refs into stable jobs.
+        if any((ref, sha512, master_commit)) and not all((ref, sha512, master_commit)):
+            raise ValueError("Master snapshot must supply --ref, --sha512 and --commit together")
+        if not ref or not sha512 or not master_commit:
+            info = master_metadata()
+            ref = ref or info["ref"]
+            sha512 = sha512 or info["sha512"]
+            master_commit = master_commit or info.get("commit", "")
+        if not master_commit or len(master_commit) != 40 or any(c not in "0123456789abcdef" for c in master_commit.lower()):
+            raise ValueError("Master requires a pinned 40-character upstream commit")
     state = state or PublishedState()
     tasks: list[dict] = []
     reasons: list[dict] = []
+    blocked: list[dict] = []
     for ver in candidates:
         resolved_source = config(ver).get("source", {})
-        if not resolved_source.get("sha512") and not sha512:
+        job_ref = ref if ver == "master" else ""
+        job_sha512 = sha512 if ver == "master" else ""
+        if not resolved_source.get("sha512") and not job_sha512:
             raise ValueError(f"No FFmpeg source hash for {ver}")
-        actual_version = ref.lstrip("n") if ver == "master" else ver
+        source_version = job_ref.lstrip("n") if ver == "master" else ver
+        source_ref = (master_commit or job_ref) if ver == "master" else ""
+        recipe_hash = recipe_fingerprint(ver, ref=source_ref, sha512=job_sha512)
+        # Build version changes when source, patches or transitive inputs change.
+        actual_version = f"{source_version}-h{recipe_hash[:12]}"
         release_revision = revision(ver)
         pending = 0
-        for triplet in triplets:
-            for lic in licenses:
-                for linkage in linkages:
-                    if not force and state.variant_exists(actual_version, release_revision,
-                                                          triplet, lic, linkage):
-                        continue
-                    tasks.append({
-                        "id": build_variant_id(
-                            version=actual_version, revision=release_revision,
-                            triplet=triplet, license=lic, linkage=linkage,
-                        ),
-                        "yaml": ver, "version": actual_version, "revision": release_revision,
-                        "triplet": triplet, "ref": ref, "sha512": sha512,
-                        "targets": [{"license": lic, "linkage": linkage}],
-                    })
-                    pending += 1
+        for target in targets:
+            try:
+                built = compile_target(config(ver), ver if ver != "master" else source_version.split("-", 1)[0], target)
+            except (ValueError, KeyError) as error:
+                blocked.append({"yaml": ver, "package": target.package,
+                                "triplet": target.triplet, "errors": [str(error)]})
+                continue
+            if built["license"] == "nonfree":
+                blocked.append({"yaml": ver, "package": target.package,
+                                "triplet": target.triplet,
+                                "errors": ["Nonfree artifacts are not redistributable"]})
+                continue
+            variant_hash = variant_fingerprint(recipe_hash, target.triplet, built["feature_hash"])
+            if not force and state.target_exists(actual_version, release_revision,
+                                                  target.triplet, built["feature_hash"],
+                                                  recipe_hash, variant_hash):
+                continue
+            tasks.append({
+                "id": variant_name(actual_version, release_revision, target.triplet,
+                                   built["linkage"], built["license"], built["feature_hash"]),
+                "yaml": ver, "version": actual_version, "revision": release_revision,
+                "source_version": source_version, "source_ref": source_ref,
+                "triplet": target.triplet, "package": built["package"],
+                "features": built["features"], "feature_hash": built["feature_hash"],
+                "license": built["license"], "linkage": built["linkage"],
+                "ref": job_ref, "sha512": job_sha512,
+                "build_hash": recipe_hash, "variant_hash": variant_hash,
+            })
+            pending += 1
         reasons.append({
             "version": actual_version, "revision": release_revision,
             "pending_variants": pending,
         })
-    return {"schema": 1, "jobs": tasks, "versions": reasons,
-            "matrix": tasks}
+    return {"schema": 2, "jobs": tasks, "versions": reasons,
+            "blocked": blocked, "matrix": tasks}
 
 
 def write_github_output(result: dict, path: Path) -> None:
-    """GITHUB_OUTPUT is a platform boundary; no business logic belongs in YAML."""
-    yaml_versions = {job["yaml"] for job in result["jobs"]}
-    single = next(iter(yaml_versions)) if len(yaml_versions) == 1 else ""
-    single_ref = result["jobs"][0]["ref"] if single else ""
-    triplets = sorted({job["triplet"] for job in result["jobs"]})
+    """Split one verified plan across two GitHub matrix jobs (256 entries each).
+
+    Keep the complete, unsharded jobs in the plan artifact: publication must
+    require every planned variant, not merely the first matrix chunk.
+    """
+    tasks = result["jobs"]
+    if len(tasks) > 512:
+        raise ValueError("More than 512 jobs require additional workflow matrix slices")
+    triplets = sorted({job["triplet"] for job in tasks})
     with path.open("a", encoding="utf-8") as output:
-        output.write(f"matrix={json.dumps(result['matrix'], separators=(',', ':'))}\n")
+        output.write(f"matrix={json.dumps(tasks[:256], separators=(',', ':'))}\n")
+        output.write(f"matrix_extra={json.dumps(tasks[256:], separators=(',', ':'))}\n")
         output.write(f"triplets={json.dumps(triplets, separators=(',', ':'))}\n")
-        output.write(f"count={len(result['jobs'])}\n")
-        output.write(f"auto_heal_yaml={single}\n")
-        output.write(f"auto_heal_ref={single_ref}\n")
+        output.write(f"count={len(tasks)}\n")

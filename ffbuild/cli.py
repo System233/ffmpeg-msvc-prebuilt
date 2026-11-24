@@ -1,4 +1,4 @@
-"""Stable ffbuild CLI: all CI decisions live in Python, not YAML scripts."""
+"""Version, content identity and release orchestration around native vcpkg."""
 
 from __future__ import annotations
 
@@ -9,208 +9,251 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .versions import LICENSES, LINKAGES, ROOT, TRIPLETS, generate, versions
-
-
-def _choice_tuple(value: str, available: tuple[str, ...]) -> tuple[str, ...]:
-    if not value:
-        return available
-    choices = tuple(v.strip() for v in value.split(",") if v.strip())
-    if not choices or not set(choices).issubset(available):
-        raise ValueError(f"Expected comma-separated choices from {available}, got: {value}")
-    return choices
-
-
-def _add_plan_options(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--mode", choices=("all", "changed"), default="all")
-    p.add_argument("--event", action="store_true",
-                   help="Derive mode, version and refs from GITHUB_EVENT_PATH")
-    p.add_argument("--version", default="", help="One YAML version (or master)")
-    p.add_argument("--base", default="", help="Base Git ref for --mode changed")
-    p.add_argument("--head", default="", help="Head Git ref for --mode changed")
-    p.add_argument("--ref", default="", help="Pinned FFmpeg snapshot describe ref")
-    p.add_argument("--sha512", default="", help="Pinned FFmpeg source SHA512")
-    p.add_argument("--history", action="store_true", help="Include all supported historical versions")
-    p.add_argument("--force", action="store_true", help="Rebuild even when fingerprints match")
-    p.add_argument("--triplets", default="", help="Comma-separated target triplets")
-    p.add_argument("--licenses", default="", help="Comma-separated license variants")
-    p.add_argument("--linkages", default="", help="Comma-separated linkage variants")
-    p.add_argument("--state-dir", type=Path, default=None, help="Read data YAMLs locally")
-    p.add_argument("--no-fetch", action="store_true", help="Do not refresh origin/data")
-    p.add_argument("--output", type=Path, default=Path("ffbuild-plan.json"))
-    p.add_argument("--github-output", action="store_true")
-    p.add_argument("--shard-index", type=int, default=0)
-    p.add_argument("--shard-count", type=int, default=1)
+from .targets import DEFAULT_TARGETS, load_targets
+from .versions import GENERATED_PORTS, ROOT, TRIPLETS, config, generate, generate_all, has_source, versions
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ffbuild", description="FFmpeg MSVC build and release automation")
+    parser = argparse.ArgumentParser(prog="ffbuild", description="FFmpeg CI version and release manager")
     sub = parser.add_subparsers(dest="command", required=True)
-    _add_plan_options(sub.add_parser("plan", help="Compute dependency-aware build matrix"))
-    build = sub.add_parser("build", help="Compile, test and package all variants in a work unit")
-    build.add_argument("--plan-file", type=Path, default=Path("ffbuild-plan.json"))
-    source = build.add_mutually_exclusive_group(required=True)
-    source.add_argument("--job-id")
-    source.add_argument("--job-env", help="Environment variable containing planned job JSON")
-    build.add_argument("--vcpkg-root", type=Path, default=None)
-    build.add_argument("--cache-dir", type=Path, default=None)
-    build.add_argument("--output-dir", type=Path, default=Path("Release"))
-    build.add_argument("--no-bootstrap", action="store_true")
-    prepare = sub.add_parser("prepare", help="Optionally prewarm vcpkg dependency downloads/builds")
-    prepare.add_argument("--triplet", required=True, choices=TRIPLETS)
-    prepare.add_argument("--vcpkg-root", type=Path, default=None)
-    prepare.add_argument("--cache-dir", type=Path, default=None)
-    prepare.add_argument("--download-only", action="store_true")
-    submit = sub.add_parser("submit-dependencies", help="Submit vcpkg dependency graph")
-    submit.add_argument("--triplet", required=True, choices=TRIPLETS)
-    submit.add_argument("--vcpkg-root", type=Path, default=None)
-    publish = sub.add_parser("publish", help="Publish verified assets to GitHub and data branch")
+
+    scan = sub.add_parser("scan", help="Query native vcpkg ABI hashes without building")
+    scan.add_argument("--local", action="store_true", help="List local FFmpeg source configurations")
+    scan.add_argument("--upstream", action="store_true", help="Discover upstream releases")
+    scan.add_argument("--version", default="", help="One configured FFmpeg version, or master")
+    scan.add_argument("--history", action="store_true", help="Scan every source-backed release")
+    scan.add_argument("--event", action="store_true", help="Filter PR and main push scans to impacted versions")
+    scan.add_argument("--master-snapshot-file", type=Path, help="Pinned source metadata shared with port generation")
+    scan.add_argument("--describe", default="", help="Pinned master git describe")
+    scan.add_argument("--commit", default="", help="Pinned upstream master commit")
+    scan.add_argument("--sha512", default="", help="Pinned master SHA512")
+    scan.add_argument("--job-env", default="", help="Preflight one planned vcpkg job's ABI")
+    scan.add_argument("--generated-root", type=Path, default=GENERATED_PORTS)
+    scan.add_argument("--targets-file", type=Path, default=DEFAULT_TARGETS)
+    scan.add_argument("--vcpkg-bin", type=Path)
+    scan.add_argument("--output", type=Path, default=Path("ffbuild-abi.json"))
+
+    generate_parser = sub.add_parser("generate", help="Generate one native vcpkg overlay port")
+    generate_parser.add_argument("version", nargs="?", help="FFmpeg version YAML or master")
+    generate_parser.add_argument("--all", action="store_true", help="Generate every source-backed release Port")
+    generate_parser.add_argument("--include-master", action="store_true",
+                                 help="Also generate an upstream-pinned master Port")
+    generate_parser.add_argument("--master-snapshot-file", type=Path,
+                                 help="Write the pinned master source metadata")
+    generate_parser.add_argument("--describe", help="Pinned upstream master describe version")
+    generate_parser.add_argument("--commit", help="Pinned 40-character upstream commit")
+    generate_parser.add_argument("--sha512", help="Pinned source tarball SHA512")
+    generate_parser.add_argument("--output", type=Path, default=GENERATED_PORTS)
+
+    prepare_parser = sub.add_parser("prepare", help="Prebuild the shared vcpkg dependency Seed")
+    prepare_parser.add_argument("--triplet", required=True, choices=TRIPLETS)
+    prepare_parser.add_argument("--generated-root", type=Path, default=GENERATED_PORTS)
+    prepare_parser.add_argument("--vcpkg-bin", type=Path)
+    prepare_parser.add_argument("--install-root", type=Path)
+    prepare_parser.add_argument("--only-downloads", action="store_true")
+
+    plan = sub.add_parser("plan", help="Schedule unpublished native vcpkg ABIs from a scan")
+    plan.add_argument("--event", action="store_true", help="Read GitHub event metadata")
+    plan.add_argument("--force", action="store_true", help="Schedule even when data contains this ABI")
+    plan.add_argument("--abi-file", required=True, type=Path,
+                      help="JSON produced by native vcpkg ABI scan")
+    plan.add_argument("--state-dir", type=Path, default=None)
+    plan.add_argument("--output", type=Path, default=Path("ffbuild-plan.json"))
+    plan.add_argument("--github-output", action="store_true")
+    plan.add_argument("--shard-index", type=int, default=None)
+    plan.add_argument("--shard-count", type=int, default=None)
+
+    package = sub.add_parser("package", help="Verify and package an already compiled vcpkg port")
+    identity = package.add_mutually_exclusive_group(required=True)
+    identity.add_argument("--job-env", help="Environment variable containing one planned job JSON")
+    identity.add_argument("--job-file", type=Path, help="JSON file containing one planned job")
+    package.add_argument("--port-dir", required=True, type=Path,
+                         help="Actual vcpkg packages/<versioned-port>_<triplet> directory")
+    package.add_argument("--output-dir", type=Path, default=Path("Release"))
+
+    publish = sub.add_parser("publish", help="Verify release assets and update data branch")
     publish.add_argument("--artifacts-dir", type=Path, default=Path("artifacts"))
     publish.add_argument("--data-dir", type=Path, default=Path("data"))
     publish.add_argument("--plan-file", type=Path)
     publish.add_argument("--dry-run", action="store_true")
-    sub.add_parser("master-metadata", help="Resolve upstream FFmpeg master and SHA512")
-    updates = sub.add_parser("updates", help="Discover upstream releases and optionally create PRs")
-    updates.add_argument("--version", default="", help="Only process one specified upstream version")
-    updates.add_argument("--sha512", default="", help="Precomputed source checksum (single version)")
-    updates.add_argument("--apply", action="store_true", help="Create version branches and PRs")
-    validate = sub.add_parser("validate", help="Validate every configuration and optional unit tests")
-    validate.add_argument("--tests", action="store_true")
-    sub.add_parser("list", help="List configured FFmpeg versions")
+
+    sub.add_parser("validate", help="Check configuration, feature and generated port validity")
+    autoheal = sub.add_parser("autoheal", help="Guarded FFmpeg CI Auto-Heal")
+    autoheal.add_argument("args", nargs=argparse.REMAINDER)
     return parser
 
 
-def _runtime_dir() -> Path:
-    return Path(os.environ.get("RUNNER_TEMP", str(ROOT / "_work"))) / "ffbuild"
+def _plan(args: argparse.Namespace) -> None:
+    from .events import event_options
+    from .planner import plan_native, write_github_output
+    from .state import PublishedState
+
+    options = event_options() if args.event else {}
+    scan = json.loads(args.abi_file.read_text(encoding="utf-8"))
+    result = plan_native(scan, state=PublishedState(directory=args.state_dir),
+                         force=args.force or options.get("force", False))
+    shard_count = args.shard_count if args.shard_count is not None else options.get("shard_count", 1)
+    shard_index = args.shard_index if args.shard_index is not None else options.get("shard_index", 0)
+    if shard_count <= 0 or shard_index < 0 or shard_index >= shard_count:
+        raise ValueError("Shard count must be positive and index must be in range")
+    if shard_count > 1:
+        result["jobs"] = [job for i, job in enumerate(result["jobs"])
+                          if i % shard_count == shard_index]
+        result["matrix"] = result["jobs"]
+    if args.github_output and len(result["jobs"]) > 512:
+        raise ValueError("More than 512 tasks require additional matrix slices")
+    if result["blocked"]:
+        raise ValueError(f"Unsupported FFmpeg target combinations: {len(result['blocked'])}; "
+                         "fix feature/license policy instead of silently skipping builds")
+    if args.event and options.get("mode") == "changed" and \
+       os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and not result["jobs"]:
+        raise ValueError("PR MSVC matrix is empty; cannot approve a version repair")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"Planned {len(result['versions'])} versions, {len(result['jobs'])} work units",
+          file=sys.stderr)
+    for problem in result["blocked"]:
+        print(f"BLOCKED {problem['yaml']} {problem['package']}:{problem['triplet']}: "
+              + "; ".join(problem["errors"]), file=sys.stderr)
+    if result["blocked"]:
+        print("Unsupported requested feature combinations were excluded", file=sys.stderr)
+    if args.github_output:
+        location = os.environ.get("GITHUB_OUTPUT")
+        if not location:
+            raise RuntimeError("GITHUB_OUTPUT is required")
+        write_github_output(result, Path(location))
+    else:
+        print(json.dumps(result["jobs"]))
+
+
+def _validate() -> None:
+    from .spec import read_spec, resolve_features
+
+    with tempfile.TemporaryDirectory(prefix="ffbuild-validate-") as temporary:
+        count = 0
+        templates = 0
+        for name in versions():
+            configuration, _ = read_spec(name)
+            resolve_features(configuration, name)
+            if has_source(name):
+                generate(name, output=Path(temporary))
+                count += 1
+            else:
+                templates += 1
+    print(f"Validated {count} source-backed FFmpeg ports and {templates} YAML-only templates")
 
 
 def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "autoheal":
+        from .autoheal.cli import main as autoheal_main
+        autoheal_main(argv[1:])
+        return
     args = build_parser().parse_args(argv)
-    if args.command == "list":
-        print("\n".join(versions()))
-    elif args.command == "plan":
-        from .planner import plan, write_github_output
-        from .state import PublishedState
-
-        include_master = False
-        if args.event:
-            from .events import event_options
-            options = event_options()
-            args.mode = options["mode"]
-            args.base = options["base"]
-            args.head = options["head"]
-            args.force = options["force"]
-            args.history = options["history"]
-            args.shard_count = options["shard_count"]
-            args.shard_index = options["shard_index"]
-            args.version = args.version or options["version"]
-            args.ref = args.ref or options["ref"]
-            args.sha512 = args.sha512 or options["sha512"]
-            include_master = options["include_master"]
-        state = PublishedState(directory=args.state_dir)
-        if not args.no_fetch and args.state_dir is None and not args.force:
-            state.refresh()
-        result = plan(
-            mode=args.mode, version=args.version, base=args.base, head=args.head,
-            ref=args.ref, sha512=args.sha512, history=args.history,
-            triplets=_choice_tuple(args.triplets, TRIPLETS),
-            licenses=_choice_tuple(args.licenses, LICENSES),
-            linkages=_choice_tuple(args.linkages, LINKAGES),
-            state=state, force=args.force, include_master=include_master,
-        )
-        if args.shard_count <= 0 or not 0 <= args.shard_index < args.shard_count:
-            raise ValueError("Shard count must be positive and index must be in range")
-        if args.shard_count > 1:
-            result["jobs"] = [
-                job for i, job in enumerate(result["jobs"])
-                if i % args.shard_count == args.shard_index
-            ]
-            result["matrix"] = result["jobs"]
-        if len(result["jobs"]) > 256 and args.github_output:
-            raise ValueError("GitHub matrix supports at most 256 jobs; set --shard-count")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(result, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        print(f"Planned {len(result['versions'])} versions, {len(result['jobs'])} work units",
-              file=sys.stderr)
-        if args.github_output:
-            output = os.environ.get("GITHUB_OUTPUT")
-            if not output:
-                raise RuntimeError("GITHUB_OUTPUT is required")
-            write_github_output(result, Path(output))
+    if args.command == "scan":
+        if args.local:
+            print("\n".join(versions()))
+        elif args.upstream:
+            from .updates import discover
+            print(json.dumps(discover()))
         else:
-            print(json.dumps(result["matrix"]))
-    elif args.command == "build":
-        from .builder import build_job
+            from .native_abi import build_requests, scan_native_abis, verify_job_abi
 
-        if args.job_env:
-            raw = os.environ.get(args.job_env)
-            if not raw:
-                raise ValueError(f"Missing build job environment variable {args.job_env!r}")
-            job = json.loads(raw)
+            if args.job_env:
+                raw = os.environ.get(args.job_env, "")
+                if not raw:
+                    raise ValueError(f"Missing planned job environment variable {args.job_env}")
+                job = json.loads(raw)
+                print(verify_job_abi(job, overlay=args.generated_root, binary=args.vcpkg_bin))
+            else:
+                snapshot = None
+                if args.version == "master" and any((args.describe, args.commit, args.sha512)):
+                    if not all((args.describe, args.commit, args.sha512)):
+                        raise ValueError("Master requires --describe, --commit and --sha512 together")
+                    snapshot = {"ref": args.describe, "commit": args.commit,
+                                "sha512": args.sha512}
+                selected_versions = None
+                if args.event and os.environ.get("GITHUB_EVENT_NAME") in ("pull_request", "push") and not args.version:
+                    from .events import event_options
+                    from .planner import changed_paths, impacted_versions
+                    options = event_options()
+                    changes = changed_paths(options["base"], options["head"])
+                    candidates = [v for v in versions() if has_source(v)]
+                    selected_versions = impacted_versions(changes, candidates)
+                    if impacted_versions(changes, ["master"]):
+                        selected_versions.append("master")
+                    if not selected_versions and os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+                        raise ValueError("PR changed no buildable FFmpeg versions; refusing empty MSVC coverage")
+                if args.master_snapshot_file and args.master_snapshot_file.is_file():
+                    pinned = json.loads(args.master_snapshot_file.read_text(encoding="utf-8"))
+                    if snapshot is not None and pinned != snapshot:
+                        raise ValueError("Master snapshot disagrees with explicit build inputs")
+                    snapshot = pinned
+                requests, blocked = build_requests(version=args.version, history=args.history,
+                                                   targets=load_targets(args.targets_file),
+                                                   snapshot=snapshot,
+                                                   selected_versions=selected_versions)
+                jobs = scan_native_abis(requests, overlay=args.generated_root,
+                                        binary=args.vcpkg_bin)
+                result = {"schema": 3, "jobs": jobs, "blocked": blocked}
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+                print(f"Native vcpkg ABI scan: {len(jobs)} variants, "
+                      f"{len(blocked)} unsupported variants")
+    elif args.command == "generate":
+        if args.all:
+            if args.version:
+                raise ValueError("Specify either a version or --all")
+            snapshot = None
+            if args.include_master:
+                if any((args.describe, args.commit, args.sha512)):
+                    if not all((args.describe, args.commit, args.sha512)):
+                        raise ValueError("Master requires --describe, --commit and --sha512")
+                    snapshot = {"ref": args.describe, "commit": args.commit,
+                                "sha512": args.sha512}
+                else:
+                    from .master import master_metadata
+                    snapshot = master_metadata()
+            ports = generate_all(output=args.output, master=snapshot)
+            if args.master_snapshot_file and snapshot is not None:
+                args.master_snapshot_file.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+            print(f"Generated {len(ports)} version-qualified FFmpeg Ports "
+                  f"and corresponding tester Ports")
         else:
-            data = json.loads(args.plan_file.read_text(encoding="utf-8"))
-            selected = [job for job in data["jobs"] if job["id"] == args.job_id]
-            if len(selected) != 1:
-                raise ValueError(f"Expected exactly one job with id={args.job_id!r}")
-            job = selected[0]
-        runtime = _runtime_dir()
-        outputs = build_job(
-            job,
-            vcpkg_root=args.vcpkg_root or runtime / "vcpkg",
-            cache_dir=args.cache_dir or runtime / "vcpkg-cache",
-            output_dir=args.output_dir,
-            bootstrap_tool=not args.no_bootstrap,
-        )
-        print(f"Packaged {len(outputs)} verified variants")
+            if not args.version:
+                raise ValueError("A version or --all is required")
+            print(generate(args.version, source_version=args.describe, ref=args.commit,
+                           sha512=args.sha512, output=args.output))
     elif args.command == "prepare":
-        from .builder import prepare
-        runtime = _runtime_dir()
-        prepare(
-            triplet=args.triplet,
-            vcpkg_root=args.vcpkg_root or runtime / "vcpkg",
-            cache_dir=args.cache_dir or runtime / "vcpkg-cache",
-            download_only=args.download_only,
-        )
-    elif args.command == "submit-dependencies":
-        from .builder import submit_dependencies
-        submit_dependencies(
-            triplet=args.triplet,
-            vcpkg_root=args.vcpkg_root or _runtime_dir() / "vcpkg",
-        )
+        from .seed import prepare_seed
+        completed = prepare_seed(triplet=args.triplet, overlay=args.generated_root,
+                                 binary=args.vcpkg_bin, install_root=args.install_root,
+                                 only_downloads=args.only_downloads)
+        print(f"Prepared {len(completed)} shared dependency profiles for {args.triplet}")
+    elif args.command == "plan":
+        _plan(args)
+    elif args.command == "package":
+        from .package import package_job
+        if args.job_env:
+            content = os.environ.get(args.job_env)
+            if not content:
+                raise ValueError(f"Missing build job environment variable: {args.job_env}")
+            job = json.loads(content)
+        else:
+            job = json.loads(args.job_file.read_text(encoding="utf-8"))
+        metadata = package_job(args.port_dir, job, args.output_dir)
+        print(metadata)
     elif args.command == "publish":
-        from .legacy_release import publish
-        for tag in publish(
-            artifacts_dir=args.artifacts_dir, data_dir=args.data_dir,
-            dry_run=args.dry_run, expected_plan=args.plan_file,
-        ):
+        from .publication import publish
+        for tag in publish(artifacts_dir=args.artifacts_dir,
+                           data_dir=args.data_dir, dry_run=args.dry_run,
+                           expected_plan=args.plan_file):
             print(f"Published/validated: {tag}")
-    elif args.command == "master-metadata":
-        from .master import master_metadata, write_github_output
-        result = master_metadata()
-        if os.environ.get("GITHUB_OUTPUT"):
-            write_github_output(result, Path(os.environ["GITHUB_OUTPUT"]))
-        print(json.dumps(result))
-    elif args.command == "updates":
-        from .updates import discover, apply_versions
-        versions_found = [args.version] if args.version else discover()
-        print(json.dumps(versions_found), flush=True)
-        if args.apply:
-            apply_versions(versions_found, sha512=args.sha512)
     elif args.command == "validate":
-        # All YAML generations use the same ffport API as actual builds.
-        with tempfile.TemporaryDirectory(prefix="ffbuild-validate-") as tmp:
-            for name in versions():
-                generate(name, output=Path(tmp), sha512="0" * 128)
-            print(f"Validated {len(versions())} FFmpeg configurations")
-        if args.tests:
-            import unittest
-            suite = unittest.TestLoader().discover(str(ROOT / "tests"))
-            result = unittest.TextTestRunner(verbosity=1).run(suite)
-            if not result.wasSuccessful():
-                raise SystemExit(1)
+        _validate()
+    elif args.command == "autoheal":
+        from .autoheal.cli import main as autoheal_main
+        autoheal_main(args.args)
 
 
 if __name__ == "__main__":

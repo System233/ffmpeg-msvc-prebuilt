@@ -30,8 +30,21 @@ properties:
     type: string
     pattern: "^ffmpeg-"
     description: >
-      Unique identifier:
-      ffmpeg-{version}-r{revision}-{triplet}-{linkage}-{license}
+      Native records suffix the legacy variant ID with
+      -a{12-digit native vcpkg ABI}; historical identifiers remain valid.
+
+  abi_hash:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    description: Native vcpkg ABI from the resolved install plan
+
+  port:
+    type: string
+    pattern: '^ffmpeg-'
+
+  expected_variants:
+    type: integer
+    minimum: 0
 
   version:
     type: string
@@ -40,6 +53,26 @@ properties:
   revision:
     type: integer
     description: vcpkg port revision number
+
+  build_hash:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    description: Content hash of the source, patches, and dependency build recipe
+
+  variant_hash:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    description: Build recipe hash, vcpkg Triplet and canonical Feature identity
+
+  feature_hash:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+    description: SHA256 of the requested vcpkg Package Spec and resolved Feature closure
+
+  package_spec:
+    type: string
+    pattern: '^ffmpeg(?:-[a-z0-9-]+)?\['
+    description: Version-qualified native vcpkg Package Spec
 
   arch:
     type: string

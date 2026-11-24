@@ -16,36 +16,68 @@ from ffbuild.events import event_options
 from ffbuild.fingerprint import overlay_port_names
 from ffbuild.legacy_release import publish
 from ffbuild.planner import impacted_versions, plan, write_github_output
+from ffbuild.targets import Target
 from ffbuild.versions import ROOT, dependency_names, revision, spec_files
 
 
 class EmptyState:
-    def variant_exists(self, *args):
+    def target_exists(self, *args):
         return False
 
 
 class FullState:
-    def variant_exists(self, *args):
+    def target_exists(self, *args):
         return True
 
 
+LGPL_STATIC = (Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static")),)
+
+
 class PlannerTests(unittest.TestCase):
+    def test_custom_vcpkg_targets_are_not_collapsed_by_license(self):
+        from ffbuild.cli import main
+        from ffbuild.native_abi import build_requests
+        from ffbuild.identity import variant_name
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            targets = (Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static")),
+                       Target("ffmpeg[base,static]", "x64-windows", ("base", "static")))
+            requests, blocked = build_requests(version="8.1.3", targets=targets)
+            self.assertEqual([], blocked)
+            for number, request in enumerate(requests):
+                request["abi_hash"] = str(number + 1) * 64
+                request["id"] = variant_name(request["version"], request["revision"],
+                                             request["triplet"], request["linkage"],
+                                             request["license"], abi_hash=request["abi_hash"])
+            abi_file = root / "scan.json"
+            abi_file.write_text(json.dumps({"schema": 3, "jobs": requests}), encoding="utf-8")
+            output = root / "plan.json"
+            main(["plan", "--abi-file", str(abi_file),
+                  "--state-dir", str(root / "data"), "--output", str(output)])
+            jobs = json.loads(output.read_text(encoding="utf-8"))["jobs"]
+            self.assertEqual(2, len(jobs))
+            self.assertEqual({("lgpl", "static")},
+                             {(j["license"], j["linkage"]) for j in jobs})
+            self.assertEqual(2, len({j["abi_hash"] for j in jobs}))
+            self.assertEqual(2, len({j["id"] for j in jobs}))
+
     def test_existing_revision_kept(self):
         result = plan(
-            version="8.1.3", triplets=("x64-windows",),
-            licenses=("lgpl",), linkages=("static",),
+            version="8.1.3", targets=LGPL_STATIC,
             state=EmptyState(),
         )
         self.assertEqual(1, len(result["jobs"]))
         job = result["jobs"][0]
         self.assertEqual(revision("8.1.3"), job["revision"])
-        self.assertEqual("ffmpeg-8.1.3_x64-windows-static-lgpl", job["id"])
-        self.assertEqual([{"license": "lgpl", "linkage": "static"}], job["targets"])
+        self.assertEqual(f"ffmpeg-8.1.3-h{job['build_hash'][:12]}_x64-windows-static-lgpl-f{job['feature_hash'][:12]}",
+                         job["id"])
+        self.assertEqual("ffmpeg[all-lgpl,static]", job["package"])
+        self.assertIn("static", job["features"])
 
     def test_existing_variant_is_skipped_unless_forced(self):
         opts = dict(
-            version="8.1.3", triplets=("x64-windows",),
-            licenses=("lgpl",), linkages=("static",), state=FullState(),
+            version="8.1.3", targets=LGPL_STATIC, state=FullState(),
         )
         self.assertEqual([], plan(**opts)["jobs"])
         self.assertEqual(1, len(plan(force=True, **opts)["jobs"]))
@@ -54,7 +86,7 @@ class PlannerTests(unittest.TestCase):
         result = plan(version="8.1.3", state=EmptyState())
         self.assertEqual(16, len(result["jobs"]))
         self.assertEqual(16, len({job["id"] for job in result["jobs"]}))
-        self.assertTrue(all(len(job["targets"]) == 1 for job in result["jobs"]))
+        self.assertTrue(all(job["package"].startswith("ffmpeg[") for job in result["jobs"]))
 
     def test_changed_lame_port_impacts_all_consumer_versions(self):
         candidates = ["3.4.14", "8.1.3", "9.1"]
@@ -89,13 +121,13 @@ class PlannerTests(unittest.TestCase):
         with mock.patch("ffbuild.planner.changed_paths", return_value={"ffmpeg/master.yaml"}):
             with mock.patch(
                 "ffbuild.master.master_metadata",
-                return_value={"ref": "n9.1-12-gabcdef0", "sha512": "a" * 128},
+                return_value={"ref": "n9.1-12-gabcdef0", "sha512": "a" * 128,
+                              "commit": "a" * 40},
             ):
                 result = plan(
                     mode="changed", base="HEAD~1", head="HEAD",
                     include_master=True, state=EmptyState(),
-                    triplets=("x64-windows",), licenses=("lgpl",),
-                    linkages=("static",), force=True,
+                    targets=LGPL_STATIC, force=True,
                 )
         matches = [x for x in result["jobs"] if x["yaml"] == "master"]
         self.assertEqual(1, len(matches))
@@ -105,18 +137,36 @@ class PlannerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "output"
             result = plan(
-                version="8.1.3", triplets=("x64-windows",),
-                licenses=("lgpl",), linkages=("static",), state=EmptyState(),
+                version="8.1.3", targets=LGPL_STATIC, state=EmptyState(),
             )
             write_github_output(result, dest)
             lines = dest.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(5, len(lines))
+            self.assertEqual(4, len(lines))
             self.assertEqual(result["jobs"], json.loads(lines[0][len("matrix="):]))
-            self.assertEqual("triplets=[\"x64-windows\"]", lines[1])
-            self.assertEqual("auto_heal_yaml=8.1.3", lines[3])
+            self.assertEqual("matrix_extra=[]", lines[1])
+            self.assertEqual("triplets=[\"x64-windows\"]", lines[2])
+            self.assertFalse(any(line.startswith("auto_heal_") for line in lines))
 
 
 class EventTests(unittest.TestCase):
+    def test_explicit_force_overrides_event_defaults(self):
+        from ffbuild.cli import main
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            event = root / "event.json"
+            event.write_text(json.dumps({"inputs": {"version": "8.1.3"}}), encoding="utf-8")
+            scan_file = root / "scan.json"
+            scan_file.write_text('{"schema":3,"jobs":[]}', encoding="utf-8")
+            data = {"jobs": [], "matrix": [], "blocked": [], "versions": []}
+            with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch",
+                                           "GITHUB_EVENT_PATH": str(event)}):
+                with mock.patch("ffbuild.planner.plan_native", return_value=data) as planned:
+                    main(["plan", "--event", "--force", "--abi-file", str(scan_file),
+                          "--output", str(root / "plan.json")])
+            self.assertTrue(planned.call_args.kwargs["force"])
+            self.assertEqual(3, planned.call_args.args[0]["schema"])
+
     def test_pr_is_changed_and_forced(self):
         with tempfile.TemporaryDirectory() as tmp:
             event = Path(tmp) / "event.json"
@@ -153,14 +203,14 @@ class UpdateTests(unittest.TestCase):
 
         with mock.patch.dict(os.environ, {"GH_TOKEN": "mock-token"}):
             with mock.patch.object(updates.subprocess, "run") as execute:
-                with mock.patch.object(updates.create_version_pr, "main") as create:
-                    execute.side_effect = [
-                        mock.Mock(returncode=0),  # gh auth setup-git
-                        mock.Mock(returncode=2, stdout=""),  # absent upstream tag
-                    ]
-                    with self.assertRaisesRegex(ValueError, "Upstream FFmpeg tag"):
-                        updates.apply_versions(["999.999"])
-                    create.assert_not_called()
+                execute.side_effect = [
+                    mock.Mock(returncode=0),  # gh auth setup-git
+                    mock.Mock(returncode=0, stdout="main\n"),  # current branch
+                    mock.Mock(returncode=2, stdout=""),  # absent upstream tag
+                ]
+                with self.assertRaisesRegex(ValueError, "Upstream FFmpeg tag"):
+                    updates.apply_versions(["999.999"])
+                self.assertEqual(3, execute.call_count)
 
 
 class PublishCompatibilityTests(unittest.TestCase):
@@ -223,13 +273,13 @@ class PublishCompatibilityTests(unittest.TestCase):
             def capture(*, tag, artifacts_dir, **kwargs):
                 uploaded[tag] = sorted(p.name for p in artifacts_dir.glob("*.zip"))
 
-            db, manager, pusher = mock.Mock(), mock.Mock(), mock.Mock()
-            manager.create_or_upload.side_effect = capture
-            pusher.has_staged_changes.return_value = False
+            def capture_native(tag, paths, **kwargs):
+                uploaded[tag] = sorted(p.name for p in paths)
             with mock.patch.dict(os.environ, {"GH_TOKEN": "mock-token"}):
-                with mock.patch("ffbuild.legacy_release._legacy_modules",
-                                return_value=(db, manager, pusher)):
-                    publish(artifacts_dir=artifacts, data_dir=checkout)
+                with mock.patch("ffbuild.publication._release_assets", side_effect=capture_native):
+                    with mock.patch("ffbuild.publication.register_variant"):
+                        with mock.patch("ffbuild.publication._push_data"):
+                            publish(artifacts_dir=artifacts, data_dir=checkout)
             self.assertEqual(
                 ["ffmpeg-8.1.3_x64-windows-static-lgpl.zip"],
                 uploaded["ffmpeg-8.1.3"],
@@ -241,19 +291,27 @@ class PublishCompatibilityTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def test_reusable_build_is_only_one_build_plan(self):
+    def test_reusable_build_restores_shared_dependency_prebuild(self):
         workflow = yaml.load(
             (ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8"),
             Loader=yaml.BaseLoader,
         )
         self.assertIn("workflow_call", workflow["on"])
         self.assertEqual(
-            {"plan", "prepare", "build", "publish", "trigger-auto-heal"},
+            {"plan", "download", "prepare", "build", "build-extra", "publish"},
             set(workflow["jobs"]),
         )
-        self.assertIn("ffbuild plan", workflow["jobs"]["plan"]["steps"][2]["run"])
+        self.assertTrue(any("python -m ffbuild @arguments" in step.get("run", "")
+                            and "'--abi-file'" in step.get("run", "")
+                            for step in workflow["jobs"]["plan"]["steps"]))
+        self.assertTrue(any("ffbuild prepare" in step.get("run", "")
+                            for step in workflow["jobs"]["prepare"]["steps"]))
+        self.assertTrue(any("--only-downloads" in step.get("run", "")
+                            for step in workflow["jobs"]["download"]["steps"]))
+        self.assertEqual(["plan", "prepare"], workflow["jobs"]["build"]["needs"])
         build_steps = workflow["jobs"]["build"]["steps"]
-        self.assertTrue(any("ffbuild build" in x.get("run", "") for x in build_steps))
+        self.assertTrue(any("ffvcpkg install" in x.get("run", "") for x in build_steps))
+        self.assertTrue(any("ffbuild package" in x.get("run", "") for x in build_steps))
 
     def test_main_build_owns_pr_trigger(self):
         workflow = yaml.load(
@@ -264,60 +322,42 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse((ROOT / ".github/workflows/pr-build.yml").exists())
 
 
-class BuilderTests(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "win32", "MSVC build command test needs Windows")
-    def test_build_uses_vcpkg_with_the_selected_linkage(self):
-        from ffbuild import builder
-
-        jobs = plan(
-            version="8.1.3", triplets=("x64-windows",),
-            licenses=("lgpl",), linkages=("static",), state=EmptyState(),
-        )["jobs"]
-        job = jobs[0]
-        scripts = str(ROOT / "scripts")
-        if scripts not in sys.path:
-            sys.path.insert(0, scripts)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            vcpkg_root = root / "vcpkg"
-            vcpkg_root.mkdir()
-            (vcpkg_root / "vcpkg.exe").write_bytes(b"stub")
-            output = root / "release"
-
-            def fake_package(argv):
-                metadata = output / f"{job['id']}.var.yaml"
-                metadata.write_text(
-                    yaml.safe_dump({"variant_id": job["id"]}), encoding="utf-8",
-                )
-
-            with mock.patch.object(builder, "generate") as gen:
-                with mock.patch.object(builder, "_run") as execute:
-                    with mock.patch("scripts.package_release.main", side_effect=fake_package):
-                        result = builder.build_job(
-                            job, vcpkg_root=vcpkg_root,
-                            cache_dir=root / "binary-cache",
-                            output_dir=output, bootstrap_tool=False,
-                        )
-            self.assertEqual(1, len(result))
-            gen.assert_called_once()
-            args = execute.call_args.args[0]
-            self.assertIn("ffmpeg[all-lgpl,static]", args)
-            self.assertIn("ffmpeg-tester", args)
-            self.assertIn("--triplet=x64-windows", args)
-            env = execute.call_args.kwargs["env"]
-            self.assertIn("readwrite", env["VCPKG_BINARY_SOURCES"])
-
-    def test_build_cli_accepts_matrix_job_from_environment(self):
+class PackageCliTests(unittest.TestCase):
+    def test_package_cli_accepts_matrix_job_from_environment(self):
         from ffbuild.cli import main
 
         job = plan(
-            version="8.1.3", triplets=("x64-windows",),
-            licenses=("lgpl",), linkages=("static",), state=EmptyState(),
+            version="8.1.3", targets=LGPL_STATIC, state=EmptyState(),
         )["jobs"][0]
-        with mock.patch.dict(os.environ, {"FFBUILD_JOB": json.dumps(job)}):
-            with mock.patch("ffbuild.builder.build_job", return_value=[]) as run:
-                main(["build", "--job-env", "FFBUILD_JOB"])
-        self.assertEqual(job, run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.dict(os.environ, {"FFBUILD_JOB": json.dumps(job)}):
+                with mock.patch("ffbuild.package.package_job", return_value=Path(temp) / "record.yaml") as run:
+                    main(["package", "--job-env", "FFBUILD_JOB", "--port-dir", temp])
+        self.assertEqual(job, run.call_args.args[1])
+
+    def test_public_cli_has_no_build_or_license_variants(self):
+        from ffbuild.cli import build_parser
+
+        commands = next(action for action in build_parser()._actions if action.dest == "command")
+        self.assertEqual({"scan", "generate", "prepare", "plan", "package", "publish", "validate", "autoheal"},
+                         set(commands.choices))
+        plan_options = commands.choices["plan"].format_help()
+        self.assertNotIn("--licenses", plan_options)
+        self.assertNotIn("--linkages", plan_options)
+
+    def test_package_cli_rejects_unplanned_feature_changes(self):
+        from ffbuild.package import package_job
+
+        job = plan(version="8.1.3", targets=LGPL_STATIC, state=EmptyState())["jobs"][0]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "CONTROL").write_text(
+                "Package: ffmpeg\nVersion: 8.1.3\nPort-Version: 0\n\n" +
+                "\n\n".join(f"Feature: {name}" for name in job["features"] + ["unplanned"]),
+                encoding="utf-8")
+            (root / "BUILD_INFO").write_text("LibraryLinkage: static\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Feature closure differs"):
+                package_job(root, job, root)
 
 
 if __name__ == "__main__":

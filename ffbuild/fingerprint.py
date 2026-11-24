@@ -15,6 +15,10 @@ def _add_file(h: Any, path: Path) -> None:
     h.update(len(relative.encode("utf-8")).to_bytes(4, "big"))
     h.update(relative.encode("utf-8"))
     contents = path.read_bytes()
+    # A Windows Git checkout can contain CRLF while Linux CI uses LF.
+    # Normalize text representations for one content-addressed release tag.
+    if b"\0" not in contents:
+        contents = contents.replace(b"\r\n", b"\n")
     h.update(len(contents).to_bytes(8, "big"))
     h.update(contents)
 
@@ -51,36 +55,57 @@ def overlay_port_names(names: set[str]) -> set[str]:
     return {path.relative_to(ROOT).parts[1] for path in _overlay_closure(names)}
 
 
-def fingerprint(name: str, triplet: str, license_: str, linkage: str,
-                *, ref: str = "", sha512: str = "") -> str:
-    """Hash all inputs that can change this variant's compiled output.
+def recipe_fingerprint(name: str, *, ref: str = "", sha512: str = "") -> str:
+    """Stable source+dependency recipe identity shared by all build variants.
 
-    The port's release revision is deliberately excluded; revision is an output
-    identifier, not a build input. Platform-conditional dependency files are
-    included conservatively to prevent false cache hits.
+    A release hash conservatively includes every architecture and license
+    configuration to keep the release version consistent across its variants.
+    It does not depend on release publication code, CI workflows or timestamps.
     """
     spec = source_config(name, ref, sha512)
     spec.pop("revision", None)
     h = hashlib.sha256()
-    h.update(b"ffbuild-input-v1\0")
-    payload = {"config": spec, "triplet": triplet, "license": license_, "linkage": linkage}
-    h.update(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-
+    h.update(b"ffbuild-recipe-v3\0vcpkg-2026.06.01\0")
+    h.update(json.dumps({"yaml": name, "config": spec},
+                        sort_keys=True, separators=(",", ":"),
+                        ensure_ascii=False).encode("utf-8"))
     paths: set[Path] = set()
     for patch in spec.get("patches", []):
-        p = ROOT / "patches" / patch
-        if not p.is_file():
-            raise FileNotFoundError(f"Referenced patch is missing: {patch}")
-        paths.add(p)
-    paths.update(_overlay_closure(dependency_names(name, license_)))
-    paths.update(p for p in (ROOT / "scripts" / "cmake").rglob("*") if p.is_file())
-    paths.update(p for p in (ROOT / "scripts" / "ffport").rglob("*.py") if p.is_file())
-    paths.update(p for p in (ROOT / "ffbuild").rglob("*.py") if p.is_file())
-    for file in ("vcpkg-configuration.json", "requirements.txt", f"triplets/{triplet}.cmake"):
-        p = ROOT / file
-        if not p.is_file():
-            raise FileNotFoundError(f"Missing build input: {file}")
-        paths.add(p)
-    for p in sorted(paths):
-        _add_file(h, p)
+        file = ROOT / "patches" / patch
+        if not file.is_file():
+            raise FileNotFoundError(f"Missing FFmpeg patch: {patch}")
+        paths.add(file)
+    for mode in ("lgpl", "gpl", "nonfree"):
+        paths.update(_overlay_closure(dependency_names(name, mode)))
+    for directory in ("ports/ffmpeg-tester", "ffvcpkg"):
+        paths.update(file for file in (ROOT / directory).rglob("*") if file.is_file()
+                     and "__pycache__" not in file.parts)
+    paths.update((ROOT / "triplets").glob("*.cmake"))
+    for name_ in ("vcpkg-configuration.json", "requirements.txt",
+                  "ffbuild/spec.py", "ffbuild/port.py", "ffbuild/identity.py",
+                  "ffbuild/versions.py", "ffbuild/builder.py"):
+        paths.add(ROOT / name_)
+    for file in sorted(paths):
+        _add_file(h, file)
     return h.hexdigest()
+
+
+def variant_fingerprint(recipe_hash: str, triplet: str, feature_hash: str) -> str:
+    """One *selected vcpkg feature closure*, not a license/linkage label."""
+    if len(feature_hash) != 64 or any(c not in "0123456789abcdef" for c in feature_hash):
+        raise ValueError("The canonical feature SHA256 is required")
+    payload = json.dumps([recipe_hash, triplet, feature_hash], separators=(",", ":"))
+    return hashlib.sha256(b"ffbuild-variant-v3\0" + payload.encode()).hexdigest()
+
+
+def fingerprint(name: str, triplet: str, package: str,
+                *, ref: str = "", sha512: str = "") -> str:
+    """Compute the configured vcpkg package identity for a source version."""
+    from .targets import Target, compile_target, parse_package
+    from .versions import config
+
+    canonical, roots = parse_package(package)
+    resolved = compile_target(config(name), name if name != "master" else "9.1",
+                              Target(canonical, triplet, roots))
+    return variant_fingerprint(recipe_fingerprint(name, ref=ref, sha512=sha512),
+                               triplet, resolved["feature_hash"])

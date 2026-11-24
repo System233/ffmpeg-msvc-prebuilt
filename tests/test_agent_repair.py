@@ -77,6 +77,9 @@ class TestAgentRepair(unittest.TestCase):
         os.environ["OPENCODE_API_KEY"] = "sk-test"
         os.environ.pop("GIT_AUTHOR_NAME", None)
         os.environ.pop("GIT_AUTHOR_EMAIL", None)
+        self._target_patcher = mock.patch("agent_repair._require_target_yaml", return_value="8.1.1")
+        self._target_patcher.start()
+        self.addCleanup(self._target_patcher.stop)
 
     def tearDown(self):
         os.environ.clear()

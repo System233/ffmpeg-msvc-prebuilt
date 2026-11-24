@@ -30,4 +30,4 @@ jobs:
           GIT_AUTHOR_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: ffmpeg-dev[bot]
           GIT_COMMITTER_EMAIL: 295689149+ffmpeg-dev[bot]@users.noreply.github.com
-        run: python -m ffbuild updates --apply
+        run: python -m ffbuild.updates --apply

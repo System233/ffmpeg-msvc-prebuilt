@@ -20,6 +20,7 @@ def event_options(environ: dict[str, str] | None = None) -> dict[str, Any]:
         "mode": "all", "base": "", "head": "", "force": False,
         "version": str(inputs.get("version") or inputs.get("yaml") or ""),
         "ref": str(inputs.get("ref") or ""),
+        "commit": str(inputs.get("commit") or ""),
         "sha512": str(inputs.get("sha512") or ""),
         "history": str(inputs.get("history", "")).lower() in ("true", "1"),
         "shard_count": int(inputs.get("shard_count") or 1),

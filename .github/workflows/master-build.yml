@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths: ['ffmpeg/master.yaml']
-  schedule:
-    - cron: '0 12 * * 5'
+  # Scheduled master builds are part of build-all's one-version-per-day
+  # rotation, not an independent second weekly release.
   workflow_dispatch:
 
 jobs:
@@ -14,6 +14,7 @@ jobs:
     outputs:
       ref: ${{ steps.source.outputs.ref }}
       sha512: ${{ steps.source.outputs.sha512 }}
+      commit: ${{ steps.source.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-python
@@ -21,7 +22,7 @@ jobs:
           requirements: requirements.txt
       - name: Resolve FFmpeg master source
         id: source
-        run: python -m ffbuild master-metadata
+        run: python -m ffbuild.master
 
   build:
     needs: source
@@ -30,4 +31,6 @@ jobs:
       yaml: master
       ref: ${{ needs.source.outputs.ref }}
       sha512: ${{ needs.source.outputs.sha512 }}
+      commit: ${{ needs.source.outputs.commit }}
+      dry_run: ${{ github.event_name == 'push' }}
     secrets: inherit

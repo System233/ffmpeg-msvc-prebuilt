@@ -1,0 +1,34 @@
+name: FFmpeg CI E2E Isolated
+
+# Only the dedicated test branch can run this workflow. Its name intentionally
+# differs from the production workflow_run targets used by Auto-Heal.
+on:
+  push:
+    branches:
+      - 'ci/e2e-*'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # Do not inherit production App secrets or write-capable credentials.
+    uses: ./.github/workflows/build-release.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      yaml: '8.1.3'
+      dry_run: true
+      skip_release: true
+      skip_publish: true
+      force: true
+      # Native ABI plan contains 16 variants; slot 10 is x64 LGPL static
+      # after the scanner's deterministic (yaml, triplet, package) sorting.
+      shard_count: 16
+      shard_index: 10

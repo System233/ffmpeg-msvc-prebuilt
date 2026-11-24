@@ -36,7 +36,7 @@ features:
     pkgconfig: libpostproc
     description: "Build the postproc library"
     version: "<8.0"
-    depends: ["@license-gpl"]
+    license: gpl
   license-gpl:
     flag: "--enable-gpl"
     description: "Allow use of GPL code, the resulting libs and binaries will be under GPL"
@@ -172,7 +172,8 @@ features:
     description: "H.264 de/encoding via openh264"
   lensfun:
     flag: "--enable-liblensfun"
-    depends: ["lensfun", "@license-gpl"]
+    depends: ["lensfun"]
+    license: gpl
     platform: "!arm"
     version: ">=4.1"
     description: "Lens correction via lensfun"
@@ -299,11 +300,13 @@ features:
   # GPL
   x264:
     flag: "--enable-libx264"
-    depends: ["x264", "@license-gpl"]
+    depends: ["x264"]
+    license: gpl
     description: "H.264 encoding via x264"
   x265:
     flag: "--enable-libx265"
-    depends: ["x265", "@license-gpl"]
+    depends: ["x265"]
+    license: gpl
     platform: "!uwp & !xbox"
     description: "HEVC encoding via x265"
   # rubberband disabled — incompatible with static CRT builds.
@@ -316,20 +319,23 @@ features:
   #   description: "Audio time-stretching and pitch-shifting via librubberband"
   dvdnav:
     flag: "--enable-libdvdnav"
-    depends: ["libdvdnav", "@license-gpl"]
+    depends: ["libdvdnav"]
+    license: gpl
     platform: "!uwp & !xbox"
     version: ">=7.0"
     description: "DVD, Blu-ray, and Matroska navigation via libdvdnav"
   dvdread:
     flag: "--enable-libdvdread"
-    depends: ["libdvdread", "@license-gpl"]
+    depends: ["libdvdread"]
+    license: gpl
     platform: "!uwp & !xbox"
     version: ">=7.0"
     description: "DVD reading support via libdvdread"
   # Non-free
   fdk-aac:
     flag: "--enable-libfdk-aac"
-    depends: ["fdk-aac", "@license-nonfree"]
+    depends: ["fdk-aac"]
+    license: nonfree
     description: "AAC de/encoding via libfdk-aac"
     version: ">=4.0"
 
@@ -446,6 +452,7 @@ features:
     depends:
       - "@all"
       - "@gpl"
+      - "@license-gpl"
   nonfree:
     description: "All non-free features"
     depends:
@@ -457,6 +464,8 @@ features:
       - "@gpl"
       - "@lgpl"
       - "@nonfree"
+      - "@license-gpl"
+      - "@license-nonfree"
 define:
   defaults:
     - "@app"

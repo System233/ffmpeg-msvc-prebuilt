@@ -8,8 +8,8 @@ on:
       - 'patches/**'
       - 'ports/**'
       - 'triplets/**'
-      - 'scripts/**'
       - 'ffbuild/**'
+      - 'ffvcpkg/**'
       - 'vcpkg-configuration.json'
       - 'requirements.txt'
       - '.github/workflows/build-all.yml'
@@ -22,19 +22,35 @@ on:
       - 'patches/**'
       - 'ports/**'
       - 'triplets/**'
-      - 'scripts/**'
       - 'ffbuild/**'
+      - 'ffvcpkg/**'
       - 'vcpkg-configuration.json'
       - 'requirements.txt'
+      - '.github/workflows/build-all.yml'
+      - '.github/workflows/build-release.yml'
+      - '.github/actions/**'
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Optional FFmpeg version to build'
+        description: 'One FFmpeg version to build (master accepted)'
+        required: true
         type: string
       history:
-        description: 'Include all historical versions (requires sharding if >256 jobs)'
+        description: 'Include all historical versions (automatic matrix splitting)'
+        type: boolean
+        default: false
+      force:
+        description: 'Rebuild already published native ABIs for verification'
+        type: boolean
+        default: false
+      skip_release:
+        description: 'Skip Release ZIP and metadata packaging; keep compilation and tests'
+        type: boolean
+        default: false
+      skip_publish:
+        description: 'Skip GitHub Release upload and data branch publication'
         type: boolean
         default: false
       shard_count:
@@ -47,18 +63,91 @@ on:
         default: 0
 
 jobs:
+  select-daily-release:
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Rotate one FFmpeg version per UTC day
+        id: select
+        run: python -m ffbuild.schedule --github-output
+
   build:
+    needs: select-daily-release
+    if: ${{ always() && (needs.select-daily-release.result == 'success' || needs.select-daily-release.result == 'skipped') }}
     uses: ./.github/workflows/build-release.yml
     with:
-      yaml: ${{ inputs.version || '' }}
-      dry_run: ${{ github.event_name == 'pull_request' }}
+      yaml: ${{ needs.select-daily-release.outputs.version || inputs.version || '' }}
+      dry_run: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+      history: ${{ inputs.history || false }}
+      force: ${{ inputs.force || false }}
+      skip_release: ${{ inputs.skip_release || false }}
+      skip_publish: ${{ inputs.skip_publish || false }}
+      shard_count: ${{ inputs.shard_count || 1 }}
+      shard_index: ${{ inputs.shard_index || 0 }}
     secrets: inherit
 
+  validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - run: python -m ffbuild validate
+      - run: python -m unittest discover -s tests
+
+  autoheal-scope:
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'autoheal/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Validate entire bot PR scope
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          yaml=$(echo "$HEAD_BRANCH" | cut -d/ -f2)
+          python -m ffbuild autoheal check-pr --yaml "$yaml" --base "$BASE_SHA" --head "$HEAD_SHA"
+
   all-checks-passed:
-    needs: build
+    needs: [build, validate, autoheal-scope]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: test "$BUILD_RESULT" = success
+      - name: Require MSVC build plus PR validation and scope checks
         env:
           BUILD_RESULT: ${{ needs.build.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          SCOPE_RESULT: ${{ needs.autoheal-scope.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          AUTOHEAL_PR: ${{ github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'autoheal/') }}
+        run: |
+          test "$BUILD_RESULT" = success
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            test "$VALIDATE_RESULT" = success
+            if [[ "$AUTOHEAL_PR" == true ]]; then
+              test "$SCOPE_RESULT" = success
+            else
+              [[ "$SCOPE_RESULT" == success || "$SCOPE_RESULT" == skipped ]]
+            fi
+          fi

@@ -80,7 +80,7 @@ properties:
 
   total_variants:
     type: integer
-    description: Expected number of variants when complete (24 for full release)
+    description: Number of variants required by the current CI target declaration
 
   complete:
     type: boolean
@@ -118,7 +118,6 @@ $defs:
       - triplet
       - linkage
       - license
-      - download_url
       - assets
       - features
       - dependencies
@@ -127,8 +126,29 @@ $defs:
         type: string
         pattern: "^ffmpeg-"
         description: >
-          Unique identifier:
-          ffmpeg-{version}-r{revision}_{triplet}-{linkage}-{license}
+          Native variants append -a{12-digit vcpkg ABI} to the
+          historical triplet/linkage/license identifier.
+      abi_hash:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      port:
+        type: string
+        pattern: '^ffmpeg-'
+      expected_variants:
+        type: integer
+        minimum: 0
+      build_hash:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      variant_hash:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      feature_hash:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      package_spec:
+        type: string
+        pattern: '^ffmpeg(?:-[a-z0-9-]+)?\['
       arch:
         type: string
         enum: [x64, x86, arm64, arm]

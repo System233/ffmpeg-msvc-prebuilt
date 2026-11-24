@@ -18,4 +18,5 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           requirements: requirements.txt
-      - run: python -m ffbuild validate --tests
+      - run: python -m ffbuild validate
+      - run: python -m unittest discover -s tests

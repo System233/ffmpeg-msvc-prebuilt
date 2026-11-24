@@ -71,6 +71,11 @@ class TestIsLTS(unittest.TestCase):
         self.assertTrue(is_lts_version("n7.1.5"))
         self.assertTrue(is_lts_version("4.4.8"))
         self.assertTrue(is_lts_version("9.1"))  # next official LTS release
+
+    def test_content_hashed_releases_keep_lts_identity(self):
+        self.assertTrue(is_lts_version("7.1.5-h" + "a" * 12))
+        self.assertFalse(is_lts_version("8.1.3-h" + "b" * 12))
+        self.assertFalse(is_lts_version("9.1-dev-12-gabcdef0-h" + "c" * 12))
         self.assertFalse(is_lts_version("9.0"))
         self.assertFalse(is_lts_version("9.0.1"))
         self.assertFalse(is_lts_version("6.1"))

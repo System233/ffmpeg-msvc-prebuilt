@@ -38,6 +38,9 @@ if(DEFINED __FFMPEG_PORT_BASE_INCLUDED)
 endif()
 set(__FFMPEG_PORT_BASE_INCLUDED TRUE)
 
+# Enforce feature/explicit-license constraints even for direct vcpkg install.
+include("${CMAKE_CURRENT_LIST_DIR}/../constraints.cmake")
+
 # ---- Macros: feature → flag mapping ----
 # ffmpeg_feature(name "--flag1" "--flag2" ...)
 #   If feature "name" is in FEATURES list, append all given flags to OPTIONS.
