@@ -75,16 +75,22 @@ class VersionedPorts(unittest.TestCase):
         """The generated recipe must actually find tools during real builds."""
         with tempfile.TemporaryDirectory() as tmp:
             port = generate_port('8.1.3', destination=Path(tmp))
-            recipe = (port / 'portfile.cmake').read_text(encoding='utf-8')
-            self.assertIn('vcpkg_add_to_path(PREPEND "${MSYS_ROOT}/usr/bin")', recipe)
+            wrapper = (port / 'portfile.cmake').read_text(encoding='utf-8')
+            recipe = (port / 'builder/ffmpeg-portfile.cmake').read_text(encoding='utf-8')
+            self.assertIn('builder/ffmpeg-portfile.cmake', wrapper)
+            self.assertIn('list(APPEND prog_env "${MSYS_ROOT}/usr/bin"', recipe)
+            self.assertIn('vcpkg_add_to_path(PREPEND ${prog_env})', recipe)
             self.assertIn('vcpkg_find_acquire_program(NASM)', recipe)
+            self.assertIn('vcpkg_find_acquire_program(GASPREPROCESSOR)', recipe)
             self.assertIn('vcpkg_find_acquire_program(PKGCONFIG)', recipe)
-            self.assertIn('z_vcpkg_setup_pkgconfig_path(CONFIG ${_pkgconfig_mode})', recipe)
+            self.assertIn('z_vcpkg_setup_pkgconfig_path(CONFIG RELEASE)', recipe)
+            self.assertIn('z_vcpkg_setup_pkgconfig_path(CONFIG DEBUG)', recipe)
             self.assertIn('z_vcpkg_restore_pkgconfig_path()', recipe)
             self.assertIn('manual-tools/ffmpeg-bin2c', recipe)
-            self.assertIn('vcpkg_copy_tools(TOOL_NAMES "${_app}" AUTO_CLEAN)', recipe)
+            self.assertIn('manual-tools/ffmpeg-opstool', recipe)
+            self.assertIn('vcpkg_copy_tools(', recipe)
             self.assertIn('vcpkg_fixup_pkgconfig()', recipe)
-            self.assertIn('file(RENAME "${_import}"', recipe)
+            self.assertIn('--extra-ldflags=-libpath:', recipe)
             self.assertIn('"${CURRENT_PACKAGES_DIR}/debug/include"', recipe)
 
     def test_generator_compiles_all_source_backed_versions(self):

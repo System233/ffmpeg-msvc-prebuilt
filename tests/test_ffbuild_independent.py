@@ -64,13 +64,15 @@ class NoLegacyImplementation(unittest.TestCase):
                 if isinstance(statement, ast.ImportFrom) and statement.level == 0:
                     self.assertFalse((statement.module or "").startswith(("scripts", "ffport", "ops")), source)
 
-    def test_no_legacy_template_paths(self):
+    def test_original_build_engine_is_used_by_versioned_port(self):
         with tempfile.TemporaryDirectory() as temp:
             port = generate_port("8.1.3", destination=Path(temp))
             text = (port / "portfile.cmake").read_text(encoding="utf-8")
             self.assertNotIn("scripts/", text)
-            self.assertNotIn("builder/ffmpeg-portfile.cmake", text)
-            self.assertIn("vcpkg_from_github", text)
+            self.assertIn('include("${CMAKE_CURRENT_LIST_DIR}/builder/ffmpeg-portfile.cmake")', text)
+            self.assertNotIn("vcpkg_from_github", text)
+            self.assertEqual((ROOT / "scripts/cmake/ffmpeg-portfile.cmake").read_bytes(),
+                             (port / "builder/ffmpeg-portfile.cmake").read_bytes())
 
     def test_plan_and_port_execute_without_legacy_imports(self):
         probe = '''
@@ -122,8 +124,8 @@ with TemporaryDirectory() as temporary:
 
     @unittest.skipUnless(shutil.which("cmake"), "CMake is needed for port recipe parsing")
     def test_native_port_policy_survives_direct_vcpkg_execution(self):
-        # Stub vcpkg's native CMake helpers; parse the whole generated recipe,
-        # not just its policy file, without executing any real build process.
+        # The restored original CMake builder includes ../constraints.cmake.
+        # Run the exact generated guard with CMake without invoking any build.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             port = generate_port("3.4.14", destination=root)
@@ -138,25 +140,7 @@ with TemporaryDirectory() as temporary:
             for enabled, expected in fixtures:
                 script.write_text('\n'.join([
                     f'set(FEATURES "{enabled}")',
-                    'set(VCPKG_TARGET_IS_WINDOWS TRUE)',
-                    'set(VCPKG_TARGET_IS_MINGW FALSE)',
-                    'set(VCPKG_TARGET_ARCHITECTURE x64)',
-                    'set(VCPKG_CONCURRENCY 2)',
-                    'set(TARGET_TRIPLET x64-windows)',
-                    f'set(CURRENT_BUILDTREES_DIR "{root.as_posix()}/buildtrees")',
-                    f'set(CURRENT_PACKAGES_DIR "{root.as_posix()}/packages")',
-                    f'function(vcpkg_from_github)\n  set(SOURCE_PATH "{root.as_posix()}" PARENT_SCOPE)\nendfunction()',
-                    f'function(vcpkg_acquire_msys output)\n  set(${{output}} "{root.as_posix()}" PARENT_SCOPE)\nendfunction()',
-                    f'function(vcpkg_cmake_get_vars output)\n  set(${{output}} "{(root / "vars.cmake").as_posix()}" PARENT_SCOPE)\nendfunction()',
-                    f'function(vcpkg_find_acquire_program output)\n  set(${{output}} "{root.as_posix()}/tool.exe" PARENT_SCOPE)\nendfunction()',
-                    'function(vcpkg_add_to_path)\nendfunction()',
-                    'function(z_vcpkg_setup_pkgconfig_path)\nendfunction()',
-                    'function(z_vcpkg_restore_pkgconfig_path)\nendfunction()',
-                    'function(vcpkg_execute_required_process)\nendfunction()',
-                    'function(vcpkg_copy_tools)\nendfunction()',
-                    'function(vcpkg_fixup_pkgconfig)\nendfunction()',
-                    'function(vcpkg_copy_pdbs)\nendfunction()',
-                    f'include("{(port / "portfile.cmake").as_posix()}")',
+                    f'include("{(port / "constraints.cmake").as_posix()}")',
                 ]) + '\n', encoding="utf-8")
                 result = subprocess.run(["cmake", "-P", str(script)],
                                         capture_output=True, text=True)

@@ -164,7 +164,9 @@ class HashAndStateTests(unittest.TestCase):
             port = generate("master", source_version="n9.1-12-gabcdef0",
                             ref="a" * 40, sha512="a" * 128, output=Path(tmp))
             cmake = (port / "portfile.cmake").read_text(encoding="utf-8")
-            self.assertIn('set(FFBUILD_SOURCE_REF "' + "a" * 40 + '")', cmake)
+            # The original FFmpeg CMake builder consumes FFMPEG_REF, not
+            # the temporary FFBUILD_SOURCE_REF used by the discarded recipe.
+            self.assertIn('set(FFMPEG_REF "' + "a" * 40 + '")', cmake)
             self.assertEqual("9.1-12-gabcdef0",
                              json.loads((port / "vcpkg.json").read_text())["version"])
             self.assertNotIn("VCPKG_USE_HEAD_VERSION", cmake)

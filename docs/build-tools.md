@@ -40,8 +40,21 @@ workflow passes pinned metadata from its source-discovery job; the daily
 release rotation can also pin Master during generation.
 
 The original authored Overlay Ports in `ports/` and everything in `scripts/`
-are left untouched. Generated Port self-dependencies and tester dependencies
-point to the corresponding version-qualified Port.
+are left untouched. **Version-qualified FFmpeg Ports copy the existing
+`scripts/cmake/ffmpeg-portfile.cmake` builder and its `build.sh.in`, CMake
+consumer support and usage files byte-for-byte**; the generated `portfile.cmake`
+only supplies version, source checksum/ref, patch list, feature flags and
+existing CMake definitions. ARM/MSVC SDK workarounds, CRT/debug flags, GAS
+preprocessing, dependency link paths, FFmpeg installation and pkg-config
+fixups remain implemented in the original builder, not reauthored. Each Port
+also generates the existing license/feature policy as `constraints.cmake`.
+Generated Port self-dependencies and tester dependencies point to the
+corresponding version-qualified Port.
+
+Offline regression tests compare the original builder files, source-patch
+bytes/order, feature-macro mappings and host tool options for **every**
+source-backed release. A change to the original builder must therefore be
+reflected in every generated Port without silently dropping its behavior.
 
 ## CI completeness and recovery contracts
 

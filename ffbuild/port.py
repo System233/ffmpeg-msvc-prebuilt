@@ -1,8 +1,9 @@
 """Generate a vcpkg overlay port directly from declarative FFmpeg metadata.
 
-The compiler emits a standalone vcpkg manifest, policy checks and a new
-vcpkg-native CMake recipe.  No source files are copied or included from the
-legacy build scripts.  vcpkg owns the dependency graph and build ABI cache.
+The compiler emits version-qualified manifests and policy checks while
+copying the original tested FFmpeg CMake builder unmodified into its Port.
+No build flags, source patches or ARM/MSVC handling are reimplemented.
+vcpkg still owns the dependency graph and native ABI cache.
 """
 
 from __future__ import annotations
@@ -144,8 +145,9 @@ def _policy_script(spec: FeatureSet) -> str:
     return "\n".join(lines) + "\n"
 
 
-# A newly authored vcpkg recipe using native helpers; no legacy CMake include.
-# The compiler adds the version-specific source, patch list and configure flags.
+# Retained experimental native CMake recipe for migration comparison only.
+# Never emitted or executed: the generated Port must run the original builder
+# from scripts/cmake. Do not switch back without proving full parity first.
 _CMAKE_BUILD = r'''
 include("${CMAKE_CURRENT_LIST_DIR}/policy.cmake")
 if("static" IN_LIST FEATURES)
@@ -324,23 +326,65 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
         patch_refs.append(f"patches/{target}")
     (port / "vcpkg.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
                                          encoding="utf-8")
-    (port / "policy.cmake").write_text(_policy_script(features), encoding="utf-8")
-    options = [f"set(FFBUILD_SOURCE_REF {_cmake(source_ref)})",
-               f"set(FFBUILD_SOURCE_SHA512 {_cmake(checksum)})",
-               "set(FFBUILD_PATCHES " + " ".join(_cmake(p) for p in patch_refs) + ")"]
+    policy = _policy_script(features)
+    (port / "policy.cmake").write_text(policy, encoding="utf-8")
+    # The original builder includes ../constraints.cmake itself. Keep the
+    # version-qualified policy byte-identical and never bypass that guard.
+    (port / "constraints.cmake").write_text(policy, encoding="utf-8")
+
+    # Preserve the original build engine byte-for-byte. This also preserves
+    # ARM gas-preprocessor handling, native SDK/CRT flags, host bin2c/opstool,
+    # Release+Debug execution, DEF-to-LIB conversion and generated metadata.
+    builder_source = ROOT / "scripts" / "cmake"
+    builder_dir = port / "builder"
+    builder_dir.mkdir()
+    for name in ("ffmpeg-portfile.cmake", "build.sh.in", "FindFFmpeg.cmake.in",
+                 "vcpkg-cmake-wrapper.cmake"):
+        source_file = builder_source / name
+        if not source_file.is_file():
+            raise FileNotFoundError(f"Original FFmpeg builder missing: {source_file}")
+        shutil.copyfile(source_file, builder_dir / name)
+    usage_file = builder_source / "usage.in"
+    if not usage_file.is_file():
+        raise FileNotFoundError(f"Original FFmpeg usage missing: {usage_file}")
+    shutil.copyfile(usage_file, port / "usage")
+
+    # Generate only the version's metadata and the original feature macro
+    # calls. The original CMake script still owns all build-side decisions.
+    feature_lines = ["# Original ffport feature macro ABI; sourced by builder/ffmpeg-portfile.cmake"]
+    for feature, info in config.get("features", {}).items():
+        if not isinstance(info, dict):
+            continue
+        flag = info.get("flag", "")
+        pkgconfig = info.get("pkgconfig", "")
+        if not flag and not pkgconfig:
+            continue
+        if pkgconfig:
+            feature_lines.append(f"ffmpeg_feature_core({feature} {_cmake(flag)} {pkgconfig})")
+        else:
+            feature_lines.append(f"ffmpeg_feature({feature} {_cmake(flag)})")
+    (port / "features.cmake").write_text("\n".join(feature_lines) + "\n", encoding="utf-8")
+
     build = config.get("build", {})
-    for key, values in (("BASE", _flag_options(build.get("base_options", ""))),
-                        ("RELEASE", _flag_options(build.get("release", {}).get("options", ""))),
-                        ("DEBUG", _flag_options(build.get("debug", {}).get("options", "")))):
-        options.append(f"set(FFBUILD_{key}_OPTIONS " + " ".join(_cmake(x) for x in values) + ")")
-    options.append('set(FFBUILD_ACTIVE_FLAGS "")')
-    for feature, info in features.definitions.items():
-        flags = _flag_options(info.get("flag", ""))
-        if flags:
-            options.append(f"if({_cmake(feature)} IN_LIST FEATURES)")
-            options.extend(f"  list(APPEND FFBUILD_ACTIVE_FLAGS {_cmake(flag)})" for flag in flags)
-            options.append("endif()")
-    options.append(_CMAKE_BUILD)
+    options = [f"set(FFMPEG_VERSION {_cmake(version)})",
+               f"set(FFMPEG_SHA512 {_cmake(checksum)})",
+               f"set(FFMPEG_PORT_REVISION {effective_revision})"]
+    for key, value in (("FFMPEG_BASE_OPTIONS", build.get("base_options")),
+                       ("FFMPEG_OPTIONS_DEBUG", build.get("debug", {}).get("options"))):
+        if value:
+            options.append(f"set({key} {_cmake(value)})")
+    for name, value in build.get("cmake_defines", {}).items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", name):
+            raise ValueError(f"Unsafe FFmpeg CMake variable: {name}")
+        options.append(f"set({name} {_cmake(value)})")
+    # A version-qualified Port requires concrete refs, not template variables.
+    source_ref = source_ref.replace("${VERSION}", version)
+    if source_ref != f"n{version}":
+        options.append(f"set(FFMPEG_REF {_cmake(source_ref)})")
+    options.append("set(FFMPEG_PATCHES")
+    options.extend(f'    "${{CMAKE_CURRENT_LIST_DIR}}/{name}"' for name in patch_refs)
+    options.extend([")", 'set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")',
+                    'include("${CMAKE_CURRENT_LIST_DIR}/builder/ffmpeg-portfile.cmake")'])
     (port / "portfile.cmake").write_text("\n".join(options) + "\n", encoding="utf-8")
     generate_tester_port(destination, package_name)
     return port
