@@ -136,10 +136,11 @@ class SimulatedSafetyCases(unittest.TestCase):
         self.assertEqual(1, changed.count(delivery.START))
         self.assertEqual(3, comment.call_count)
 
-    @mock.patch("ffbuild.autoheal.delivery.git")
+    @mock.patch("ffbuild.autoheal.delivery.run", autospec=True)
+    @mock.patch("ffbuild.autoheal.delivery.git", autospec=True)
     @mock.patch("ffbuild.autoheal.delivery.github.api")
     @mock.patch("ffbuild.autoheal.delivery.find_pr", return_value=None)
-    def test_malformed_orphan_branch_is_not_adopted(self, _find, api, git):
+    def test_malformed_orphan_branch_is_not_adopted(self, _find, api, git, run):
         value = report()
         value["pr"] = None
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,6 +159,10 @@ class SimulatedSafetyCases(unittest.TestCase):
             git.return_value = "deadbeef\trefs/heads/autoheal/8.1.1/existing"
             with self.assertRaisesRegex(ValueError, "Unexpected remote orphan branch reference"):
                 delivery.deliver(value, "8.1.1", folder)
+            # Authentication and remote lookup are simulated, never executed.
+            # Malformed orphan references must fail before fetch or mutation.
+            run.assert_called_once_with("gh", "auth", "setup-git")
+            git.assert_called_once_with("ls-remote", "origin", f"refs/heads/{ledger.branch_name('8.1.1', value['groups'][0]['signature'])}")
 
 
 if __name__ == "__main__":
