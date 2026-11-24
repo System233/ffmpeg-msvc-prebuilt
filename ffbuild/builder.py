@@ -40,22 +40,33 @@ def bootstrap(vcpkg_root: Path, *, tag: str = VCPKG_TAG) -> Path:
 
 
 def patch_arm_sdk() -> None:
-    """Preserve the existing Windows ARM SDK selection workaround in CI."""
+    """Restore the original ARM SDK workaround (c80f908), including empty values."""
     result = subprocess.run(["vswhere", "-all", "-legacy", "-property", "installationPath"],
                             capture_output=True, text=True, check=True)
     patched = 0
+    found_files: list[Path] = []
     for location in result.stdout.splitlines():
+        if not location.strip():
+            continue
         path = Path(location.strip()) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat"
         if not path.is_file():
             continue
+        found_files.append(path)
         source = path.read_bytes()
-        updated, changes = re.subn(rb"(?im)(set\s+__VCVARSALL_WINSDK\s*=)\S+",
+        # The original working patch used \\S*: the Windows 2022 image can
+        # leave __VCVARSALL_WINSDK empty.  Using \\S+ incorrectly rejects it.
+        updated, changes = re.subn(rb"(?im)(set\s+__VCVARSALL_WINSDK\s*=)\S*",
                                    rb"\g<1>10.0.22621.0", source)
         if changes:
-            path.write_bytes(updated)
+            if updated != source:
+                path.write_bytes(updated)
             patched += 1
+            print(f"ARM SDK pinned to 10.0.22621.0: {path}", flush=True)
     if not patched:
-        raise RuntimeError("ARM SDK workaround could not locate vcvarsall.bat")
+        if not found_files:
+            raise RuntimeError("ARM SDK workaround found no vcvarsall.bat via vswhere")
+        raise RuntimeError(f"ARM SDK workaround found vcvarsall.bat but no "
+                           f"__VCVARSALL_WINSDK assignment in: {found_files}")
 
 
 def submit_dependencies(*, vcpkg_root: Path, triplet: str) -> None:
