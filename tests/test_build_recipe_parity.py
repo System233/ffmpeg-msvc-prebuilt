@@ -50,7 +50,8 @@ class OriginalBuildRecipeParityTests(unittest.TestCase):
                     port = generate_port(version, destination=output)
                     generated = (port / "portfile.cmake").read_text(encoding="utf-8")
                     manifest = json.loads((port / "vcpkg.json").read_text(encoding="utf-8"))
-                    self.assertEqual(port.name, manifest["name"])
+                    self.assertEqual("ffmpeg", manifest["name"])
+                    self.assertEqual("ffmpeg-" + version.replace(".", "-"), port.name)
                     self.assertEqual(spec["revision"] if "revision" in spec else 0,
                                      manifest["port-version"])
                     self.assertEqual(set(resolve_features(spec, version).definitions),

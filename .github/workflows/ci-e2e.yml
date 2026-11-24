@@ -35,7 +35,8 @@ jobs:
     with:
       yaml: ${{ matrix.yaml }}
       dry_run: true
-      skip_release: true
+      # Exercise genuine ZIP packaging, but prohibit release/data publication.
+      skip_release: false
       skip_publish: true
       force: true
       # Exactly one of 16 ABI variants per FFmpeg version, never a full

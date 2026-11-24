@@ -85,8 +85,13 @@ def _files(package: Path, linkage: str, *, develop: bool,
             if path.is_file():
                 paths[f"bin/{name}"] = path
                 break
-    if linkage in ("shared", "static"):
-        folders = ["bin", "lib", "include", f"share/{port}"]
+    # Preserve the existing scripts/package_release.py distribution contract.
+    # Static variants contain applications only (not a copied static SDK).
+    # Shared variants contain release SDK or full debug SDK respectively.
+    # FFmpeg's original CMake builder ALWAYS installs consumer metadata under
+    # share/ffmpeg, regardless of the version-qualified vcpkg Port identity.
+    if linkage == "shared":
+        folders = ["bin", "lib", "include", "share/ffmpeg"]
         if develop:
             folders.append("debug")
         for folder in folders:
@@ -100,6 +105,10 @@ def _files(package: Path, linkage: str, *, develop: bool,
         path = package / name
         if path.is_file():
             paths[name] = path
+    if linkage == "static":
+        # The legacy static archive is flat: ffmpeg.exe, ffprobe.exe,
+        # CONTROL and BUILD_INFO, without a bin/ prefix or SDK contents.
+        return {Path(member).name: source for member, source in paths.items()}
     return paths
 
 

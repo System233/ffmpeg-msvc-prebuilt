@@ -1,4 +1,4 @@
-"""Read vcpkg's own dependency ABI graph without installing or building ports.
+"""Read vcpkg's own ABI graph for a single selected FFmpeg version Port.
 
 Pinned vcpkg 2026.06.01 supports `install --dry-run` together with the
 experimental `--x-write-nuget-packages-config`.  NuGet's vcpkg-suffixed
@@ -44,9 +44,13 @@ def read_nuget_abis(path: Path) -> dict[str, str]:
 
 
 def native_abi_query(packages: list[str], triplet: str, *,
-                     overlay: Path = GENERATED_PORTS,
+                     port_overlay: Path,
                      binary: Path | None = None) -> dict[str, str]:
-    """Scan a set of different Port names in one clean, read-only vcpkg plan."""
+    """Scan one dependency graph using one explicitly selected FFmpeg Port.
+
+    Never supply the generated-ports parent: multiple version directories all
+    define the same vcpkg package name, and only one may be visible per graph.
+    """
     if not packages:
         return {}
     if len(packages) != len(set(packages)):
@@ -54,13 +58,16 @@ def native_abi_query(packages: list[str], triplet: str, *,
     tool = (binary or executable()).resolve()
     if not tool.is_file():
         raise FileNotFoundError(tool)
-    if not overlay.is_dir():
-        raise FileNotFoundError(f"Generate FFmpeg ports before scanning: {overlay}")
+    manifest = port_overlay / "vcpkg.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"Select a generated FFmpeg Port directory: {manifest}")
+    if json.loads(manifest.read_text(encoding="utf-8")).get("name") != "ffmpeg":
+        raise ValueError(f"Expected stable ffmpeg package in {manifest}")
     with tempfile.TemporaryDirectory(prefix="ffbuild-native-abi-") as scratch:
         base = Path(scratch)
         output = base / "packages.config"
         args = [str(tool), "install", *packages, f"--triplet={triplet}",
-                f"--overlay-ports={overlay.resolve()}",
+                f"--overlay-ports={port_overlay.resolve()}",
                 f"--overlay-ports={(ROOT / 'ports').resolve()}",
                 f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
                 f"--x-install-root={base / 'installed'}", "--dry-run",
@@ -78,7 +85,7 @@ def build_requests(*, version: str = "", history: bool = False,
                    targets: tuple[Target, ...] | None = None,
                    snapshot: dict[str, str] | None = None,
                    selected_versions: list[str] | None = None) -> tuple[list[dict], list[dict]]:
-    """Expand existing declarative targets onto each independently named Port."""
+    """Expand vcpkg ffmpeg[...] targets across version-selected Port directories."""
     targets = targets if targets is not None else load_targets()
     if selected_versions is not None and version:
         raise ValueError("Cannot combine selected versions with one explicit version")
@@ -97,14 +104,12 @@ def build_requests(*, version: str = "", history: bool = False,
         release = snapshot["ref"].removeprefix("n") if name == "master" else name
         source_ref = snapshot["commit"] if name == "master" else ""
         source_sha512 = snapshot["sha512"] if name == "master" else ""
-        port = ffmpeg_port_name(name)
+        port = "ffmpeg"
         for target in targets:
             try:
-                native_spec = Target(f"{port}[{','.join(target.roots)}]", target.triplet,
-                                     target.roots)
                 resolved = compile_target(config(name),
                                           name if name != "master" else release.split("-", 1)[0],
-                                          native_spec)
+                                          target)
                 if resolved["license"] == "nonfree":
                     raise ValueError("Nonfree artifacts must not be published")
             except (KeyError, ValueError) as error:
@@ -116,7 +121,7 @@ def build_requests(*, version: str = "", history: bool = False,
                 "yaml": name, "version": release, "source_version": release,
                 "source_ref": source_ref, "ref": snapshot["ref"] if name == "master" else "",
                 "sha512": source_sha512, "revision": revision(name),
-                "port": port, "tester_port": port.replace("ffmpeg-", "ffmpeg-tester-", 1),
+                "port": port, "tester_port": "ffmpeg-tester",
                 "triplet": target.triplet, "package": resolved["package"],
                 "features": resolved["features"],
                 "license": resolved["license"], "linkage": resolved["linkage"],
@@ -130,17 +135,17 @@ def build_requests(*, version: str = "", history: bool = False,
 
 def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
                      binary: Path | None = None) -> list[dict]:
-    """Resolve each build variant in a separate vcpkg dependency graph.
+    """Resolve each variant with its corresponding version-directory overlay.
 
-    Even different FFmpeg Port names can pull different Features of the SAME
-    transitive dependency. Scanning them together would merge dependency
-    Features and could produce ABIs that differ from isolated builds.
+    Every query uses one ffmpeg identity and one selected recipe. Never combine
+    versions or feature profiles into the same vcpkg dependency graph.
     """
     results: list[dict] = []
     for request in requests:
         triplet = request["triplet"]
         all_abis = native_abi_query([request["package"]], triplet,
-                                    overlay=overlay, binary=binary)
+                                    port_overlay=overlay / ffmpeg_port_name(request["yaml"]),
+                                    binary=binary)
         key = f"{request['port']}_{triplet}"
         if key not in all_abis:
             raise RuntimeError(f"Native vcpkg ABI missing for {key}; refusing to invent one")
@@ -158,7 +163,8 @@ def verify_job_abi(job: dict, *, overlay: Path = GENERATED_PORTS,
                    binary: Path | None = None) -> str:
     """Fail before installing if worker-resolved native ABI differs from plan."""
     abis = native_abi_query([job["package"]], job["triplet"],
-                            overlay=overlay, binary=binary)
+                            port_overlay=overlay / ffmpeg_port_name(job["yaml"]),
+                            binary=binary)
     actual = abis.get(f"{job['port']}_{job['triplet']}")
     if actual != job["abi_hash"]:
         raise ValueError(f"vcpkg ABI changed between planning and building: "

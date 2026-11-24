@@ -15,16 +15,18 @@ that vcpkg itself includes in an ABI.
 python -m ffbuild generate --all
 ```
 
-The generated Overlay lives under `_work/ffbuild/generated-ports/`. The
-generator creates all source-backed stable FFmpeg releases plus a matching
-`ffmpeg-tester-<version>` Port for each, and one shared virtual `ffmpeg-deps`
-dependency Seed. As of November 2026 there are 26
-source-backed releases and three YAML-only inheritance templates; templates
-are not independent Ports.
+The generated Overlay lives under `_work/ffbuild/generated-ports/`.
+It contains one directory per source-backed FFmpeg release (`ffmpeg-8-1-3`,
+`ffmpeg-9-1`, etc.) and a shared virtual `ffmpeg-deps` Seed. As of November
+2026 there are 26 source-backed releases and three YAML-only inheritance
+templates. Every generated FFmpeg directory has **`name: ffmpeg`** in its
+vcpkg manifest. The directory names select source versions; they are **not**
+distinct vcpkg package names.
 
-Each vcpkg Port name is distinct: `ffmpeg-8-1-3`, `ffmpeg-9-1`, etc.
-The installed FFmpeg filesystem layout is **not** renamed: multiple versions
-are not promised to coexist inside one installed Triplet tree.
+Never pass the `generated-ports/` parent as an Overlay for FFmpeg installation
+or native ABI scanning. Pass the selected **single Port directory**. The one
+original `ports/ffmpeg-tester` remains unchanged and depends on `ffmpeg`.
+Different FFmpeg versions cannot coexist within one installed Triplet tree.
 
 An optional pinned Master snapshot can be generated in the same pass:
 
@@ -48,8 +50,8 @@ existing CMake definitions. ARM/MSVC SDK workarounds, CRT/debug flags, GAS
 preprocessing, dependency link paths, FFmpeg installation and pkg-config
 fixups remain implemented in the original builder, not reauthored. Each Port
 also generates the existing license/feature policy as `constraints.cmake`.
-Generated Port self-dependencies and tester dependencies point to the
-corresponding version-qualified Port.
+Generated Port self-dependencies continue to reference `ffmpeg`; the original
+Tester references `ffmpeg` without any versioned Consumer Port.
 
 Offline regression tests compare the original builder files, source-patch
 bytes/order, feature-macro mappings and host tool options for **every**
@@ -107,17 +109,17 @@ The reusable `build-release.yml` accepts two independent CI inputs:
 The dedicated `.github/workflows/ci-e2e.yml` runs **only on pushes to
 `ci/e2e-*`** and deliberately uses a workflow name not subscribed to by the
 production Auto-Heal `workflow_run` trigger. It grants only read permissions,
-passes no production Secrets, always uses `dry_run`, and enables both skip
-switches. A second independent publication guard prevents *any* `ci/` ref
-from entering the production publish job even if inputs are accidentally
-changed.
+passes no production Secrets, always uses `dry_run` and `skip_publish`, and
+uses `skip_release: false` so real MSVC Consumer builds and Release ZIP
+packaging are both tested. A second independent publication guard prevents
+*any* `ci/` ref from entering the production publish job even if inputs are
+accidentally changed.
 
-Initial smoke runs one native build worker: FFmpeg 8.1.3, x64-windows,
-LGPL/static, selected as index 10 from the stable native-ABI-sorted 16-job
-plan (shard_count=16). Set `skip_release: false` in the CI-only test workflow
-for a separate packaging test while keeping `skip_publish: true` and
-`dry_run: true`. Do **not** create a production PR from the test branch: it
-would trigger unrelated PR jobs.
+The isolated smoke selects one distinct release/architecture variant each for
+FFmpeg 3.4.14 (x64/shared), 4.4.8 (ARM/static), 6.1.6 (x86/shared) and 9.1
+(ARM64/static), using a 16-way shard of each release's ABI-sorted variants.
+No 8.1.x reruns, full historical matrices, production PRs or Release/data
+publication are required.
 
 ## Shared dependency prebuild and CI caches
 
@@ -190,9 +192,10 @@ Use `scan --history` for every source-backed stable release; the default
 without `--version` selects the latest release in each family, while the
 generator still prepares *all* versions. `scan --targets-file <yaml>` selects
 other native Package Specs/Triplets. The target declaration lists profiles
-using `ffmpeg[...]`; the scanner maps each to the matching version-qualified
-Port. **Each variant is queried in its own vcpkg plan**, even though all
-Port definitions have already been generated together. Combining different
+using `ffmpeg[...]`; the scanner selects the matching version-directory
+Overlay while the native package identity remains `ffmpeg`. **Each variant
+is queried in its own vcpkg plan**, even though all Port definitions have
+already been generated together. Combining different
 FFmpeg versions into one vcpkg install plan could merge Features of their
 shared dependencies, returning ABIs different from their isolated builds.
 
@@ -211,8 +214,10 @@ satisfy a native-ABI deduplication check.
 ## Build one selected version (Windows/MSVC)
 
 ```powershell
-python -m ffvcpkg install "ffmpeg-8-1-3[all-lgpl,static]" `
-  ffmpeg-tester-8-1-3 --triplet=x64-windows
+python -m ffvcpkg install "ffmpeg[all-lgpl,static]" ffmpeg-tester `
+  --triplet=x64-windows `
+  --overlay-ports=_work/ffbuild/generated-ports/ffmpeg-8-1-3 `
+  --overlay-ports=ports
 ```
 
 Each CI build runs on an isolated Windows Runner, so two different FFmpeg
@@ -227,11 +232,13 @@ tracks **published artifacts**, not whether a package is present in cache.
 ## Package, data and publish
 
 The CI executes `ffbuild package --job-env FFBUILD_JOB --port-dir <package-dir>`
-after building the exact versioned Port. The packager checks the actual
-installed Feature selection, upstream source version, Triplet, linkage and
-licensing policy; a static archive includes libraries and headers. Crucially,
-the packager also verifies the **actual packaged vcpkg ABI input file** at
-`share/<port>/vcpkg_abi_info.txt` and refuses to publish if its SHA256 differs
+after building `ffmpeg` from the selected version-directory Port. The
+packager checks the actual installed Feature selection, upstream source
+version, Triplet, linkage and licensing policy. The **Static Binary ZIP
+contains executables only**, plus build metadata and the license; it does NOT
+copy libraries or headers. Shared Binary/Develop SDK archives preserve the
+original layout. Crucially, the packager verifies the **actual packaged
+vcpkg ABI input file** at `share/ffmpeg/vcpkg_abi_info.txt` and refuses to publish if its SHA256 differs
 from the proposed pre-build ABI. The dry-run ABI is only the proposal, not
 independent evidence that the package was built with those inputs.
 

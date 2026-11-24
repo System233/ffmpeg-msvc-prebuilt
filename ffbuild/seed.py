@@ -52,7 +52,7 @@ def prepare_seed(*, triplet: str, overlay: Path = GENERATED_PORTS,
         with tempfile.TemporaryDirectory(prefix=f"seed-{index}-", dir=root) as temporary:
             arguments = ["install", f"ffmpeg-deps[{profile}]", f"--triplet={triplet}",
                          "--recurse", f"--x-install-root={temporary}",
-                         f"--overlay-ports={overlay.resolve()}",
+                         f"--overlay-ports={(overlay / 'ffmpeg-deps').resolve()}",
                          f"--overlay-ports={(ROOT / 'ports').resolve()}",
                          f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
                          "--no-print-usage"]

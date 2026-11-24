@@ -1,7 +1,9 @@
-"""Generate a vcpkg overlay port directly from declarative FFmpeg metadata.
+"""Generate version-directory FFmpeg overlays from declarative metadata.
 
-The compiler emits version-qualified manifests and policy checks while
-copying the original tested FFmpeg CMake builder unmodified into its Port.
+Each version has its own directory but the vcpkg manifest always names the
+package ``ffmpeg``. CI selects exactly one *port directory* per vcpkg graph;
+versioned directories must never be supplied together as an overlay parent.
+The compiler emits the original FFmpeg CMake builder unmodified into its Port.
 No build flags, source patches or ARM/MSVC handling are reimplemented.
 vcpkg still owns the dependency graph and native ABI cache.
 """
@@ -19,43 +21,8 @@ from .spec import FeatureSet, _items, read_spec, resolve_features
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# The versioned consumer test cannot rely on the stock `ffmpeg` Port's
-# `vcpkg-cmake-wrapper.cmake`.  Resolve the actual installed FFmpeg libraries
-# through their generated pkg-config metadata, preserving test target names.
-_TESTER_FIND_FFMPEG = r'''
-find_package(PkgConfig REQUIRED)
-set(FFMPEG_INCLUDE_DIRS "")
-set(FFMPEG_LIBRARIES "")
-foreach(_component IN ITEMS avutil avcodec avformat avdevice avfilter swresample swscale postproc)
-    string(TOUPPER "${_component}" _upper)
-    pkg_check_modules("FFMPEG_${_upper}" QUIET IMPORTED_TARGET "lib${_component}")
-    if(TARGET "PkgConfig::FFMPEG_${_upper}")
-        add_library("FFmpeg::${_component}" INTERFACE IMPORTED GLOBAL)
-        target_link_libraries("FFmpeg::${_component}" INTERFACE "PkgConfig::FFMPEG_${_upper}")
-        list(APPEND FFMPEG_LIBRARIES "FFmpeg::${_component}")
-        list(APPEND FFMPEG_INCLUDE_DIRS ${FFMPEG_${_upper}_INCLUDE_DIRS})
-    endif()
-endforeach()
-if(NOT TARGET FFmpeg::avcodec OR NOT TARGET FFmpeg::avutil)
-    message(FATAL_ERROR "Required FFmpeg pkg-config modules not available")
-endif()
-# On MSVC, pkg-config's shared-library flags do not necessarily list the
-# Requires.private libraries. FFmpeg consumers still need to link libavutil
-# directly whenever a component's public API references avutil symbols.
-foreach(_component IN ITEMS avcodec avformat avdevice avfilter swresample swscale postproc)
-    if(TARGET "FFmpeg::${_component}")
-        target_link_libraries("FFmpeg::${_component}" INTERFACE FFmpeg::avutil)
-    endif()
-endforeach()
-list(REMOVE_DUPLICATES FFMPEG_INCLUDE_DIRS)
-add_library(FFmpeg::FFmpeg INTERFACE IMPORTED GLOBAL)
-target_link_libraries(FFmpeg::FFmpeg INTERFACE ${FFMPEG_LIBRARIES})
-set(FFmpeg_FOUND TRUE)
-'''
-
-
 def ffmpeg_port_name(version: str) -> str:
-    """Stable vcpkg identity for one upstream version, without filesystem namespacing."""
+    """Unique generated directory name, NOT a vcpkg package identity."""
     if version == "master":
         return "ffmpeg-master"
     if not re.fullmatch(r"\d+\.\d+(?:\.\d+)?", version):
@@ -304,10 +271,10 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
         raise ValueError(f"FFmpeg {config_name} requires a SHA512 source checksum")
     effective_revision = int(config.get("revision", 0) if revision is None else revision)
     features = resolve_features(config, config_name if config_name != "master" else version.split("-", 1)[0])
-    package_name = ffmpeg_port_name(config_name)
-    manifest = manifest_for(config, features, version, effective_revision, package_name)
+    port_name = ffmpeg_port_name(config_name)
+    manifest = manifest_for(config, features, version, effective_revision, "ffmpeg")
 
-    port = destination / package_name
+    port = destination / port_name
     port.mkdir(parents=True, exist_ok=True)
     for old in port.iterdir():
         if old.is_dir():
@@ -386,44 +353,10 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
     options.extend([")", 'set(CURRENT_PORT_DIR "${CMAKE_CURRENT_LIST_DIR}")',
                     'include("${CMAKE_CURRENT_LIST_DIR}/builder/ffmpeg-portfile.cmake")'])
     (port / "portfile.cmake").write_text("\n".join(options) + "\n", encoding="utf-8")
-    generate_tester_port(destination, package_name)
+    # Keep the original ports/ffmpeg-tester manifest and CMake tests unchanged.
+    # Its native dependency on ffmpeg resolves the selected version directory
+    # through --overlay-ports=<generated-version-port>.
     return port
-
-
-def generate_tester_port(destination: Path, package_name: str) -> Path:
-    """Reuse the authored CMake consumer tests, but depend on one FFmpeg version.
-
-    The original tester is read-only input; no old script or legacy port is
-    modified.  A version-qualified vcpkg tester avoids pulling in `ffmpeg`.
-    """
-    tester_name = package_name.replace("ffmpeg-", "ffmpeg-tester-", 1)
-    source = ROOT / "ports" / "ffmpeg-tester"
-    target = destination / tester_name
-    if target.exists():
-        shutil.rmtree(target)
-    shutil.copytree(source, target)
-    manifest_path = target / "vcpkg.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["name"] = tester_name
-    if not any(isinstance(dep, dict) and dep.get("name") == "pkgconf"
-               for dep in manifest["dependencies"]):
-        manifest["dependencies"].append({"name": "pkgconf", "host": True})
-    for dependency in manifest["dependencies"]:
-        if isinstance(dependency, dict) and dependency.get("name") == "ffmpeg":
-            dependency["name"] = package_name
-        elif dependency == "ffmpeg":
-            manifest["dependencies"][manifest["dependencies"].index(dependency)] = package_name
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
-    cmake_file = target / "CMakeLists.txt"
-    cmake = cmake_file.read_text(encoding="utf-8")
-    lookup = "find_package(FFmpeg MODULE REQUIRED)"
-    if cmake.count(lookup) != 1:
-        raise ValueError("The FFmpeg consumer test CMake entry point changed")
-    cmake = cmake.replace(lookup, 'list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")\n' + lookup)
-    cmake_file.write_text(cmake, encoding="utf-8")
-    (target / "FindFFmpeg.cmake").write_text(_TESTER_FIND_FFMPEG, encoding="utf-8")
-    return target
 
 
 def generate_seed_port(directory: Path | None = None) -> Path:

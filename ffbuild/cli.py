@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> None:
             if args.master_snapshot_file and snapshot is not None:
                 args.master_snapshot_file.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
             print(f"Generated {len(ports)} version-qualified FFmpeg Ports "
-                  f"and corresponding tester Ports")
+                  f"with stable ffmpeg package identities; Tester remains ports/ffmpeg-tester")
         else:
             if not args.version:
                 raise ValueError("A version or --all is required")

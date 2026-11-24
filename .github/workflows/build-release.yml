@@ -387,7 +387,11 @@ jobs:
         shell: pwsh
         run: |
           $job = $env:FFBUILD_JOB | ConvertFrom-Json
-          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" --recurse
+          # A direct overlay Port directory selects one version whose manifest
+          # still names the native vcpkg package "ffmpeg".
+          $versionPort = "_work/ffbuild/generated-ports/ffmpeg-$($job.yaml.Replace('.', '-'))"
+          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" `
+            "--overlay-ports=$versionPort" "--overlay-ports=ports" --recurse
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify no external dependencies were compiled by Worker
         shell: pwsh
@@ -484,7 +488,11 @@ jobs:
         shell: pwsh
         run: |
           $job = $env:FFBUILD_JOB | ConvertFrom-Json
-          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" --recurse
+          # A direct overlay Port directory selects one version whose manifest
+          # still names the native vcpkg package "ffmpeg".
+          $versionPort = "_work/ffbuild/generated-ports/ffmpeg-$($job.yaml.Replace('.', '-'))"
+          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" `
+            "--overlay-ports=$versionPort" "--overlay-ports=ports" --recurse
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify no external dependencies were compiled by Worker
         shell: pwsh

@@ -16,14 +16,15 @@ from ffbuild.versions import ROOT
 
 
 JOB = {
-    "package": "ffmpeg-8-1-3[all-lgpl,static]",
-    "port": "ffmpeg-8-1-3",
-    "tester_port": "ffmpeg-tester-8-1-3",
+    "yaml": "8.1.3",
+    "package": "ffmpeg[all-lgpl,static]",
+    "port": "ffmpeg",
+    "tester_port": "ffmpeg-tester",
     "triplet": "x64-windows",
 }
 GRAPH = {
-    "ffmpeg-8-1-3_x64-windows": "a" * 64,
-    "ffmpeg-tester-8-1-3_x64-windows": "b" * 64,
+    "ffmpeg_x64-windows": "a" * 64,
+    "ffmpeg-tester_x64-windows": "b" * 64,
     "libilbc_x64-windows": "c" * 64,
     "mp3lame_x64-windows": "d" * 64,
 }
@@ -44,7 +45,8 @@ class DependencyCacheGateTests(unittest.TestCase):
             with mock.patch("ffbuild.cache_guard.native_abi_query", return_value=GRAPH) as native:
                 self.assertEqual(2, verify_dependency_cache(JOB, cache))
                 native.assert_called_once_with(
-                    [JOB["package"], JOB["tester_port"]], "x64-windows")
+                    [JOB["package"], JOB["tester_port"]], "x64-windows",
+                    port_overlay=ROOT / "_work/ffbuild/generated-ports/ffmpeg-8-1-3")
             self.assertFalse(cache_archive(cache, "a" * 64).exists())
             self.assertFalse(cache_archive(cache, "b" * 64).exists())
 
@@ -76,7 +78,7 @@ class DependencyCacheGateTests(unittest.TestCase):
 
     def test_empty_dependency_graph_must_not_pass(self):
         graph = {name: abi for name, abi in GRAPH.items()
-                 if name.startswith(("ffmpeg-8-1-3_", "ffmpeg-tester-8-1-3_"))}
+                 if name.startswith(("ffmpeg_", "ffmpeg-tester_"))}
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch("ffbuild.cache_guard.native_abi_query", return_value=graph):
                 with self.assertRaisesRegex(RuntimeError, "external dependency graph"):

@@ -42,6 +42,23 @@ class IsolatedE2ETests(unittest.TestCase):
             self.assertIn("!inputs.skip_release", uploads[0]["if"])
             self.assertTrue(any("ffvcpkg install" in s.get("run", "") for s in steps))
 
+    def test_workers_select_only_one_version_port_for_stable_ffmpeg(self):
+        ci = workflow("build-release.yml")
+        for name in ("build", "build-extra"):
+            with self.subTest(worker=name):
+                steps = ci["jobs"][name]["steps"]
+                build = next(step["run"] for step in steps
+                             if step.get("name") == "Build and test via native vcpkg")
+                self.assertIn("$job.yaml.Replace('.', '-')", build)
+                self.assertIn('"--overlay-ports=$versionPort"', build)
+                self.assertIn('"--overlay-ports=ports"', build)
+                self.assertIn("$job.package $job.tester_port", build)
+                self.assertNotIn("ffmpeg-tester-$", build)
+                self.assertNotIn("--overlay-ports=_work/ffbuild/generated-ports ", build)
+                self.assertIn("packages/${{ matrix.port }}_${{ matrix.triplet }}",
+                              next(step["run"] for step in steps if step.get("name") ==
+                                   "Verify and package installed vcpkg result"))
+
     def test_publish_requires_explicitly_enabled_and_not_ci_ref(self):
         ci = workflow("build-release.yml")
         gate = ci["jobs"]["publish"]["if"]
@@ -64,8 +81,11 @@ class IsolatedE2ETests(unittest.TestCase):
         self.assertEqual("./.github/workflows/build-release.yml", test["uses"])
         self.assertEqual({"contents": "read", "actions": "read"}, test["permissions"])
         self.assertNotIn("secrets", test)
-        for flag in ("dry_run", "skip_release", "skip_publish", "force"):
+        for flag in ("dry_run", "skip_publish", "force"):
             self.assertEqual("true", test["with"][flag])
+        self.assertEqual("false", test["with"]["skip_release"])
+        self.assertTrue(any(row["yaml"] == "4.4.8" for row in
+                            test["strategy"]["matrix"]["include"]))
 
     def test_abi_scan_selects_one_build_each_for_four_distinct_versions(self):
         ci = workflow("ci-e2e.yml")["jobs"]["smoke"]

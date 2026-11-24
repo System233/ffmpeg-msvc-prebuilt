@@ -20,7 +20,7 @@ from ffbuild.port import ffmpeg_port_name, generate_port
 from ffbuild.state import PublishedState
 from ffbuild.store import register_variant
 from ffbuild.targets import Target
-from ffbuild.versions import generate_all, has_source, versions
+from ffbuild.versions import ROOT, generate_all, has_source, versions
 
 
 class NativeABIQueries(unittest.TestCase):
@@ -28,12 +28,12 @@ class NativeABIQueries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "packages.config"
             path.write_text('<?xml version="1.0"?><packages><package '
-                            'id="ffmpeg-8-1-3_x64-windows" '
+                            'id="ffmpeg_x64-windows" '
                             'version="8.1.3-vcpkg' + 'a' * 64 + '" /></packages>',
                             encoding="utf-8")
-            self.assertEqual({'ffmpeg-8-1-3_x64-windows': 'a' * 64},
+            self.assertEqual({'ffmpeg_x64-windows': 'a' * 64},
                              read_nuget_abis(path))
-            path.write_text('<packages><package id="ffmpeg-8-1-3_x64-windows" '
+            path.write_text('<packages><package id="ffmpeg_x64-windows" '
                             'version="8.1.3" /></packages>', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Missing or duplicate"):
                 read_nuget_abis(path)
@@ -49,7 +49,7 @@ class NativeABIQueries(unittest.TestCase):
         queries = []
 
         def native(specs, triplet, **kwargs):
-            queries.append((tuple(specs), triplet))
+            queries.append((tuple(specs), triplet, kwargs['port_overlay'].name))
             self.assertEqual(1, len(specs))
             return {f"{spec.split('[', 1)[0]}_{triplet}":
                     str(len(queries)) * 64 for spec in specs}
@@ -59,13 +59,51 @@ class NativeABIQueries(unittest.TestCase):
         self.assertEqual(4, len(results))
         self.assertEqual(4, len(queries))
         self.assertEqual(4, len({item['id'] for item in results}))
-        self.assertTrue(all(item['port'].startswith('ffmpeg-') for item in results))
+        self.assertEqual({'ffmpeg'}, {item['port'] for item in results})
+        self.assertEqual({'ffmpeg-tester'}, {item['tester_port'] for item in results})
+        self.assertEqual({'ffmpeg-8-1-3', 'ffmpeg-9-1'}, {entry[2] for entry in queries})
+
+    def test_native_query_must_select_one_direct_stable_ffmpeg_port(self):
+        from types import SimpleNamespace
+        from ffbuild.native_abi import native_abi_query
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            port = root / 'ffmpeg-9-1'
+            port.mkdir()
+            (port / 'vcpkg.json').write_text('{"name":"ffmpeg","version":"9.1"}')
+            calls = []
+
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                output_arg = next(arg for arg in args if arg.startswith(
+                    '--x-write-nuget-packages-config='))
+                output = Path(output_arg.split('=', 1)[1])
+                output.write_text('<packages><package id="ffmpeg_x64-windows" '
+                                  'version="9.1-vcpkg' + 'a' * 64 + '" /></packages>')
+                return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+            with mock.patch('ffbuild.native_abi.subprocess.run', side_effect=fake_run):
+                self.assertEqual('a' * 64, native_abi_query(
+                    ['ffmpeg[base]'], 'x64-windows', port_overlay=port,
+                    binary=Path(__file__))['ffmpeg_x64-windows'])
+            self.assertEqual(1, len(calls))
+            args = calls[0]
+            self.assertIn(f'--overlay-ports={port.resolve()}', args)
+            self.assertNotIn(f'--overlay-ports={root.resolve()}', args)
+            self.assertIn('ffmpeg[base]', args)
+            (port / 'vcpkg.json').write_text('{"name":"ffmpeg-9-1","version":"9.1"}')
+            with self.assertRaisesRegex(ValueError, 'stable ffmpeg'):
+                native_abi_query(['ffmpeg[base]'], 'x64-windows',
+                                 port_overlay=port, binary=Path(__file__))
+            with self.assertRaisesRegex(FileNotFoundError, 'Select a generated'):
+                native_abi_query(['ffmpeg[base]'], 'x64-windows',
+                                 port_overlay=root, binary=Path(__file__))
 
     def test_preflight_rejects_abi_drift(self):
-        job = {'port': 'ffmpeg-8-1-3', 'package': 'ffmpeg-8-1-3[base]',
+        job = {'yaml': '8.1.3', 'port': 'ffmpeg', 'package': 'ffmpeg[base]',
                'triplet': 'x64-windows', 'abi_hash': 'a' * 64}
         with mock.patch('ffbuild.native_abi.native_abi_query', return_value={
-                'ffmpeg-8-1-3_x64-windows': 'b' * 64}):
+                'ffmpeg_x64-windows': 'b' * 64}):
             with self.assertRaisesRegex(ValueError, "ABI changed"):
                 verify_job_abi(job)
 
@@ -101,13 +139,26 @@ class VersionedPorts(unittest.TestCase):
             self.assertEqual(len(ports), len({port.name for port in ports}))
             for port in ports:
                 manifest = json.loads((port / 'vcpkg.json').read_text())
-                self.assertEqual(port.name, manifest['name'])
-                tester = directory / port.name.replace('ffmpeg-', 'ffmpeg-tester-', 1)
-                metadata = json.loads((tester / 'vcpkg.json').read_text())
-                self.assertEqual(tester.name, metadata['name'])
-                self.assertIn(port.name, [d['name'] for d in metadata['dependencies']
-                                          if isinstance(d, dict)])
-                self.assertTrue((tester / 'FindFFmpeg.cmake').is_file())
+                self.assertEqual('ffmpeg', manifest['name'])
+                self.assertEqual('ffmpeg-tester', json.loads(
+                    (ROOT / 'ports/ffmpeg-tester/vcpkg.json').read_text())['name'])
+                self.assertFalse((directory / port.name.replace('ffmpeg-', 'ffmpeg-tester-', 1)).exists())
+                self.assertFalse(any('ffmpeg-' in str(dep)
+                                     for part in manifest['features'].values()
+                                     for dep in part.get('dependencies', [])))
+
+    def test_generate_all_removes_obsolete_versioned_tester_copies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            old = root / 'ffmpeg-tester-8-1-3'
+            old.mkdir()
+            (old / 'vcpkg.json').write_text(
+                '{"name":"ffmpeg-tester-8-1-3","version":"1.0.0"}')
+            generate_all(output=root)
+            self.assertFalse(old.exists())
+            self.assertTrue((root / 'ffmpeg-8-1-3').is_dir())
+            self.assertEqual('ffmpeg', json.loads(
+                (root / 'ffmpeg-8-1-3/vcpkg.json').read_text())['name'])
 
     def test_master_source_pinned_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,10 +166,10 @@ class VersionedPorts(unittest.TestCase):
                                  source_version='n9.1-12-gabcdef0', ref='a' * 40,
                                  sha512='b' * 128)
             self.assertEqual('ffmpeg-master', port.name)
-            self.assertEqual('ffmpeg-master', json.loads(
+            self.assertEqual('ffmpeg', json.loads(
                 (port / 'vcpkg.json').read_text())['name'])
             self.assertIn('a' * 40, (port / 'portfile.cmake').read_text())
-            self.assertTrue((port.parent / 'ffmpeg-tester-master').is_dir())
+            self.assertFalse((port.parent / 'ffmpeg-tester-master').exists())
 
     def test_version_names_reject_malformed_input(self):
         self.assertEqual('ffmpeg-8-1-3', ffmpeg_port_name('8.1.3'))
@@ -134,14 +185,14 @@ class NativePublication(unittest.TestCase):
             native = 'f' * 64
             with self.assertRaisesRegex(FileNotFoundError, "ABI inputs missing"):
                 _verify_native_package_abi(package, 'ffmpeg-8-1-3', native)
-            metadata = package / 'share' / 'ffmpeg-8-1-3' / 'vcpkg_abi_info.txt'
+            metadata = package / 'share' / 'ffmpeg' / 'vcpkg_abi_info.txt'
             metadata.parent.mkdir(parents=True)
             metadata.write_text('the actual ABI inputs', encoding='utf-8')
             with self.assertRaisesRegex(ValueError, "differs from planned"):
-                _verify_native_package_abi(package, 'ffmpeg-8-1-3', native)
+                _verify_native_package_abi(package, 'ffmpeg', native)
             import hashlib
             actual = hashlib.sha256(metadata.read_bytes()).hexdigest()
-            _verify_native_package_abi(package, 'ffmpeg-8-1-3', actual)
+            _verify_native_package_abi(package, 'ffmpeg', actual)
 
     def test_packaging_and_data_dedup_use_only_native_abi(self):
         requests, blocked = build_requests(

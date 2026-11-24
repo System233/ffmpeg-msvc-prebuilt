@@ -266,7 +266,7 @@ CI 中额外锁定 vcpkg 工具自身版本：
 │ • download seed cache                                           │
 │ • Step 1: 读取 build-index → 跳过已构建 variant                 │
 │ • generate.py → 生成 port                                       │
-│ • vcpkg install ffmpeg-{ver}                                    │
+│ • vcpkg install ffmpeg[...] ffmpeg-tester（选择版本目录 Overlay）│
 │ • package_release.py → .zip + .var.yaml                         │
 │ • upload artifacts:                                             │
 │     ffmpeg-{ver}-{triplet}-{link}-{license}.zip                 │
