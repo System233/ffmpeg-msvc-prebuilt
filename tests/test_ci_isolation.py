@@ -67,23 +67,34 @@ class IsolatedE2ETests(unittest.TestCase):
         for flag in ("dry_run", "skip_release", "skip_publish", "force"):
             self.assertEqual("true", test["with"][flag])
 
-    def test_abi_scan_selects_four_gpl_shared_architectures(self):
-        ci = workflow("ci-e2e.yml")["jobs"]["smoke"]["with"]
-        requests, blocked = build_requests(version=ci["yaml"])
-        self.assertFalse(blocked)
-        sorted_requests = sorted(requests, key=lambda row:
-                                 (row["yaml"], row["triplet"], row["package"]))
-        shard_count = int(ci["shard_count"])
-        shard_index = int(ci["shard_index"])
-        selected = [row for index, row in enumerate(sorted_requests)
-                    if index % shard_count == shard_index]
-        self.assertEqual(4, len(selected))
-        self.assertEqual({"arm-windows", "arm64-windows", "x64-windows", "x86-windows"},
-                         {row["triplet"] for row in selected})
-        self.assertEqual({("gpl", "shared")},
-                         {(row["license"], row["linkage"]) for row in selected})
-        self.assertEqual(4, int(ci["shard_count"]))
-        self.assertEqual(1, int(ci["shard_index"]))
+    def test_abi_scan_selects_one_build_each_for_four_distinct_versions(self):
+        ci = workflow("ci-e2e.yml")["jobs"]["smoke"]
+        rows = ci["strategy"]["matrix"]["include"]
+        self.assertEqual("false", ci["strategy"]["fail-fast"])
+        self.assertEqual(4, len(rows))
+        self.assertEqual(4, len({row["yaml"] for row in rows}))
+        self.assertFalse(any(row["yaml"].startswith("8.1") for row in rows))
+        self.assertEqual("${{ matrix.yaml }}", ci["with"]["yaml"])
+        self.assertEqual("${{ matrix.shard_index }}", ci["with"]["shard_index"])
+        self.assertEqual(16, int(ci["with"]["shard_count"]))
+        expected = {
+            "3.4.14": ("x64-windows", "gpl", "shared"),
+            "4.4.8": ("arm-windows", "lgpl", "static"),
+            "6.1.6": ("x86-windows", "gpl", "shared"),
+            "9.1": ("arm64-windows", "lgpl", "static"),
+        }
+        for row in rows:
+            with self.subTest(version=row["yaml"], shard=row["shard_index"]):
+                requests, blocked = build_requests(version=row["yaml"])
+                self.assertFalse(blocked)
+                ordered = sorted(requests, key=lambda item:
+                                 (item["yaml"], item["triplet"], item["package"]))
+                selected = [item for index, item in enumerate(ordered)
+                            if index % int(ci["with"]["shard_count"]) == int(row["shard_index"])]
+                self.assertEqual(1, len(selected))
+                self.assertEqual(expected[row["yaml"]],
+                                 (selected[0]["triplet"], selected[0]["license"],
+                                  selected[0]["linkage"]))
 
     def test_isolated_name_cannot_trigger_main_autoheal(self):
         name = workflow("ci-e2e.yml")["name"]
