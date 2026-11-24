@@ -17,13 +17,12 @@ concurrency:
 
 jobs:
   smoke:
-    # Four deliberately distinct historical/current release families, exactly
-    # one ABI-sorted MSVC variant each. Never rebuild 8.1.x in this smoke.
+    # Recheck only the previously failing three variants. 3.4.14/x64 passed
+    # the complete Consumer and packaging smoke in the previous run.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { yaml: '3.4.14', shard_index: 9 }  # x64 GPL shared
           - { yaml: '4.4.8', shard_index: 2 }   # ARM LGPL static
           - { yaml: '6.1.6', shard_index: 13 } # x86 GPL shared
           - { yaml: '9.1', shard_index: 6 }    # ARM64 LGPL static

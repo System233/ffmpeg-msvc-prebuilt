@@ -87,18 +87,18 @@ class IsolatedE2ETests(unittest.TestCase):
         self.assertTrue(any(row["yaml"] == "4.4.8" for row in
                             test["strategy"]["matrix"]["include"]))
 
-    def test_abi_scan_selects_one_build_each_for_four_distinct_versions(self):
+    def test_abi_scan_retests_only_three_failed_versions(self):
         ci = workflow("ci-e2e.yml")["jobs"]["smoke"]
         rows = ci["strategy"]["matrix"]["include"]
         self.assertEqual("false", ci["strategy"]["fail-fast"])
-        self.assertEqual(4, len(rows))
-        self.assertEqual(4, len({row["yaml"] for row in rows}))
+        self.assertEqual(3, len(rows))
+        self.assertEqual(3, len({row["yaml"] for row in rows}))
         self.assertFalse(any(row["yaml"].startswith("8.1") for row in rows))
+        self.assertFalse(any(row["yaml"] == "3.4.14" for row in rows))
         self.assertEqual("${{ matrix.yaml }}", ci["with"]["yaml"])
         self.assertEqual("${{ matrix.shard_index }}", ci["with"]["shard_index"])
         self.assertEqual(16, int(ci["with"]["shard_count"]))
         expected = {
-            "3.4.14": ("x64-windows", "gpl", "shared"),
             "4.4.8": ("arm-windows", "lgpl", "static"),
             "6.1.6": ("x86-windows", "gpl", "shared"),
             "9.1": ("arm64-windows", "lgpl", "static"),

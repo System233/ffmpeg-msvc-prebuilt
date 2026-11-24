@@ -22,6 +22,72 @@ _CONDITION = re.compile(r"^(>=|<=|>|<)(\d+(?:\.\d+){1,2})$")
 _RULE = re.compile(r"^(feature|package):([A-Za-z0-9_.+-]+)$")
 
 
+def _platform_applies(expression: str, triplet: str) -> bool:
+    """Evaluate the vcpkg platform expressions used by our feature edges.
+
+    The 'arm' predicate intentionally covers both arm32 and arm64, matching
+    vcpkg's platform vocabulary; 'arm32' excludes arm64.
+    Unknown predicates and unsupported syntax fail closed rather than
+    silently producing a different feature closure.
+    """
+    architecture = triplet.split("-", 1)[0]
+    flags = {
+        "x86": architecture == "x86",
+        "x64": architecture == "x64",
+        "arm": architecture in ("arm", "arm64"),
+        "arm32": architecture == "arm",
+        "arm64": architecture == "arm64",
+        "windows": "windows" in triplet,
+        "uwp": "uwp" in triplet,
+        "xbox": "xbox" in triplet,
+    }
+    tokens = re.findall(r"\s*(!|&|\||\(|\)|[a-z][a-z0-9]*)", expression)
+    if "".join(tokens) != re.sub(r"\s+", "", expression):
+        raise ValueError(f"Unsupported vcpkg platform expression: {expression!r}")
+    index = 0
+
+    def atom() -> bool:
+        nonlocal index
+        if index >= len(tokens):
+            raise ValueError(f"Incomplete vcpkg platform expression: {expression!r}")
+        token = tokens[index]
+        index += 1
+        if token == "!":
+            return not atom()
+        if token == "(":
+            value = disjunction()
+            if index >= len(tokens) or tokens[index] != ")":
+                raise ValueError(f"Unclosed vcpkg platform expression: {expression!r}")
+            index += 1
+            return value
+        if token not in flags:
+            raise ValueError(f"Unknown vcpkg platform predicate: {token!r}")
+        return flags[token]
+
+    def conjunction() -> bool:
+        nonlocal index
+        value = atom()
+        while index < len(tokens) and tokens[index] == "&":
+            index += 1
+            rhs = atom()
+            value = value and rhs
+        return value
+
+    def disjunction() -> bool:
+        nonlocal index
+        value = conjunction()
+        while index < len(tokens) and tokens[index] == "|":
+            index += 1
+            rhs = conjunction()
+            value = value or rhs
+        return value
+
+    answer = disjunction()
+    if index != len(tokens):
+        raise ValueError(f"Unexpected vcpkg platform token in {expression!r}")
+    return answer
+
+
 def _merge(current: dict, changes: dict) -> dict:
     merged = dict(current)
     for key, value in changes.items():
@@ -119,7 +185,8 @@ class FeatureSet:
     references: dict[str, tuple[tuple[str, str | None], ...]]
     host_packages: tuple[str | dict, ...]
 
-    def closure(self, roots: list[str] | tuple[str, ...]) -> set[str]:
+    def closure(self, roots: list[str] | tuple[str, ...],
+                triplet: str | None = None) -> set[str]:
         selected: set[str] = set()
         stack = list(roots) + list(self.defaults)
         while stack:
@@ -129,7 +196,10 @@ class FeatureSet:
             if current not in self.definitions:
                 raise ValueError(f"Missing FFmpeg feature: {current}")
             selected.add(current)
-            stack.extend(name for name, _ in self.references.get(current, ()))
+            for name, platform in self.references.get(current, ()):
+                effective = platform or self.definitions[name].get("platform")
+                if triplet is None or not effective or _platform_applies(effective, triplet):
+                    stack.append(name)
         return selected
 
     def policy_errors(self, selected: set[str]) -> list[str]:

@@ -122,6 +122,13 @@ class OriginalBuildRecipeParityTests(unittest.TestCase):
         ):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, script)
+        # Release and Debug .pc files can carry different vcpkg library
+        # identities (notably ZeroMQ's -s vs -sgd static CRT archives).
+        self.assertIn('function(ffmpeg_pkgconf_run out_var config)', script)
+        self.assertIn('ffmpeg_pkgconf_run(libs_raw "${cfg}" --libs "${pkgmod}")', script)
+        self.assertIn('"${CURRENT_PACKAGES_DIR}/${_ff_prefix}lib/pkgconfig', script)
+        self.assertIn('${CURRENT_INSTALLED_DIR}/${_ff_prefix}lib/pkgconfig', script)
+        self.assertNotIn('set(PKG_${pkgmod}_LIBS_DEBUG "${libs_raw}")', script)
         for requirement in ("OPTIONS_arm=", "OPTIONS_arm64=",
                             "build_ffmpeg()", "configure", "make"):
             with self.subTest(requirement=requirement):

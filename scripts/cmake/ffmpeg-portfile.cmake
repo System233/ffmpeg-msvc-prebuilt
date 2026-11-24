@@ -649,10 +649,17 @@ find_program(PKGCONF pkgconf
     PATHS "${CURRENT_HOST_INSTALLED_DIR}/tools/pkgconf" NO_DEFAULT_PATH)
 
 # Wrapper: sets PKG_CONFIG_PATH before pkgconf, restores after
-function(ffmpeg_pkgconf_run out_var)
+function(ffmpeg_pkgconf_run out_var config)
+    if(config STREQUAL "DEBUG")
+        set(_ff_prefix "debug/")
+    elseif(config STREQUAL "RELEASE")
+        set(_ff_prefix "")
+    else()
+        message(FATAL_ERROR "Unknown pkg-config build configuration: ${config}")
+    endif()
     set(_ff_bak "$ENV{PKG_CONFIG_PATH}")
     set(ENV{PKG_CONFIG_PATH}
-        "${CURRENT_PACKAGES_DIR}/lib/pkgconfig${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_INSTALLED_DIR}/lib/pkgconfig")
+        "${CURRENT_PACKAGES_DIR}/${_ff_prefix}lib/pkgconfig${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_INSTALLED_DIR}/${_ff_prefix}lib/pkgconfig")
     execute_process(
         COMMAND "${PKGCONF}" ${ARGN}
         OUTPUT_VARIABLE _ff_result
@@ -666,7 +673,7 @@ endfunction()
 # 1a. DEPS via pkgconf <mod> --print-requires-private
 foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
     string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
-    ffmpeg_pkgconf_run(deps_raw "${pkgmod}" --print-requires --print-requires-private )
+    ffmpeg_pkgconf_run(deps_raw RELEASE "${pkgmod}" --print-requires --print-requires-private )
     set(FFMPEG_${short_name}_DEPS "")
     if(NOT deps_raw STREQUAL "")
         string(REPLACE "\n" ";" lines "${deps_raw}")
@@ -688,8 +695,8 @@ endforeach()
 # 1b. LIBRARIES via pkgconf --libs
 foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
     string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
-    ffmpeg_pkgconf_run(libs_raw --libs "${pkgmod}")
     foreach(cfg RELEASE DEBUG)
+        ffmpeg_pkgconf_run(libs_raw "${cfg}" --libs "${pkgmod}")
         set(PKG_${pkgmod}_LIBS_${cfg} "${libs_raw}")
     endforeach()
 endforeach()

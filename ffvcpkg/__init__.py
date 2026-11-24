@@ -8,6 +8,8 @@ cache, dependency graph and install/build lifecycle.
 from __future__ import annotations
 
 import os
+import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,10 +45,32 @@ def command(arguments: list[str], *, binary: Path | None = None) -> list[str]:
         raise ValueError("A native vcpkg command is required")
     args = list(arguments)
     if args[0] in ("install", "depend-info", "upgrade"):
-        if not any(a == "--overlay-ports" or a.startswith("--overlay-ports=") for a in args):
-            generated = ROOT / "_work" / "ffbuild" / "generated-ports"
-            if generated.is_dir():
-                args.append(f"--overlay-ports={generated}")
+        generated = ROOT / "_work" / "ffbuild" / "generated-ports"
+        overlays: list[Path] = []
+        for index, arg in enumerate(args):
+            if arg.startswith("--overlay-ports="):
+                overlays.append(Path(arg.split("=", 1)[1]))
+            elif arg == "--overlay-ports":
+                if index + 1 >= len(args):
+                    raise ValueError("--overlay-ports requires a directory")
+                overlays.append(Path(args[index + 1]))
+        for port in overlays:
+            if port.resolve() == generated.resolve():
+                raise ValueError(
+                    "The generated-ports parent contains multiple ffmpeg versions; "
+                    "select one direct ffmpeg-<version> Port directory")
+        needs_ffmpeg = any(re.fullmatch(
+            r"ffmpeg(?:\[[^\]]+\])?(?::[a-z0-9-]+)?|ffmpeg-tester(?::[a-z0-9-]+)?",
+            argument) for argument in args[1:])
+        if needs_ffmpeg and not any(
+            (port / "vcpkg.json").is_file() and
+            json.loads((port / "vcpkg.json").read_text(encoding="utf-8")).get("name") == "ffmpeg"
+            for port in overlays
+        ):
+            raise ValueError(
+                "Install ffmpeg and ffmpeg-tester with an explicit single-version "
+                "--overlay-ports=<generated-ports/ffmpeg-version> directory")
+        if not overlays:
             args.append(f"--overlay-ports={ROOT / 'ports'}")
         if not any(a == "--overlay-triplets" or a.startswith("--overlay-triplets=") for a in args):
             args.append(f"--overlay-triplets={ROOT / 'triplets'}")

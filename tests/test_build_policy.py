@@ -18,7 +18,7 @@ from ffbuild.planner import plan
 from ffbuild.state import PublishedState
 from ffbuild.versions import generate, validate_variant
 from ffvcpkg import command
-from ffbuild.spec import FeatureSet
+from ffbuild.spec import FeatureSet, _platform_applies
 from ffbuild.port import _policy_script
 from ffbuild.package import package_job
 from ffbuild.targets import Target, compile_target
@@ -180,15 +180,49 @@ class VcpkgWrapperTests(unittest.TestCase):
         # test already ran port generation.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "_work" / "ffbuild" / "generated-ports").mkdir(parents=True)
+            generated = root / "_work" / "ffbuild" / "generated-ports"
+            selected = generated / "ffmpeg-9-1"
+            selected.mkdir(parents=True)
+            (selected / "vcpkg.json").write_text('{"name":"ffmpeg","version":"9.1"}')
             with mock.patch("ffvcpkg.ROOT", root):
-                args = command(["install", "ffmpeg[all-lgpl,static]", "--triplet=x64-windows"],
+                args = command(["install", "ffmpeg[all-lgpl,static]", "--triplet=x64-windows",
+                                f"--overlay-ports={selected}", f"--overlay-ports={root / 'ports'}"],
                                binary=fake)
         self.assertEqual(str(fake), args[0])
         self.assertEqual("ffmpeg[all-lgpl,static]", args[2])
         self.assertIn("--triplet=x64-windows", args)
         self.assertEqual(2, sum(a.startswith("--overlay-ports=") for a in args))
         self.assertEqual(1, sum(a.startswith("--overlay-triplets=") for a in args))
+
+    def test_multiple_version_overlay_parent_is_never_implicitly_selected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent = root / "_work" / "ffbuild" / "generated-ports"
+            parent.mkdir(parents=True)
+            selected = parent / "ffmpeg-9-1"
+            selected.mkdir()
+            (selected / "vcpkg.json").write_text('{"name":"ffmpeg","version":"9.1"}')
+            with mock.patch("ffvcpkg.ROOT", root):
+                with self.assertRaisesRegex(ValueError, "single-version"):
+                    command(["install", "ffmpeg[base]"], binary=Path("vcpkg.exe"))
+                with self.assertRaisesRegex(ValueError, "generated-ports parent"):
+                    command(["install", "ffmpeg[base]",
+                             f"--overlay-ports={parent}"], binary=Path("vcpkg.exe"))
+                with self.assertRaisesRegex(ValueError, "single-version"):
+                    command(["install", "ffmpeg-tester",
+                             f"--overlay-ports={root / 'ports'}"], binary=Path("vcpkg.exe"))
+                args = command(["install", "ffmpeg-tester",
+                                f"--overlay-ports={selected}"], binary=Path("vcpkg.exe"))
+                self.assertIn(f"--overlay-ports={selected}", args)
+
+    def test_generic_dependency_port_does_not_load_multi_version_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "_work" / "ffbuild" / "generated-ports").mkdir(parents=True)
+            with mock.patch("ffvcpkg.ROOT", root):
+                args = command(["install", "zlib"], binary=Path("vcpkg.exe"))
+                self.assertIn(f"--overlay-ports={root / 'ports'}", args)
+                self.assertFalse(any("generated-ports" in arg for arg in args))
 
     def test_explicit_overlays_are_preserved(self):
         args = command(["install", "zlib", "--overlay-ports=custom",
@@ -200,6 +234,41 @@ class VcpkgWrapperTests(unittest.TestCase):
     def test_non_build_commands_pass_through_unchanged(self):
         self.assertEqual(["vcpkg.exe", "version"],
                          command(["version"], binary=Path("vcpkg.exe")))
+
+
+class NativePlatformFeatureTests(unittest.TestCase):
+    def test_vcpkg_architecture_predicates(self):
+        self.assertFalse(_platform_applies("!x86 & !arm32 & !uwp", "x86-windows"))
+        self.assertFalse(_platform_applies("!x86 & !arm32 & !uwp", "arm-windows"))
+        self.assertTrue(_platform_applies("!x86 & !arm32 & !uwp", "arm64-windows"))
+        self.assertFalse(_platform_applies("!x86 & !arm", "arm64-windows"))
+        self.assertTrue(_platform_applies("!x86 & !arm", "x64-windows"))
+        self.assertFalse(_platform_applies("!uwp & !arm & !arm64", "arm64-windows"))
+        self.assertTrue(_platform_applies("!uwp & !arm & !arm64", "x64-windows"))
+        self.assertTrue(_platform_applies("(x64 | arm64) & !uwp", "arm64-windows"))
+        self.assertFalse(_platform_applies("(x64 | arm64) & !uwp", "x86-windows"))
+        with self.assertRaisesRegex(ValueError, "Unknown vcpkg platform"):
+            _platform_applies("!unsupported", "x64-windows")
+
+    def test_target_closure_matches_native_vcpkg_platform_conditions(self):
+        samples = (
+            ("6.1.6", "x86-windows", "ffmpeg[all-gpl]", ("svtav1",)),
+            ("9.1", "arm64-windows", "ffmpeg[all-lgpl,static]", ("nvcodec", "vvenc")),
+        )
+        for version, triplet, package, disabled in samples:
+            with self.subTest(version=version, triplet=triplet):
+                roots = tuple(package.split("[", 1)[1].removesuffix("]").split(","))
+                result = compile_target(config(version), version,
+                                        Target(package, triplet, roots))
+                for feature in disabled:
+                    self.assertNotIn(feature, result["features"])
+                self.assertIn("base", result["features"])
+                self.assertEqual(package, result["package"])
+
+    def test_build_target_rejects_old_versioned_package_identity(self):
+        from ffbuild.targets import parse_package
+        with self.assertRaisesRegex(ValueError, "Expected an FFmpeg"):
+            parse_package("ffmpeg-9-1[base]")
 
 
 if __name__ == "__main__":

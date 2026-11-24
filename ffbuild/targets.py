@@ -20,7 +20,7 @@ from .versions import ROOT
 
 
 DEFAULT_TARGETS = ROOT / "ffbuild" / "targets.yaml"
-_PACKAGE = re.compile(r"^ffmpeg(?:-[a-z0-9-]+)?(?:\[([a-z0-9+._-]+(?:,[a-z0-9+._-]+)*)\])?$")
+_PACKAGE = re.compile(r"^ffmpeg(?:\[([a-z0-9+._-]+(?:,[a-z0-9+._-]+)*)\])?$")
 _TRIPLET = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
@@ -64,7 +64,9 @@ def load_targets(path: Path = DEFAULT_TARGETS) -> tuple[Target, ...]:
 
 def compile_target(config: dict, version: str, target: Target) -> dict:
     graph: FeatureSet = resolve_features(config, version)
-    selected = graph.closure(target.roots)
+    # Match the platform-conditioned self-dependency edges in the generated
+    # vcpkg manifest, rather than expecting disabled Features in CONTROL.
+    selected = graph.closure(target.roots, triplet=target.triplet)
     failures = graph.policy_errors(selected)
     if failures:
         raise ValueError("; ".join(failures))
