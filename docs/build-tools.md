@@ -155,8 +155,13 @@ CI's work order is:
    from GitHub Actions**. A missing cache fails the job instead of silently
    rebuilding all dependencies independently. The worker vcpkg binary source
    itself is `read` rather than `readwrite`, preventing redundant FFmpeg ZIP
-   writes on a space-constrained Windows Runner. vcpkg still validates each
-   package's actual ABI and may build a missing variant locally in the Worker.
+   writes on a space-constrained Windows Runner. **Before building, the Worker
+   queries vcpkg's native ABI graph including the FFmpeg Consumer Tester and
+   requires a nonempty files-provider ZIP for every third-party ABI**; missing
+   dependency packages are fatal rather than locally compiled. **After building,
+   the Worker checks buildtree logs**, failing if any third-party Port was
+   compiled despite the preflight. Only the selected FFmpeg Port and its Tester
+   may build in the Worker.
 
 The cache namespace is scoped by pinned vcpkg version, Triplet and the
 generated Seed plus authored Port and Triplet inputs. Old `ffbuild-seed`,

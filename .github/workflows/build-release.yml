@@ -367,6 +367,16 @@ jobs:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
           VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
         run: python -m ffbuild scan --job-env FFBUILD_JOB
+      # The Seed must contain the exact native ABI archives of EVERY external
+      # dependency needed by this Worker, not just a matching GitHub cache key.
+      - name: Require exact third-party binary cache coverage
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          python -m ffbuild.ci verify-cache --job-env FFBUILD_JOB "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and test via native vcpkg
         env:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
@@ -378,6 +388,13 @@ jobs:
         run: |
           $job = $env:FFBUILD_JOB | ConvertFrom-Json
           python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" --recurse
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify no external dependencies were compiled by Worker
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: |
+          python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package installed vcpkg result
         if: ${{ !inputs.skip_release }}
@@ -447,6 +464,16 @@ jobs:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
           VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
         run: python -m ffbuild scan --job-env FFBUILD_JOB
+      # The Seed must contain the exact native ABI archives of EVERY external
+      # dependency needed by this Worker, not just a matching GitHub cache key.
+      - name: Require exact third-party binary cache coverage
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          python -m ffbuild.ci verify-cache --job-env FFBUILD_JOB "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and test via native vcpkg
         env:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
@@ -458,6 +485,13 @@ jobs:
         run: |
           $job = $env:FFBUILD_JOB | ConvertFrom-Json
           python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" --recurse
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify no external dependencies were compiled by Worker
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: |
+          python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package installed vcpkg result
         if: ${{ !inputs.skip_release }}
