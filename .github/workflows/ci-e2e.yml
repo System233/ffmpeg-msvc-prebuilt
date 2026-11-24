@@ -28,7 +28,8 @@ jobs:
       skip_release: true
       skip_publish: true
       force: true
-      # Native ABI plan contains 16 variants; slot 10 is x64 LGPL static
-      # after the scanner's deterministic (yaml, triplet, package) sorting.
-      shard_count: 16
-      shard_index: 10
+      # Bounded four-architecture validation, not the complete 16-way matrix.
+      # Sorted slots 1/5/9/13 are ARM/ARM64/x64/x86 GPL + shared builds.
+      # Keep release and publication disabled; Worker cache reuse is mandatory.
+      shard_count: 4
+      shard_index: 1

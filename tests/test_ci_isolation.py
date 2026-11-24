@@ -67,7 +67,7 @@ class IsolatedE2ETests(unittest.TestCase):
         for flag in ("dry_run", "skip_release", "skip_publish", "force"):
             self.assertEqual("true", test["with"][flag])
 
-    def test_abi_scan_selects_one_native_x64_lgpl_static_worker(self):
+    def test_abi_scan_selects_four_gpl_shared_architectures(self):
         ci = workflow("ci-e2e.yml")["jobs"]["smoke"]["with"]
         requests, blocked = build_requests(version=ci["yaml"])
         self.assertFalse(blocked)
@@ -77,10 +77,13 @@ class IsolatedE2ETests(unittest.TestCase):
         shard_index = int(ci["shard_index"])
         selected = [row for index, row in enumerate(sorted_requests)
                     if index % shard_count == shard_index]
-        self.assertEqual(1, len(selected))
-        self.assertEqual(("x64-windows", "lgpl", "static"),
-                         (selected[0]["triplet"], selected[0]["license"],
-                          selected[0]["linkage"]))
+        self.assertEqual(4, len(selected))
+        self.assertEqual({"arm-windows", "arm64-windows", "x64-windows", "x86-windows"},
+                         {row["triplet"] for row in selected})
+        self.assertEqual({("gpl", "shared")},
+                         {(row["license"], row["linkage"]) for row in selected})
+        self.assertEqual(4, int(ci["shard_count"]))
+        self.assertEqual(1, int(ci["shard_index"]))
 
     def test_isolated_name_cannot_trigger_main_autoheal(self):
         name = workflow("ci-e2e.yml")["name"]
