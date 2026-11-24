@@ -49,6 +49,9 @@ class IsolatedE2ETests(unittest.TestCase):
                           "!inputs.dry_run", "refs/heads/ci/"):
             self.assertIn(condition, gate)
         self.assertIn("needs.build.result == 'success'", gate)
+        # GitHub rejects reusable workflow permission escalation at startup,
+        # even when the privileged job is guarded with if: false.
+        self.assertEqual("read", ci["jobs"]["publish"]["permissions"]["contents"])
 
     def test_ci_branch_only_runs_unprivileged_smoke(self):
         ci = workflow("ci-e2e.yml")

@@ -490,8 +490,10 @@ jobs:
       group: data-branch
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # GitHub App token (created below) performs publication writes. Keeping
+    # GITHUB_TOKEN read-only permits safe reuse by an unprivileged caller.
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-python
