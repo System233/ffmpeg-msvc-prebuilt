@@ -21,6 +21,5 @@ patches:
 - 4.x/0050-lensfun-0.3.4-compat-4.4.7.patch
 - 4.x/0052-svtav1-3.x-compat-4.4.7.patch
 - 4.x/0001-fix-iconv-link.patch
-revision: 0
 source:
   sha512: 79ef89decbec39c2de2d2b98a7b3307b5788805a07a15116a31b6d6fe35e75745a956efcf5215e96928f3cce8f0b465a5d157448efa37be3602a8eea74cab966

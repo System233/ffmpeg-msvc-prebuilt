@@ -20,10 +20,10 @@ from typing import Any
 
 from ffvcpkg import executable
 
-from .identity import variant_name
+from .identity import variant_name, utc_release_date
 from .port import ffmpeg_port_name
 from .targets import Target, compile_target, load_targets
-from .versions import GENERATED_PORTS, ROOT, config, has_source, latest_per_family, revision, versions
+from .versions import GENERATED_PORTS, ROOT, config, has_source, latest_per_family, versions
 
 
 _ABI_SUFFIX = re.compile(r"-vcpkg([0-9a-f]{64})$")
@@ -96,6 +96,7 @@ def build_requests(*, version: str = "", history: bool = False,
     if "master" in candidates and snapshot is None:
         from .master import master_metadata
         snapshot = master_metadata()
+    release_date = utc_release_date()
     requests: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
     for name in candidates:
@@ -120,7 +121,7 @@ def build_requests(*, version: str = "", history: bool = False,
             requests.append({
                 "yaml": name, "version": release, "source_version": release,
                 "source_ref": source_ref, "ref": snapshot["ref"] if name == "master" else "",
-                "sha512": source_sha512, "revision": revision(name),
+                "sha512": source_sha512, "release_date": release_date,
                 "port": port, "tester_port": "ffmpeg-tester",
                 "triplet": target.triplet, "package": resolved["package"],
                 "features": resolved["features"],
@@ -152,7 +153,7 @@ def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
         abi = all_abis[key]
         result = dict(request)
         result["abi_hash"] = abi
-        result["id"] = variant_name(request["version"], request["revision"],
+        result["id"] = variant_name(request["version"], 0,
                                     triplet, request["linkage"], request["license"],
                                     abi_hash=abi)
         results.append(result)

@@ -56,26 +56,15 @@ Shared variants also include a **develop** archive with debug symbols.
 ### File naming
 
 ```
-ffmpeg-9.1_arm64-windows-static-lgpl-a8ed804645e49-pkg2.zip
-ffmpeg-9.1_arm64-windows-static-lgpl-a8ed804645e49-pkg2-compliance.zip
-ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.zip
-ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2-develop.zip
-ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.sha256
-ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.spdx.json
+ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
-- **Version**: FFmpeg release number (e.g. `8.1.1`) or git describe for Master
-- **Revision** (`-r2`): vcpkg Port recipe revision, **not** the build attempt number
-- **Triplet**: `{arch}-windows` — `x64`, `x86`, `arm64`, `arm`
-- **Linkage**: `shared` (DLLs) or `static` (self-contained exe)
-- **License**: `gpl` or `lgpl`
-- **Native ABI** (`-a<12 hex>`): abbreviation of vcpkg's actual 64-character build ABI
-- **Packaging revision** (`-pkg2`): archive/compliance format; independent of the native ABI
-- **Compliance**: an independent ZIP with licenses, per-Port SPDX and build provenance
+Dates use UTC YYMMDD, fixed once by the plan. No ABI, Revision, or packaging format suffix appears in public filenames. Release tags use version and date, e.g. `ffmpeg-9.1-261125`. Full native ABI and archive SHA-256 remain in the data branch. Incremental publication reuses unchanged ZIPs with their original filename/date and digest; history is immutable.
 
-Old GitHub Releases may still have the original filenames without the `-a`
-or `-pkg2` suffix. Existing Release assets are immutable and are never
-silently replaced when packaging format changes.
+A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop). License evidence is under LICENSES/; SBOM and provenance are under metadata/. Corresponding source obligations remain separate.
 
 ### Binary vs Develop (shared only)
 
@@ -111,12 +100,9 @@ but no headers or imported/static libraries.
 - **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
 - **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFmpeg.cmake`
 - **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
-- **Format v2 compliance files**: `THIRD_PARTY_NOTICES.md`, `LICENSES/`
-  (upstream copyright and the original vcpkg SPDX per installed Port),
-  `SBOM.spdx.json`, and `BUILD_PROVENANCE.json`
-- **Publication sidecars**: per-Variant SHA-256 manifest, standalone SPDX SBOM,
-  compliance archive,
-  and original `.var.yaml` metadata, published alongside the ZIPs
+- **Compliance evidence**: `LICENSES/THIRD_PARTY_NOTICES.md`, upstream copyright
+  and original vcpkg SPDX under `LICENSES/`, plus
+  `metadata/SBOM.spdx.json` and `metadata/BUILD_PROVENANCE.json`
 - No extra third-party runtime DLL deployment is intended; normal Windows
   operating-system DLLs are still required.
 

@@ -47,7 +47,7 @@ class PlannerTests(unittest.TestCase):
             self.assertEqual([], blocked)
             for number, request in enumerate(requests):
                 request["abi_hash"] = str(number + 1) * 64
-                request["id"] = variant_name(request["version"], request["revision"],
+                request["id"] = variant_name(request["version"], 0,
                                              request["triplet"], request["linkage"],
                                              request["license"], abi_hash=request["abi_hash"])
             abi_file = root / "scan.json"
@@ -141,7 +141,8 @@ class PlannerTests(unittest.TestCase):
             )
             write_github_output(result, dest)
             lines = dest.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(4, len(lines))
+            self.assertEqual(5, len(lines))
+            self.assertEqual("publication_required=true", lines[4])
             self.assertEqual(result["jobs"], json.loads(lines[0][len("matrix="):]))
             self.assertEqual("matrix_extra=[]", lines[1])
             self.assertEqual("triplets=[\"x64-windows\"]", lines[2])

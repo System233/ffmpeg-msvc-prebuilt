@@ -43,7 +43,7 @@ def _entry_name(entry: str | dict) -> str:
 
 
 def manifest_for(config: dict, spec: FeatureSet, version: str,
-                 revision: int, package_name: str = "ffmpeg") -> dict:
+                 package_name: str = "ffmpeg") -> dict:
     """Translate feature edges into vcpkg's native additive feature schema."""
     output: dict[str, dict] = {}
     for name, info in spec.definitions.items():
@@ -62,7 +62,7 @@ def manifest_for(config: dict, spec: FeatureSet, version: str,
             node["dependencies"] = external
         output[name] = node
     return {
-        "name": package_name, "version": version, "port-version": revision,
+        "name": package_name, "version": version,
         "description": f"FFmpeg {version} build for MSVC",
         "homepage": "https://ffmpeg.org", "license": None,
         "dependencies": list(spec.host_packages),
@@ -252,8 +252,7 @@ def _flag_options(text: str) -> list[str]:
 
 
 def generate_port(config_name: str, *, destination: Path, ref: str = "",
-                  sha512: str = "", source_version: str | None = None,
-                  revision: int | None = None) -> Path:
+                  sha512: str = "", source_version: str | None = None) -> Path:
     """Compile one source configuration to a clean, standalone overlay port."""
     config, _ = read_spec(config_name)
     if config_name == "master":
@@ -269,10 +268,9 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
     checksum = sha512 or source.get("sha512", "")
     if not re.fullmatch(r"[0-9a-f]{128}", checksum):
         raise ValueError(f"FFmpeg {config_name} requires a SHA512 source checksum")
-    effective_revision = int(config.get("revision", 0) if revision is None else revision)
     features = resolve_features(config, config_name if config_name != "master" else version.split("-", 1)[0])
     port_name = ffmpeg_port_name(config_name)
-    manifest = manifest_for(config, features, version, effective_revision, "ffmpeg")
+    manifest = manifest_for(config, features, version, "ffmpeg")
 
     port = destination / port_name
     port.mkdir(parents=True, exist_ok=True)
@@ -334,8 +332,7 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
 
     build = config.get("build", {})
     options = [f"set(FFMPEG_VERSION {_cmake(version)})",
-               f"set(FFMPEG_SHA512 {_cmake(checksum)})",
-               f"set(FFMPEG_PORT_REVISION {effective_revision})"]
+               f"set(FFMPEG_SHA512 {_cmake(checksum)})"]
     for key, value in (("FFMPEG_BASE_OPTIONS", build.get("base_options")),
                        ("FFMPEG_OPTIONS_DEBUG", build.get("debug", {}).get("options"))):
         if value:
@@ -368,7 +365,7 @@ def generate_seed_port(directory: Path | None = None) -> Path:
     The inputs are the *actual* compiled version manifests, not a guessed list
     of dependency names; host tools and per-version overrides are retained.
     """
-    from .versions import GENERATED_PORTS, config, has_source, revision, versions
+    from .versions import GENERATED_PORTS, config, has_source, versions
 
     destination = directory if directory is not None else GENERATED_PORTS
     target = destination / "ffmpeg-deps"

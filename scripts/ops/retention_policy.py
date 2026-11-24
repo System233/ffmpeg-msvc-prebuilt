@@ -214,7 +214,7 @@ def process_snapshots(
             except Exception:
                 data = {}
 
-            if not is_snapshot_ref(data.get("ffmpeg_ref", "")):
+            if data.get("channel") != "master" and not is_snapshot_ref(data.get("ffmpeg_ref", "")):
                 continue  # tagged release, skip
 
             created = parse_created(data, version_yaml)

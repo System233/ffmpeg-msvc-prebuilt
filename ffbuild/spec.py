@@ -172,7 +172,10 @@ def read_spec(name: str, *, directory: Path = SPEC_ROOT) -> tuple[dict, tuple[Pa
     files: list[Path] = []
     for stem in names:
         file = directory / f"{stem}.yaml"
-        merged = _merge(merged, yaml.safe_load(file.read_text(encoding="utf-8")) or {})
+        document = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
+        if "revision" in document:
+            raise ValueError(f"Manual FFmpeg revision is no longer supported: {file.name}")
+        merged = _merge(merged, document)
         files.append(file)
     return merged, tuple(files)
 

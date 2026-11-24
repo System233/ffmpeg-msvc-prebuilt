@@ -101,6 +101,22 @@ class MatrixAndPolicyTests(unittest.TestCase):
         for name in ("build", "build-extra"):
             self.assertIn("ffbuild package", str(workflow["jobs"][name]["steps"]))
 
+    def test_failure_evidence_is_ci_only_and_isolated_smoke_requires_validation(self):
+        workflow = yaml.load((ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8"),
+                             Loader=yaml.BaseLoader)
+        for name in ("build", "build-extra"):
+            steps = workflow["jobs"][name]["steps"]
+            evidence = next(step for step in steps if step.get("name") == "Upload installed license evidence on packaging failure")
+            self.assertIn("failure()", evidence["if"])
+            for entry in ("vcpkg/status", "vcpkg/info/*.list", "share/*/copyright", "share/*/vcpkg.spdx.json"):
+                self.assertIn(entry, evidence["with"]["path"])
+            self.assertNotIn("*.zip", evidence["with"]["path"])
+            self.assertTrue(evidence["with"]["name"].startswith("license-evidence-"))
+        e2e = yaml.load((ROOT / ".github/workflows/ci-e2e.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        self.assertEqual("validate", e2e["jobs"]["smoke"]["needs"])
+        self.assertEqual("true", e2e["jobs"]["smoke"]["with"]["skip_publish"])
+        self.assertEqual("true", e2e["jobs"]["smoke"]["with"]["dry_run"])
+
     def test_pr_security_checks_are_fail_closed(self):
         workflow = yaml.load(
             (ROOT / ".github/workflows/build-all.yml").read_text(encoding="utf-8"),

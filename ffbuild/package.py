@@ -15,9 +15,9 @@ from pathlib import Path
 
 import yaml
 
-from .identity import is_lts, variant_name
+from .identity import is_lts, variant_name, archive_name
 from .fingerprint import variant_fingerprint
-from .compliance import PACKAGE_FORMAT_VERSION, compliance_files
+from .compliance import PACKAGE_FORMAT_VERSION, compliance_files, verify_system_archive_members
 
 
 def _read_control(package: Path) -> tuple[str, int, set[str], set[str]]:
@@ -157,8 +157,8 @@ def package_job(package: Path, job: dict, output: Path,
     if "abi_hash" not in job and variant_fingerprint(
             job["build_hash"], job["triplet"], job["feature_hash"]) != job["variant_hash"]:
         raise ValueError("Build Plan feature identity does not match the variant fingerprint")
-    if int(job["revision"]) != revision:
-        raise ValueError(f"FFmpeg revision mismatch: planned {job['revision']}, built {revision}")
+    if int(job.get("revision", 0)) != revision:
+        raise ValueError(f"FFmpeg revision mismatch: planned {job.get('revision', 0)}, built {revision}")
     if job["yaml"] != "master" and job["yaml"] != control_version:
         raise ValueError(f"Unexpected FFmpeg upstream version: {control_version}")
     if "abi_hash" in job:
@@ -175,41 +175,40 @@ def package_job(package: Path, job: dict, output: Path,
     copyright_file = package / "share" / port / "copyright"
     evidence, evidence_summary = compliance_files(
         installed_root, job, ffmpeg_copyright=copyright_file, source_tree=source_tree)
+    system_dependency = any(p["scope"] == "system-dependency" for p in evidence_summary["packages"])
+    for develop in ([False, True] if linkage == "shared" else [False]):
+        verify_system_archive_members(_files(package, linkage, develop=develop, port=port),
+                                      system_dependency=system_dependency)
     output.mkdir(parents=True, exist_ok=True)
-    suffix = f"-pkg{PACKAGE_FORMAT_VERSION}"
-    assets = {"binary": _archive(output / f"{identifier}{suffix}.zip",
+    dated = bool(job.get("release_date"))
+    binary_name = archive_name(job) if dated else f"{identifier}.zip"
+    assets = {"binary": _archive(output / binary_name,
                                  _files(package, linkage, develop=False, port=port),
                                  copyright_file, evidence=evidence)}
     if linkage == "shared":
-        assets["develop"] = _archive(output / f"{identifier}{suffix}-develop.zip",
+        assets["develop"] = _archive(output / (archive_name(job, develop=True) if dated else f"{identifier}-develop.zip"),
                                      _files(package, linkage, develop=True, port=port),
                                      copyright_file, evidence=evidence)
-    assets["compliance"] = _archive(
-        output / f"{identifier}{suffix}-compliance.zip", {},
-        copyright_file, evidence=evidence)
-    sums = output / f"{identifier}{suffix}.sha256"
-    sums.write_text("".join(f"{value['digest'].removeprefix('sha256:')}  {value['file']}\n"
-                            for value in assets.values()), encoding="ascii")
-    checksum = {"file": sums.name, "size": sums.stat().st_size,
-                "digest": "sha256:" + hashlib.sha256(sums.read_bytes()).hexdigest()}
-    sbom_path = output / f"{identifier}{suffix}.spdx.json"
-    sbom_path.write_bytes(evidence["SBOM.spdx.json"])
-    sbom_asset = {"file": sbom_path.name, "size": sbom_path.stat().st_size,
-                  "digest": "sha256:" + hashlib.sha256(sbom_path.read_bytes()).hexdigest()}
     record = {
         "variant_id": identifier,
         "version": job["version"],
-        "revision": revision,
         "arch": job["triplet"].split("-")[0],
         "triplet": job["triplet"], "linkage": linkage, "license": actual_license,
         "package_spec": job["package"],
-        "lts": is_lts(job["version"]),
+        "lts": job["yaml"] != "master" and is_lts(job["version"]),
         "ffmpeg_ref": job.get("ref") or "n" + job.get("source_version", control_version),
         "build_date": datetime.now(timezone.utc).isoformat(),
         "package_format": PACKAGE_FORMAT_VERSION, "compliance": evidence_summary,
-        "checksums": checksum, "sbom": sbom_asset,
         "assets": assets, "features": sorted(actual_features), "dependencies": sorted(deps),
     }
+    if dated:
+        record.update({"release_date": job["release_date"], "channel": "master" if job["yaml"] == "master" else "release"})
+        if job["yaml"] == "master":
+            if not re.fullmatch(r"[0-9a-f]{40}", job.get("source_ref", "")):
+                raise ValueError("Master requires the full pinned upstream commit")
+            record["source_commit"] = job["source_ref"]
+    else:
+        record["revision"] = revision  # Legacy fixture / compatibility path.
     if "abi_hash" in job:
         record.update({"port": port, "abi_hash": job["abi_hash"],
                        "expected_variants": job.get("expected_variants", 0)})

@@ -10,7 +10,7 @@ import json
 import subprocess
 from typing import Any
 
-from .identity import variant_name
+from .identity import variant_name, utc_release_date, date_suffix, public_version
 from .fingerprint import overlay_port_names, recipe_fingerprint, variant_fingerprint
 from .state import PublishedState
 from .targets import Target, compile_target, load_targets
@@ -33,17 +33,45 @@ def plan_native(scan: dict, *, state: PublishedState | None = None,
     state = state if state is not None else PublishedState()
     jobs = []
     counts: dict[str, int] = {}
+    reused = []
+    requested: dict[str, list[dict]] = {}
+    dates = {row.get("release_date") for row in scan["jobs"] if row.get("release_date")}
+    if len(dates) > 1:
+        raise ValueError("One release plan must use one UTC date")
+    release_date = next(iter(dates), utc_release_date())
+    date_suffix(release_date)
     for record in scan["jobs"]:
         if not all(record.get(key) for key in
                    ("id", "port", "package", "abi_hash", "triplet", "version")):
             raise ValueError("Native vcpkg scan record is missing its build identity")
-        existing = state.abi_exists(record["version"], int(record["revision"]),
-                                    record["triplet"], record["abi_hash"])
+        record = dict(record, release_date=release_date)
+        record.pop("revision", None)
+        group = public_version(record)
+        requested.setdefault(group, []).append(record)
+        channel = "master" if record.get("yaml") == "master" else "release"
+        existing = state.find_abi(record["version"], record["triplet"], record["abi_hash"],
+                                  channel=channel, source_commit=record.get("source_ref") or None)
         if force or not existing:
-            jobs.append(dict(record))
+            jobs.append(record)
             counts[record["version"]] = counts.get(record["version"], 0) + 1
+        else:
+            reused.append({"job": record, "record": existing})
+    changed_groups = {public_version(job) for job in jobs}
+    def matrix_identity(rows):
+        return {(row["version"], row["triplet"], row["linkage"], row["license"], row.get("abi_hash"))
+                for row in rows}
+    if not force:
+        for group, wanted in requested.items():
+            if group in changed_groups:
+                continue
+            latest = state.latest_release(wanted[0])
+            if not latest or matrix_identity(wanted) != matrix_identity(latest.get("variants", [])):
+                changed_groups.add(group)
+    selected_reuse = [row for row in reused if public_version(row["job"]) in changed_groups]
     descriptions = sorted({record["version"] for record in scan["jobs"]})
     return {"schema": 3, "jobs": jobs, "matrix": jobs,
+            "release_date": release_date, "publication_required": bool(changed_groups),
+            "reuse": selected_reuse,
             "blocked": scan.get("blocked", []),
             "versions": [{"version": version, "pending_variants": counts.get(version, 0)}
                          for version in descriptions]}
@@ -64,7 +92,7 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
     if not paths:
         return []
     shared = any(
-        p.startswith(("ffbuild/", "ffvcpkg/", ".github/actions/"))
+        p.startswith(("ffbuild/", "ffvcpkg/", "licenses/", ".github/actions/"))
         or p in {"vcpkg-configuration.json", "requirements.txt",
                  ".github/workflows/build-all.yml", ".github/workflows/build-release.yml"}
         for p in paths
@@ -196,3 +224,4 @@ def write_github_output(result: dict, path: Path) -> None:
         output.write(f"matrix_extra={json.dumps(tasks[256:], separators=(',', ':'))}\n")
         output.write(f"triplets={json.dumps(triplets, separators=(',', ':'))}\n")
         output.write(f"count={len(tasks)}\n")
+        output.write("publication_required=" + ("true" if result.get("publication_required", bool(tasks)) else "false") + "\n")

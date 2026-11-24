@@ -12,7 +12,6 @@ description: >
 type: object
 required:
   - version
-  - revision
   - lts
   - schema_version
   - ffmpeg_ref
@@ -29,6 +28,19 @@ properties:
   version:
     type: string
     description: 'FFmpeg version (e.g. "8.1.1") or "master" for dev builds'
+
+  channel:
+    enum: [release, master]
+
+  source_commit:
+    type: string
+    pattern: '^[0-9a-f]{40}$'
+    description: Pinned upstream commit for Master snapshots
+
+  release_date:
+    type: string
+    format: date
+    description: UTC date assigned by the release plan
 
   revision:
     type: ["integer", "null"]
@@ -133,7 +145,7 @@ $defs:
         pattern: "^[0-9a-f]{64}$"
       port:
         type: string
-        pattern: '^ffmpeg-'
+        pattern: '^ffmpeg(?:-|$)'
       expected_variants:
         type: integer
         minimum: 0

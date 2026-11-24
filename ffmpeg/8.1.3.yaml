@@ -14,6 +14,5 @@ patches:
 - 8.x/0048-backport-23039.patch
 - 8.x/0050-lensfun-0.3.4-compat-8.x.patch
 - 8.x/0051-lensfun-configure-fix-8.x.patch
-revision: 0
 source:
   sha512: 8c667090bcdc70796caaa8cdc2cf82e57d7c7f6feedcb0ec7251cefd6a0c63b7cad203a86c800d3e2f69ca91255167aa4e631701060b96d576d1a9666ca7aafe

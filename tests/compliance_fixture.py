@@ -32,11 +32,14 @@ def make_compliance_fixture(root: Path, job: dict, copyright_file: Path) -> tupl
             "spdxVersion": "SPDX-2.3", "dataLicense": "CC0-1.0",
             "SPDXID": "SPDXRef-DOCUMENT",
             "name": f"vcpkg {port}",
-            "packages": [{
-                "name": port, "SPDXID": "SPDXRef-Package",
-                "licenseDeclared": expression,
-                "licenseConcluded": "NOASSERTION",
-            }],
+            "packages": [
+                {"name": port, "SPDXID": "SPDXRef-port",
+                 "licenseDeclared": "NOASSERTION", "licenseConcluded": expression},
+                {"name": f"{port}:{triplet}", "SPDXID": "SPDXRef-binary",
+                 "licenseDeclared": "NOASSERTION", "licenseConcluded": expression},
+                {"name": "upstream-source", "SPDXID": "SPDXRef-resource-0",
+                 "licenseDeclared": "NOASSERTION", "licenseConcluded": "NOASSERTION"},
+            ],
         }), encoding="utf-8")
     upstream = root / "buildtrees" / "ffmpeg" / "src" / "source"
     upstream.mkdir(parents=True, exist_ok=True)

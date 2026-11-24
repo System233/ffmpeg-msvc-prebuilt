@@ -76,8 +76,14 @@ class IsolatedE2ETests(unittest.TestCase):
         self.assertEqual({"push"}, set(ci["on"]))
         self.assertEqual(["ci/e2e-*"], ci["on"]["push"]["branches"])
         self.assertEqual({"contents": "read", "actions": "read"}, ci["permissions"])
-        self.assertEqual({"smoke"}, set(ci["jobs"]))
+        self.assertEqual({"validate", "smoke"}, set(ci["jobs"]))
+        validation = ci["jobs"]["validate"]
+        self.assertEqual({"contents": "read"}, validation["permissions"])
+        self.assertNotIn("secrets", validation)
+        self.assertIn("python -m ffbuild validate", str(validation["steps"]))
+        self.assertIn("python -m unittest discover -s tests", str(validation["steps"]))
         test = ci["jobs"]["smoke"]
+        self.assertEqual("validate", test["needs"])
         self.assertEqual("./.github/workflows/build-release.yml", test["uses"])
         self.assertEqual({"contents": "read", "actions": "read"}, test["permissions"])
         self.assertNotIn("secrets", test)

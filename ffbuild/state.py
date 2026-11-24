@@ -7,7 +7,8 @@ from pathlib import Path
 
 import yaml
 
-from .identity import family_dir, variant_path, version_dir
+from .license_policy import POLICY_VERSION
+from .identity import family_dir, variant_path, version_dir, public_version, date_suffix, archive_name
 from .versions import ROOT
 
 
@@ -93,16 +94,16 @@ class PublishedState:
                 return True
         return False
 
-    def abi_exists(self, version: str, revision: int, triplet: str,
-                   abi_hash: str) -> bool:
-        """Match an exact native vcpkg ABI; legacy records cannot impersonate it."""
+    def find_abi(self, version: str, triplet: str, abi_hash: str, *,
+                 channel: str | None = None, source_commit: str | None = None) -> dict | None:
+        """Find a dated, compliant published asset by full native ABI."""
         if not re.fullmatch(r"[0-9a-f]{64}", abi_hash):
             raise ValueError("Full native vcpkg ABI required")
-        suffix = f"-a{abi_hash[:12]}.yaml"
         prefix = f"{family_dir(version)}/"
+        found = []
         for relative in self.paths():
             if not (relative.startswith(prefix) and "/variants/" in relative
-                    and relative.endswith(suffix)):
+                    and relative.endswith(".yaml")):
                 continue
             if not relative.split("/variants/", 1)[1].startswith(triplet + "-"):
                 continue
@@ -111,12 +112,53 @@ class PublishedState:
                 record = yaml.safe_load((self.directory / relative).read_text(encoding="utf-8")) or {}
                 self._cache[relative] = record
             if (str(record.get("version")) == version
-                    and int(record.get("revision", 0)) == revision
                     and record.get("triplet") == triplet
                     and record.get("abi_hash") == abi_hash
-                    and record.get("assets")):
-                return True
-        return False
+                    and record.get("release_date") and record.get("compliance")
+                    and int(record.get("package_format", 0)) >= 2
+                    and record["compliance"].get("license_policy") == POLICY_VERSION
+                    and record.get("assets", {}).get("binary")
+                    and (channel is None or record.get("channel") == channel)
+                    and (source_commit is None or record.get("source_commit") == source_commit)):
+                # Reuse only distributions written by the dated packaging flow,
+                # with the complete set of archives for that target.
+                try:
+                    date_suffix(record["release_date"])
+                    date_suffix(record.get("publication_date", record["release_date"]))
+                    kinds = {"binary", "develop"} if record["linkage"] == "shared" else {"binary"}
+                    if set(record["assets"]) != kinds:
+                        continue
+                    if any(asset["file"] != archive_name(record, develop=kind == "develop")
+                           or not re.fullmatch(r"sha256:[0-9a-f]{64}", asset["digest"])
+                           or asset["size"] <= 0 for kind, asset in record["assets"].items()):
+                        continue
+                except (KeyError, TypeError, ValueError):
+                    continue
+                found.append(record)
+        return max(found, key=lambda row: row.get("publication_date", row["release_date"]), default=None)
+
+    def latest_release(self, job: dict) -> dict | None:
+        """Find the latest complete dated batch for the public version/channel."""
+        name = public_version(job)
+        candidates = []
+        for relative in self.paths():
+            if not relative.endswith("/version.yaml"):
+                continue
+            parent = relative.split("/")[-2]
+            if not re.fullmatch(re.escape(name) + r"-[0-9]{6}", parent):
+                continue
+            record = self._cache.get(relative)
+            if record is None:
+                record = yaml.safe_load((self.directory / relative).read_text(encoding="utf-8")) or {}
+                self._cache[relative] = record
+            if record.get("release_date") and record.get("complete"):
+                if parent != name + "-" + date_suffix(record["release_date"]):
+                    continue
+                candidates.append(record)
+        return max(candidates, key=lambda record: record["release_date"], default=None)
+
+    def abi_exists(self, version: str, triplet: str, abi_hash: str) -> bool:
+        return self.find_abi(version, triplet, abi_hash) is not None
 
     def revisions(self, version: str) -> list[int]:
         prefix = f"{family_dir(version)}/"

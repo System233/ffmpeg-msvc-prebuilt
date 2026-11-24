@@ -35,7 +35,7 @@ def spec_files(name: str) -> set[str]:
 
 
 def revision(name: str) -> int:
-    return int(config(name).get("revision", 0))
+    return 0  # Legacy read-only API; new FFmpeg ports have no manual revision.
 
 
 def has_source(name: str) -> bool:
@@ -54,13 +54,12 @@ def latest_per_family(items: list[str]) -> list[str]:
     return [latest[key] for key in sorted(latest, key=lambda s: tuple(map(int, s.split("."))))]
 
 
-def generate(name: str, *, revision_override: int | None = None,
-             ref: str | None = None, sha512: str | None = None,
+def generate(name: str, *, ref: str | None = None, sha512: str | None = None,
              source_version: str | None = None,
              output: Path | None = None) -> Path:
     return generate_port(name, destination=output or GENERATED_PORTS,
                          source_version=source_version, ref=ref or "",
-                         sha512=sha512 or "", revision=revision_override)
+                         sha512=sha512 or "")
 
 
 def generate_all(*, output: Path | None = None, master: dict[str, str] | None = None) -> list[Path]:

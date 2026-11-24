@@ -56,17 +56,15 @@ Shared 变体额外包含一个 **develop** 包（含调试符号）。
 ### 文件命名
 
 ```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary（可运行 + 开发文件）
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符号）
-         ↑       ↑           ↑      ↑
-     版本号    triplet    链接方式  许可证
+ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
-- **版本号**: FFmpeg 发布号（如 `8.1.1`）或 Master 的 git describe
-- **修订号** (`-r2`): 同一版本重新构建的次数
-- **Triplet**: `{架构}-windows` — `x64`、`x86`、`arm64`、`arm`
-- **链接方式**: `shared`（DLL）或 `static`（独立 exe）
-- **许可证**: `gpl` 或 `lgpl`
+日期采用 UTC 的 YYMMDD，由规划阶段统一确定。公开文件名不含 ABI、Revision 或打包格式编号。Release 按版本及日期分组，例如 `ffmpeg-9.1-261125`。完整构建 ABI 与 ZIP SHA-256 保留在 data 分支。增量构建复用已有归档，保留其原始日期和 SHA-256。历史资产不覆盖。
+
+常规完整矩阵仅发布 24 个 ZIP（8 Static、8 Shared、8 Develop）；许可证归入 LICENSES/，SBOM 与构建溯源归入 metadata/。对应源码仍须按许可证义务提供。
 
 ### Binary 与 Develop 的区别（仅 shared）
 

@@ -87,6 +87,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       matrix_extra: ${{ steps.plan.outputs.matrix_extra }}
       triplets: ${{ steps.plan.outputs.triplets }}
+      publication_required: ${{ steps.plan.outputs.publication_required }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -405,14 +406,28 @@ jobs:
         env:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
         run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --buildtrees "${{ runner.temp }}/ffbuild/vcpkg/buildtrees" --output-dir Release
+      - name: Validate packaged ZIPs with the publication gate
+        if: ${{ !inputs.skip_release }}
+        run: python -m ffbuild publish --artifacts-dir Release --dry-run
+      - name: Upload installed license evidence on packaging failure
+        if: ${{ failure() && !inputs.skip_release }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: license-evidence-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/status
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/info/*.list
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/copyright
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/vcpkg.spdx.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - uses: actions/upload-artifact@v6
         if: ${{ !inputs.skip_release }}
         with:
           name: ${{ matrix.id }}-a${{ github.run_attempt }}
           path: |
             Release/*.zip
-            Release/*.sha256
-            Release/*.spdx.json
             Release/*.var.yaml
           retention-days: 5
           compression-level: 0
@@ -507,7 +522,23 @@ jobs:
         if: ${{ !inputs.skip_release }}
         env:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
-        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --output-dir Release
+        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --buildtrees "${{ runner.temp }}/ffbuild/vcpkg/buildtrees" --output-dir Release
+      - name: Validate packaged ZIPs with the publication gate
+        if: ${{ !inputs.skip_release }}
+        run: python -m ffbuild publish --artifacts-dir Release --dry-run
+      - name: Upload installed license evidence on packaging failure
+        if: ${{ failure() && !inputs.skip_release }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: license-evidence-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/status
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/info/*.list
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/copyright
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/vcpkg.spdx.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - uses: actions/upload-artifact@v6
         if: ${{ !inputs.skip_release }}
         with:
@@ -529,7 +560,7 @@ jobs:
 
   publish:
     needs: [plan, build, build-extra]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.build.result == 'success' && ((needs.plan.outputs.matrix_extra == '[]' && needs.build-extra.result == 'skipped') || (needs.plan.outputs.matrix_extra != '[]' && needs.build-extra.result == 'success')) && github.event_name != 'pull_request' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish && !startsWith(github.ref, 'refs/heads/ci/') }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.publication_required == 'true' && ((needs.plan.outputs.matrix == '[]' && needs.build.result == 'skipped') || (needs.plan.outputs.matrix != '[]' && needs.build.result == 'success')) && ((needs.plan.outputs.matrix_extra == '[]' && needs.build-extra.result == 'skipped') || (needs.plan.outputs.matrix_extra != '[]' && needs.build-extra.result == 'success')) && github.event_name != 'pull_request' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish && !startsWith(github.ref, 'refs/heads/ci/') }}
     concurrency:
       group: data-branch
       cancel-in-progress: false
@@ -559,6 +590,7 @@ jobs:
         with:
           name: ffbuild-plan-a${{ github.run_attempt }}
       - uses: actions/download-artifact@v8
+        if: ${{ needs.plan.outputs.matrix != '[]' || needs.plan.outputs.matrix_extra != '[]' }}
         with:
           pattern: ffmpeg-*-a${{ github.run_attempt }}
           path: artifacts

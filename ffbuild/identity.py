@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime, timezone
 
 
 def normalize_version(version: str) -> str:
@@ -69,3 +70,42 @@ def is_lts(version: str) -> bool:
         return False
     major, minor = map(int, clean.split(".")[:2])
     return (major, minor) == (4, 4) or minor == 1
+
+def utc_release_date() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def date_suffix(value: str) -> str:
+    parsed = date.fromisoformat(value)
+    if parsed.isoformat() != value or not 2000 <= parsed.year <= 2099:
+        raise ValueError("Release date must be an ISO date in 2000-2099")
+    return parsed.strftime("%y%m%d")
+
+
+def public_version(record: dict) -> str:
+    return "master" if record.get("yaml") == "master" or record.get("channel") == "master" else normalize_version(str(record["version"]))
+
+
+def archive_name(record: dict, *, develop: bool = False) -> str:
+    version = public_version(record)
+    # Reuse canonical validation of target dimensions, never its hash suffix.
+    stem = variant_name("1.0" if version == "master" else version, 0,
+                        record["triplet"], record["linkage"], record["license"])
+    if version == "master":
+        stem = stem.replace("ffmpeg-1.0_", "ffmpeg-master_", 1)
+    if develop and record["linkage"] != "shared":
+        raise ValueError("Develop archives require shared linkage")
+    return f"{stem}{'-develop' if develop else ''}-{date_suffix(record['release_date'])}.zip"
+
+
+def record_release_tag(record: dict) -> str:
+    if record.get("release_date"):
+        return f"ffmpeg-{public_version(record)}-{date_suffix(record.get('publication_date', record['release_date']))}"
+    return release_tag(str(record["version"]), int(record.get("revision", 0)))
+
+
+def dated_variant_path(record: dict) -> str:
+    tag = record_release_tag(record)
+    # Keep the existing family/version/variants layout for historical readers.
+    return (f"{family_dir(str(record['version']))}/{tag.removeprefix('ffmpeg-')}/variants/"
+            f"{record['triplet']}-{record['linkage']}-{record['license']}.yaml")

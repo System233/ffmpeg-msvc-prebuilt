@@ -48,6 +48,7 @@ class OriginalPortRecipeContract(unittest.TestCase):
                         return result
                     original = fields(old_root / "ffmpeg" / "portfile.cmake")
                     generated = fields(new_port / "portfile.cmake")
+                    original.pop("FFMPEG_PORT_REVISION", None)
                     self.assertEqual(original, generated, "FFmpeg build CMake variables changed")
                     old_manifest = json.loads((old_root / "ffmpeg" / "vcpkg.json").read_text())
                     new_manifest = json.loads((new_port / "vcpkg.json").read_text())

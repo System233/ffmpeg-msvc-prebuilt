@@ -17,6 +17,5 @@ patches:
 - 5.x/0050-lensfun-0.3.4-compat.patch
 - 5.x/0051-libjxl-0.11-compat.patch
 - 5.x/0052-svtav1-3.x-compat-5.1.9.patch
-revision: 0
 source:
   sha512: 2a4f3e6a69046e4d3ac57f2220d325622fc32ef10c055f715e56bc018b4fa034c617986a3164ccc8ee35bb7b225e9f700e4562a8c63b1663c9c28d67d2ed099e

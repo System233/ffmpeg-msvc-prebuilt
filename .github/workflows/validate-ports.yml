@@ -3,9 +3,9 @@ name: Validate Port Generation
 on:
   push:
     branches: [main]
-    paths: ['ffmpeg/**', 'patches/**', 'ports/**', 'scripts/**', 'ffbuild/**', 'triplets/**']
+    paths: ['ffmpeg/**', 'patches/**', 'ports/**', 'scripts/**', 'ffbuild/**', 'licenses/**', 'triplets/**']
   pull_request:
-    paths: ['ffmpeg/**', 'patches/**', 'ports/**', 'scripts/**', 'ffbuild/**', 'triplets/**']
+    paths: ['ffmpeg/**', 'patches/**', 'ports/**', 'scripts/**', 'ffbuild/**', 'licenses/**', 'triplets/**']
   workflow_dispatch:
 
 jobs:

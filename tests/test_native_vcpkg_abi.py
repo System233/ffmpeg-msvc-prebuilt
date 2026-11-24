@@ -202,7 +202,7 @@ class NativePublication(unittest.TestCase):
         job = requests[0]
         abi = 'a' * 64
         job['abi_hash'] = abi
-        job['id'] = variant_name(job['version'], job['revision'], job['triplet'],
+        job['id'] = variant_name(job['version'], 0, job['triplet'],
                                  job['linkage'], job['license'], abi_hash=abi)
         scan = {'schema': 3, 'jobs': [job]}
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,14 +222,14 @@ class NativePublication(unittest.TestCase):
             actual_abi = hashlib.sha256(
                 (copyright.parent / 'vcpkg_abi_info.txt').read_bytes()).hexdigest()
             job['abi_hash'] = actual_abi
-            job['id'] = variant_name(job['version'], job['revision'], job['triplet'],
+            job['id'] = variant_name(job['version'], 0, job['triplet'],
                                      job['linkage'], job['license'], abi_hash=actual_abi)
             (package / 'bin' / 'ffmpeg.exe').write_bytes(b'program')
             (package / 'lib' / 'avcodec.lib').write_bytes(b'library')
             (package / 'include' / 'avcodec.h').write_bytes(b'header')
             (package / 'CONTROL').write_text(
                 f"Package: {job['port']}\nVersion: {job['version']}\n"
-                f"Port-Version: {job['revision']}\n\n" +
+                f"Port-Version: {0}\n\n" +
                 '\n\n'.join('Feature: ' + f for f in job['features'] + ['core']),
                 encoding='utf-8')
             (package / 'BUILD_INFO').write_text('LibraryLinkage: dynamic\n',
@@ -246,7 +246,10 @@ class NativePublication(unittest.TestCase):
             self.assertEqual(1, len(plan_native(scan, state=PublishedState(
                 directory=root / 'data'))['jobs']))
             data_path = register_variant(root / 'data', record)
-            self.assertTrue(data_path.name.endswith('-a' + actual_abi[:12] + '.yaml'))
+            self.assertEqual("x64-windows-shared-lgpl.yaml", data_path.name)
+            self.assertNotIn("revision", record)
+            self.assertTrue(record["assets"]["binary"]["file"].endswith(
+                "-" + job["release_date"][2:].replace("-", "") + ".zip"))
             self.assertEqual([], plan_native(scan, state=PublishedState(
                 directory=root / 'data'))['jobs'])
 

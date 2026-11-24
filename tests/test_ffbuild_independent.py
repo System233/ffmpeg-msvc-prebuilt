@@ -184,8 +184,8 @@ class PackageRoundTrip(unittest.TestCase):
                 installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
             self.assertEqual(2, record["package_format"])
-            self.assertTrue(record["assets"]["binary"]["file"].endswith("-pkg2.zip"))
-            self.assertIn("compliance", record["assets"])
+            self.assertEqual(job["id"] + ".zip", record["assets"]["binary"]["file"])
+            self.assertEqual({"binary", "develop"}, set(record["assets"]))
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",
                                           job["feature_hash"]),
                              record["variant_id"])
@@ -193,9 +193,9 @@ class PackageRoundTrip(unittest.TestCase):
             with zipfile.ZipFile(root / "release" / record["assets"]["binary"]["file"]) as archive:
                 self.assertIn("bin/ffmpeg.exe", archive.namelist())
                 self.assertNotIn("debug/lib/avcodec.lib", archive.namelist())
-                self.assertIn("THIRD_PARTY_NOTICES.md", archive.namelist())
+                self.assertIn("LICENSES/THIRD_PARTY_NOTICES.md", archive.namelist())
                 self.assertIn("LICENSES/zlib-x64-windows/copyright", archive.namelist())
-                self.assertIn("SBOM.spdx.json", archive.namelist())
+                self.assertIn("metadata/SBOM.spdx.json", archive.namelist())
             with zipfile.ZipFile(root / "release" / record["assets"]["develop"]["file"]) as archive:
                 self.assertIn("debug/lib/avcodec.lib", archive.namelist())
             db = root / "data"
@@ -208,7 +208,7 @@ class PackageRoundTrip(unittest.TestCase):
             modified = dict(record)
             modified["assets"] = dict(record["assets"])
             modified["assets"]["binary"] = {"file": "different.zip"}
-            with self.assertRaisesRegex(ValueError, "without a package-format revision"):
+            with self.assertRaisesRegex(ValueError, "changed immutable archives"):
                 register_variant(db, modified)
 
 

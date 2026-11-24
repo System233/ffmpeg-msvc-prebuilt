@@ -94,7 +94,6 @@ def apply_versions(new: list[str], *, sha512: str = "") -> None:
                                                       sort_keys=False), encoding="utf-8")
             declaration = {
                 "extends": family if needs_family else _reference(version),
-                "revision": 0,
                 "source": {"method": "git", "repo": "ffmpeg/ffmpeg",
                            "ref": "n${VERSION}", "sha512": checksum},
             }

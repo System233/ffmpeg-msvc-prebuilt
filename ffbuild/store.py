@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .identity import is_lts, release_tag, variant_name, variant_path, version_dir
+from .identity import is_lts, release_tag, variant_name, variant_path, version_dir, dated_variant_path, record_release_tag
 from .targets import load_targets
 
 
@@ -41,7 +41,7 @@ def register_variant(root: Path, record: dict) -> Path:
         if not re.fullmatch(r"[0-9a-f]{64}", abi):
             raise ValueError("The full native vcpkg ABI is required")
         expected_id = variant_name(*common, abi_hash=abi)
-        path = root / variant_path(*common, abi_hash=abi)
+        path = root / (dated_variant_path(record) if record.get("release_date") else variant_path(*common, abi_hash=abi))
     else:
         feature_hash = str(record["feature_hash"])
         expected_id = variant_name(*common, feature_hash)
@@ -55,31 +55,27 @@ def register_variant(root: Path, record: dict) -> Path:
         identity_fields = ("abi_hash",) if native else ("build_hash", "variant_hash")
         if any(previous.get(field) != record.get(field) for field in identity_fields):
             raise ValueError(f"Existing release identity has a different Build Hash: {path}")
-        if previous.get("assets") == record.get("assets"):
-            # Same content-addressed package already published: immutable.
-            return path
-        old_format = int(previous.get("package_format", 1))
-        new_format = int(record.get("package_format", 1))
-        if not native or new_format <= old_format:
-            raise ValueError(f"Same ABI/build identity changed archives without "
-                             f"a package-format revision: {path}")
-        # New filenames preserve old GitHub Release assets. A strictly higher
-        # package-format version may update the index after verified publication.
-    if not native and not re.fullmatch(r"[0-9a-f]{64}", str(record.get("build_hash", ""))):
-        raise ValueError("Cannot publish without full verified Build Hash")
-    _atomic_yaml(path, record)
+        if previous.get("assets") != record.get("assets"):
+            raise ValueError(f"Same ABI/build identity changed immutable archives: {path}")
+        # Preserve immutable build metadata, but repair a missing or stale
+        # version index if a prior invocation stopped after writing this row.
+        record = previous
+    else:
+        if not native and not re.fullmatch(r"[0-9a-f]{64}", str(record.get("build_hash", ""))):
+            raise ValueError("Cannot publish without full verified Build Hash")
+        _atomic_yaml(path, record)
     variant_files = sorted(path.parent.glob("*.yaml"))
     variants = [yaml.safe_load(file.read_text(encoding="utf-8")) for file in variant_files]
     index = path.parent.parent / "version.yaml"
     old = yaml.safe_load(index.read_text(encoding="utf-8")) if index.is_file() else {}
     old = old or {}
-    tag = release_tag(version, revision)
+    tag = record_release_tag(record)
     github_repo = os.environ.get("GITHUB_REPOSITORY", "")
     url = f"https://github.com/{github_repo}/releases/tag/{tag}" if github_repo else old.get("release_url")
     expected = int(record.get("expected_variants") or len(load_targets()))
     native_count = sum(1 for variant in variants if variant.get("abi_hash"))
     updated = {
-        "version": version, "revision": revision, "lts": is_lts(version),
+        "version": version, "lts": record.get("channel") != "master" and is_lts(version),
         "schema_version": 1, "ffmpeg_ref": record.get("ffmpeg_ref", ""),
         "release_tag": tag, "release_id": old.get("release_id"),
         "release_url": url, "created": old.get("created") or _utc_now(),
@@ -88,5 +84,14 @@ def register_variant(root: Path, record: dict) -> Path:
         "complete": (native_count if native else len(variants)) >= expected,
         "variants": variants,
     }
-    _atomic_yaml(index, updated)
+    if record.get("release_date"):
+        updated["release_date"] = record.get("publication_date", record["release_date"])
+        updated["channel"] = record["channel"]
+        if record.get("source_commit"):
+            updated["source_commit"] = record["source_commit"]
+    else:
+        updated["revision"] = revision
+    if {key: value for key, value in old.items() if key != "updated"} != {
+            key: value for key, value in updated.items() if key != "updated"}:
+        _atomic_yaml(index, updated)
     return path
