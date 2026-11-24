@@ -17,15 +17,16 @@ concurrency:
 
 jobs:
   smoke:
-    # Recheck only the previously failing three variants. 3.4.14/x64 passed
-    # the complete Consumer and packaging smoke in the previous run.
+    # Final cross-family coverage: four additional variants complementary to
+    # the four previously verified builds. Do not repeat 8.1.x or master.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { yaml: '4.4.8', shard_index: 2 }   # ARM LGPL static
-          - { yaml: '6.1.6', shard_index: 13 } # x86 GPL shared
-          - { yaml: '9.1', shard_index: 6 }    # ARM64 LGPL static
+          - { yaml: '5.1.10', shard_index: 10 } # x64 LGPL static
+          - { yaml: '7.1.5', shard_index: 1 }   # ARM GPL shared
+          - { yaml: '8.0.1', shard_index: 5 }   # ARM64 GPL shared
+          - { yaml: '9.0.2', shard_index: 14 }  # x86 LGPL static
     # Do not inherit production App secrets or write-capable credentials.
     uses: ./.github/workflows/build-release.yml
     permissions:

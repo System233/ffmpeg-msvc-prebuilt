@@ -115,12 +115,13 @@ packaging are both tested. A second independent publication guard prevents
 *any* `ci/` ref from entering the production publish job even if inputs are
 accidentally changed.
 
-The current isolated regression smoke rechecks only the three combinations
-that failed in the preceding run: 4.4.8 (ARM/static), 6.1.6 (x86/shared)
-and 9.1 (ARM64/static), using a 16-way shard of each release's ABI-sorted
-variants. The 3.4.14 x64/shared Consumer and packaging test already passed
-and is not rebuilt. No 8.1.x reruns, full historical matrices, production
-PRs or Release/data publication are required.
+The final isolated regression smoke adds four complementary families:
+5.1.10 (x64/LGPL/static), 7.1.5 (ARM/GPL/shared),
+8.0.1 (ARM64/GPL/shared), and 9.0.2 (x86/LGPL/static), using a 16-way
+shard of each release's ABI-sorted variants. Earlier real CI already
+verified 3.4.14 x64/shared, 4.4.8 ARM/static, 6.1.6 x86/shared, and
+9.1 ARM64/static. No 8.1.x reruns, full historical matrices,
+production PRs or Release/data publication are required.
 
 ## Shared dependency prebuild and CI caches
 
