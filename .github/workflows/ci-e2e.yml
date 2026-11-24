@@ -17,16 +17,14 @@ concurrency:
 
 jobs:
   smoke:
-    # Final cross-family coverage: four additional variants complementary to
-    # the four previously verified builds. Do not repeat 8.1.x or master.
+    # Validate v2 license/SPDX/provenance packaging using one static LGPL and
+    # one shared GPL variant already known to compile with native MSVC.
     strategy:
       fail-fast: false
       matrix:
         include:
           - { yaml: '5.1.10', shard_index: 10 } # x64 LGPL static
           - { yaml: '7.1.5', shard_index: 1 }   # ARM GPL shared
-          - { yaml: '8.0.1', shard_index: 5 }   # ARM64 GPL shared
-          - { yaml: '9.0.2', shard_index: 14 }  # x86 LGPL static
     # Do not inherit production App secrets or write-capable credentials.
     uses: ./.github/workflows/build-release.yml
     permissions:

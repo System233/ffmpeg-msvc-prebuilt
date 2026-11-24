@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 
 import yaml
+from compliance_fixture import make_compliance_fixture
 
 from ffbuild.identity import variant_name
 from ffbuild.package import package_job
@@ -166,7 +167,9 @@ class PackageRoundTrip(unittest.TestCase):
                 "\n\n".join(f"Feature: {name}" for name in planned["features"]),
                 encoding="utf-8")
             (package / "BUILD_INFO").write_text("LibraryLinkage: dynamic\n",encoding="utf-8")
-            (package / "share" / "ffmpeg" / "copyright").write_text("LGPL/GPL license",encoding="utf-8")
+            (package / "share" / "ffmpeg" / "copyright").write_text(
+                "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n",
+                encoding="utf-8")
             (package / "bin" / "ffmpeg.exe").write_bytes(b"FFMPEG binary")
             (package / "bin" / "avcodec.dll").write_bytes(b"release dll")
             (package / "include" / "avcodec.h").write_bytes(b"header")
@@ -174,8 +177,15 @@ class PackageRoundTrip(unittest.TestCase):
             (package / "debug" / "lib" / "avcodec.lib").write_bytes(b"debug lib")
             job = planned
             version = job["version"]
-            metadata = package_job(package, job, root / "release")
+            installed, source_tree = make_compliance_fixture(
+                root, job, package / "share" / "ffmpeg" / "copyright")
+            metadata = package_job(
+                package, job, root / "release",
+                installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
+            self.assertEqual(2, record["package_format"])
+            self.assertTrue(record["assets"]["binary"]["file"].endswith("-pkg2.zip"))
+            self.assertIn("compliance", record["assets"])
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",
                                           job["feature_hash"]),
                              record["variant_id"])
@@ -183,6 +193,9 @@ class PackageRoundTrip(unittest.TestCase):
             with zipfile.ZipFile(root / "release" / record["assets"]["binary"]["file"]) as archive:
                 self.assertIn("bin/ffmpeg.exe", archive.namelist())
                 self.assertNotIn("debug/lib/avcodec.lib", archive.namelist())
+                self.assertIn("THIRD_PARTY_NOTICES.md", archive.namelist())
+                self.assertIn("LICENSES/zlib-x64-windows/copyright", archive.namelist())
+                self.assertIn("SBOM.spdx.json", archive.namelist())
             with zipfile.ZipFile(root / "release" / record["assets"]["develop"]["file"]) as archive:
                 self.assertIn("debug/lib/avcodec.lib", archive.namelist())
             db = root / "data"
@@ -195,7 +208,7 @@ class PackageRoundTrip(unittest.TestCase):
             modified = dict(record)
             modified["assets"] = dict(record["assets"])
             modified["assets"]["binary"] = {"file": "different.zip"}
-            with self.assertRaisesRegex(ValueError, "different release assets"):
+            with self.assertRaisesRegex(ValueError, "without a package-format revision"):
                 register_variant(db, modified)
 
 

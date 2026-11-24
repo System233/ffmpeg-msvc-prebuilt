@@ -213,7 +213,9 @@ class NativePublication(unittest.TestCase):
             (package / 'include').mkdir()
             copyright = package / 'share' / job['port'] / 'copyright'
             copyright.parent.mkdir(parents=True)
-            copyright.write_text('LGPL', encoding='utf-8')
+            copyright.write_text(
+                'GNU LESSER GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n',
+                encoding='utf-8')
             (copyright.parent / 'vcpkg_abi_info.txt').write_text(
                 'native ABI inputs for this simulated built package', encoding='utf-8')
             import hashlib
@@ -232,7 +234,11 @@ class NativePublication(unittest.TestCase):
                 encoding='utf-8')
             (package / 'BUILD_INFO').write_text('LibraryLinkage: dynamic\n',
                                                  encoding='utf-8')
-            metadata = package_job(package, job, root / 'assets')
+            from compliance_fixture import make_compliance_fixture
+            installed, source_tree = make_compliance_fixture(root, job, copyright)
+            metadata = package_job(
+                package, job, root / 'assets',
+                installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding='utf-8'))
             self.assertEqual(actual_abi, record['abi_hash'])
             self.assertNotIn('build_hash', record)

@@ -17,6 +17,7 @@ import yaml
 
 from .identity import is_lts, variant_name
 from .fingerprint import variant_fingerprint
+from .compliance import PACKAGE_FORMAT_VERSION, compliance_files
 
 
 def _read_control(package: Path) -> tuple[str, int, set[str], set[str]]:
@@ -112,22 +113,32 @@ def _files(package: Path, linkage: str, *, develop: bool,
     return paths
 
 
-def _archive(target: Path, paths: dict[str, Path], copyright_file: Path) -> dict:
-    if not paths:
+def _archive(target: Path, paths: dict[str, Path], copyright_file: Path,
+             *, evidence: dict[str, bytes] | None = None) -> dict:
+    if not paths and not evidence:
         raise ValueError(f"Empty FFmpeg artifact: {target}")
     if not copyright_file.is_file():
         raise FileNotFoundError(f"Copyright text missing: {copyright_file}")
+    evidence = evidence or {}
+    if set(paths).intersection(evidence) or "LICENSE.txt" in paths or "LICENSE.txt" in evidence:
+        raise ValueError("Duplicate or conflicting compliance archive member")
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED,
                          compresslevel=6) as archive:
         for member, file in sorted(paths.items()):
             archive.write(file, member)
         archive.write(copyright_file, "LICENSE.txt")
+        for member, data in sorted(evidence.items()):
+            if member.startswith("/") or ".." in Path(member).parts or "\\" in member:
+                raise ValueError(f"Unsafe compliance archive member: {member}")
+            archive.writestr(member, data)
     with target.open("rb") as source:
         digest = hashlib.file_digest(source, "sha256").hexdigest()
     return {"file": target.name, "size": target.stat().st_size, "digest": "sha256:" + digest}
 
 
-def package_job(package: Path, job: dict, output: Path) -> Path:
+def package_job(package: Path, job: dict, output: Path,
+                *, installed_root: Path | None = None,
+                source_tree: Path | None = None) -> Path:
     """Validate an already-built vcpkg package against its planned feature set."""
     port = job.get("port", "ffmpeg")
     if "abi_hash" in job:
@@ -158,13 +169,33 @@ def package_job(package: Path, job: dict, output: Path) -> Path:
                                   linkage, actual_license, job["feature_hash"])
     if identifier != job["id"]:
         raise ValueError("Build Plan variant identity mismatch")
-    output.mkdir(parents=True, exist_ok=True)
+    if installed_root is None or source_tree is None:
+        raise ValueError("Package-format v2 requires --installed-root and --source-tree "
+                         "for license and upstream COPYING evidence")
     copyright_file = package / "share" / port / "copyright"
-    assets = {"binary": _archive(output / f"{identifier}.zip",
-                                 _files(package, linkage, develop=False, port=port), copyright_file)}
+    evidence, evidence_summary = compliance_files(
+        installed_root, job, ffmpeg_copyright=copyright_file, source_tree=source_tree)
+    output.mkdir(parents=True, exist_ok=True)
+    suffix = f"-pkg{PACKAGE_FORMAT_VERSION}"
+    assets = {"binary": _archive(output / f"{identifier}{suffix}.zip",
+                                 _files(package, linkage, develop=False, port=port),
+                                 copyright_file, evidence=evidence)}
     if linkage == "shared":
-        assets["develop"] = _archive(output / f"{identifier}-develop.zip",
-                                     _files(package, linkage, develop=True, port=port), copyright_file)
+        assets["develop"] = _archive(output / f"{identifier}{suffix}-develop.zip",
+                                     _files(package, linkage, develop=True, port=port),
+                                     copyright_file, evidence=evidence)
+    assets["compliance"] = _archive(
+        output / f"{identifier}{suffix}-compliance.zip", {},
+        copyright_file, evidence=evidence)
+    sums = output / f"{identifier}{suffix}.sha256"
+    sums.write_text("".join(f"{value['digest'].removeprefix('sha256:')}  {value['file']}\n"
+                            for value in assets.values()), encoding="ascii")
+    checksum = {"file": sums.name, "size": sums.stat().st_size,
+                "digest": "sha256:" + hashlib.sha256(sums.read_bytes()).hexdigest()}
+    sbom_path = output / f"{identifier}{suffix}.spdx.json"
+    sbom_path.write_bytes(evidence["SBOM.spdx.json"])
+    sbom_asset = {"file": sbom_path.name, "size": sbom_path.stat().st_size,
+                  "digest": "sha256:" + hashlib.sha256(sbom_path.read_bytes()).hexdigest()}
     record = {
         "variant_id": identifier,
         "version": job["version"],
@@ -175,6 +206,8 @@ def package_job(package: Path, job: dict, output: Path) -> Path:
         "lts": is_lts(job["version"]),
         "ffmpeg_ref": job.get("ref") or "n" + job.get("source_version", control_version),
         "build_date": datetime.now(timezone.utc).isoformat(),
+        "package_format": PACKAGE_FORMAT_VERSION, "compliance": evidence_summary,
+        "checksums": checksum, "sbom": sbom_asset,
         "assets": assets, "features": sorted(actual_features), "dependencies": sorted(deps),
     }
     if "abi_hash" in job:

@@ -70,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     package.add_argument("--port-dir", required=True, type=Path,
                          help="Actual vcpkg packages/<versioned-port>_<triplet> directory")
     package.add_argument("--output-dir", type=Path, default=Path("Release"))
+    package.add_argument("--installed-root", type=Path,
+                         help="vcpkg/installed containing actual status and share/<port>/copyright")
+    package.add_argument("--source-tree", type=Path,
+                         help="The unpacked FFmpeg source directory containing COPYING.*")
+    package.add_argument("--buildtrees", type=Path,
+                         help="vcpkg/buildtrees used to discover the unpacked FFmpeg source")
 
     publish = sub.add_parser("publish", help="Verify release assets and update data branch")
     publish.add_argument("--artifacts-dir", type=Path, default=Path("artifacts"))
@@ -234,6 +240,7 @@ def main(argv: list[str] | None = None) -> None:
         _plan(args)
     elif args.command == "package":
         from .package import package_job
+        from .compliance import find_ffmpeg_source
         if args.job_env:
             content = os.environ.get(args.job_env)
             if not content:
@@ -241,7 +248,11 @@ def main(argv: list[str] | None = None) -> None:
             job = json.loads(content)
         else:
             job = json.loads(args.job_file.read_text(encoding="utf-8"))
-        metadata = package_job(args.port_dir, job, args.output_dir)
+        source_tree = args.source_tree
+        if source_tree is None and args.buildtrees is not None:
+            source_tree = find_ffmpeg_source(args.buildtrees)
+        metadata = package_job(args.port_dir, job, args.output_dir,
+                               installed_root=args.installed_root, source_tree=source_tree)
         print(metadata)
     elif args.command == "publish":
         from .publication import publish

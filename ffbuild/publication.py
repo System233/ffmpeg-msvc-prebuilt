@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 
 import yaml
@@ -134,6 +135,30 @@ def _digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
+    """Require the actual uploaded ZIP to carry the declared license evidence."""
+    summary = record["compliance"]
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        for name in ("LICENSE.txt", "THIRD_PARTY_NOTICES.md",
+                     "SBOM.spdx.json", "BUILD_PROVENANCE.json"):
+            if name not in names:
+                raise ValueError(f"Package-format v2 archive lacks {name}: {path.name}")
+        if not any(name.startswith("LICENSES/") and name.endswith("/copyright")
+                   for name in names):
+            raise ValueError(f"Package-format v2 archive has no per-Port notices: {path.name}")
+        for name, field in (("SBOM.spdx.json", "spdx_sha256"),
+                            ("THIRD_PARTY_NOTICES.md", "notices_sha256")):
+            if hashlib.sha256(archive.read(name)).hexdigest() != summary.get(field):
+                raise ValueError(f"Compliance metadata hash differs for {name}: {path.name}")
+        try:
+            document = json.loads(archive.read("SBOM.spdx.json"))
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError(f"Unparseable compliance SPDX in {path.name}") from exc
+        if len(document.get("packages", [])) != summary.get("package_count"):
+            raise ValueError(f"Compliance package count differs in {path.name}")
+
+
 def publish(*, artifacts_dir: Path, data_dir: Path,
             expected_plan: Path | None = None, dry_run: bool = False) -> list[str]:
     artifacts_dir = artifacts_dir.resolve()
@@ -162,6 +187,36 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
                 raise ValueError(f"Archive size mismatch: {path}")
             if asset.get("digest") and asset["digest"] != "sha256:" + _digest(path):
                 raise ValueError(f"Archive digest mismatch: {path}")
+        if int(record.get("package_format", 1)) >= 2:
+            if "compliance" not in record["assets"] or not record.get("compliance"):
+                raise ValueError(f"Package-format v2 missing compliance asset: {metadata}")
+            checksums = record.get("checksums")
+            if not isinstance(checksums, dict) or not checksums.get("file"):
+                raise ValueError(f"Package-format v2 missing checksum manifest: {metadata}")
+            manifest = artifacts_dir / checksums["file"]
+            if not manifest.is_file() or (
+                checksums.get("size") != manifest.stat().st_size
+                or checksums.get("digest") != "sha256:" + _digest(manifest)
+            ):
+                raise ValueError(f"Invalid package-format v2 checksum manifest: {metadata}")
+            expected = "".join(
+                f"{asset['digest'].removeprefix('sha256:')}  {asset['file']}\n"
+                for asset in record["assets"].values()
+            )
+            if manifest.read_text(encoding="ascii") != expected:
+                raise ValueError(f"Checksum manifest disagrees with release assets: {metadata}")
+            sbom_asset = record.get("sbom")
+            if not isinstance(sbom_asset, dict) or not sbom_asset.get("file"):
+                raise ValueError(f"Package-format v2 missing public SPDX document: {metadata}")
+            sbom_file = artifacts_dir / sbom_asset["file"]
+            if (not sbom_file.is_file() or sbom_asset.get("size") != sbom_file.stat().st_size
+                    or sbom_asset.get("digest") != "sha256:" + _digest(sbom_file)
+                    or _digest(sbom_file) != record["compliance"].get("spdx_sha256")):
+                raise ValueError(f"Public SPDX document does not match packaged evidence: {metadata}")
+            for kind in ("binary", "develop", "compliance"):
+                if kind in record["assets"]:
+                    _verify_v2_compliance_archive(
+                        artifacts_dir / record["assets"][kind]["file"], record)
         records[record["variant_id"]] = record
 
     if expected_plan is not None:
@@ -197,6 +252,11 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
     for tag, group in sorted(groups.items()):
         paths = {artifacts_dir / asset["file"]
                  for record in group for asset in record.get("assets", {}).values()}
+        for record in group:
+            if int(record.get("package_format", 1)) >= 2:
+                paths.add(artifacts_dir / record["checksums"]["file"])
+                paths.add(artifacts_dir / record["sbom"]["file"])
+                paths.add(artifacts_dir / f"{record['variant_id']}.var.yaml")
         first = group[0]
         _release_assets(tag, sorted(paths), upstream_version=first["version"],
                         snapshot="-g" in str(first.get("ffmpeg_ref", "")))

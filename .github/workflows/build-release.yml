@@ -404,13 +404,15 @@ jobs:
         if: ${{ !inputs.skip_release }}
         env:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
-        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --output-dir Release
+        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --buildtrees "${{ runner.temp }}/ffbuild/vcpkg/buildtrees" --output-dir Release
       - uses: actions/upload-artifact@v6
         if: ${{ !inputs.skip_release }}
         with:
           name: ${{ matrix.id }}-a${{ github.run_attempt }}
           path: |
             Release/*.zip
+            Release/*.sha256
+            Release/*.spdx.json
             Release/*.var.yaml
           retention-days: 5
           compression-level: 0

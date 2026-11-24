@@ -56,17 +56,26 @@ Shared variants also include a **develop** archive with debug symbols.
 ### File naming
 
 ```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary (runnable + dev files)
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symbols)
-         ↑       ↑           ↑      ↑
-     version   triplet    linkage license
+ffmpeg-9.1_arm64-windows-static-lgpl-a8ed804645e49-pkg2.zip
+ffmpeg-9.1_arm64-windows-static-lgpl-a8ed804645e49-pkg2-compliance.zip
+ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.zip
+ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2-develop.zip
+ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.sha256
+ffmpeg-6.1.6_x86-windows-shared-gpl-a2033c2300e15-pkg2.spdx.json
 ```
 
 - **Version**: FFmpeg release number (e.g. `8.1.1`) or git describe for Master
-- **Revision** (`-r2`): bump count when a version is rebuilt
+- **Revision** (`-r2`): vcpkg Port recipe revision, **not** the build attempt number
 - **Triplet**: `{arch}-windows` — `x64`, `x86`, `arm64`, `arm`
 - **Linkage**: `shared` (DLLs) or `static` (self-contained exe)
 - **License**: `gpl` or `lgpl`
+- **Native ABI** (`-a<12 hex>`): abbreviation of vcpkg's actual 64-character build ABI
+- **Packaging revision** (`-pkg2`): archive/compliance format; independent of the native ABI
+- **Compliance**: an independent ZIP with licenses, per-Port SPDX and build provenance
+
+Old GitHub Releases may still have the original filenames without the `-a`
+or `-pkg2` suffix. Existing Release assets are immutable and are never
+silently replaced when packaging format changes.
 
 ### Binary vs Develop (shared only)
 
@@ -89,7 +98,8 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 | Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB)                   |
 | Carry one exe, no DLLs           | **Static Binary**                                   |
 
-**Static** variants contain only executables — no headers, no import libraries.
+**Static** variants contain executables and lightweight legal/build metadata,
+but no headers or imported/static libraries.
 
 ---
 
@@ -101,7 +111,14 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 - **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
 - **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFmpeg.cmake`
 - **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
-- All dependencies are statically linked or bundled — **zero runtime DLLs to install**
+- **Format v2 compliance files**: `THIRD_PARTY_NOTICES.md`, `LICENSES/`
+  (upstream copyright and the original vcpkg SPDX per installed Port),
+  `SBOM.spdx.json`, and `BUILD_PROVENANCE.json`
+- **Publication sidecars**: per-Variant SHA-256 manifest, standalone SPDX SBOM,
+  compliance archive,
+  and original `.var.yaml` metadata, published alongside the ZIPs
+- No extra third-party runtime DLL deployment is intended; normal Windows
+  operating-system DLLs are still required.
 
 ### Develop (shared only, adds to binary)
 
@@ -110,7 +127,14 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 
 ### Static
 
-- Self-contained executables only — no external DLLs needed at runtime
+- Self-contained executables plus compliance metadata — no external FFmpeg
+  DLLs needed at runtime
+
+The SPDX document describes the **installed vcpkg dependency graph**, not an
+object-file-level link map. The `lgpl`/`gpl` filename is FFmpeg's configured
+license mode, **not** proof that every third-party redistribution obligation is
+satisfied. Source availability, applicable notices, and LGPL relinking
+obligations must still be evaluated before downstream redistribution.
 
 ---
 

@@ -244,6 +244,32 @@ vcpkg ABI input file** at `share/ffmpeg/vcpkg_abi_info.txt` and refuses to publi
 from the proposed pre-build ABI. The dry-run ABI is only the proposal, not
 independent evidence that the package was built with those inputs.
 
+Package-format v2 also requires the Worker-installed vcpkg root and unpacked
+FFmpeg source (`--installed-root`, `--buildtrees` or `--source-tree`).
+It enumerates dependency packages actually installed and reachable from
+FFmpeg's status records, copies every reachable Port's `share/<port>/copyright`
+and original `vcpkg.spdx.json`, and includes upstream `COPYING.*` files.
+Missing notices, SPDX evidence, unknown declared third-party license, or
+required GNU terms **fail packaging**. It generates a consolidated
+`SBOM.spdx.json`, `THIRD_PARTY_NOTICES.md`, and
+`BUILD_PROVENANCE.json` inside all binary/develop archives and a separate
+compliance ZIP, without copying third-party `.lib` into Static archives.
+
+Variant identity stays bound to the real vcpkg ABI. The archive gets a
+separate `-pkg2` suffix, so changed compliance ZIP bytes do not overwrite
+earlier same-ABI files. The publisher verifies the SHA-256 manifest, uploads
+compliance archives, a standalone `-pkg2.spdx.json` SBOM, checksums and
+`.var.yaml` alongside the binaries, then
+allows an existing data record to upgrade only to a **strictly newer**
+package format after GitHub has accepted the new assets. Old assets remain
+available. An ABI that has already been published is still skipped in normal
+planning; upgrading old variants requires an explicit controlled rebuild.
+
+These materials identify the *installed dependency graph*, not necessarily
+the exact object files linked into each executable. They do not by themselves
+fulfill every source-distribution or LGPL relinking obligation; final legal
+compatibility, including disputed historical components, requires review.
+
 Native records use `-a<12-character ABI prefix>` in their variant names and
 store their full `abi_hash`, Port name and actual Package Spec. The Release
 Tag remains version-based, so multiple build ABIs can be added as different
@@ -272,5 +298,7 @@ dependency recipe changes both the dependency ABI and the dependent ABI;
 restoring the recipe restores the original hashes. A real minimal package
 installation reported exactly the ABI calculated beforehand.
 
-FFmpeg production MSVC builds and live GitHub publication still require their
-separate end-to-end CI validation. No local mock claims to have completed them.
+Earlier isolated native MSVC builds validated eight distinct version/Triplet
+combinations using the pre-v2 archive layout. Package-format v2 and its
+new fail-closed license gates require a separate end-to-end smoke before
+being considered production-ready; offline tests alone are insufficient.

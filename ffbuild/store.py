@@ -55,10 +55,16 @@ def register_variant(root: Path, record: dict) -> Path:
         identity_fields = ("abi_hash",) if native else ("build_hash", "variant_hash")
         if any(previous.get(field) != record.get(field) for field in identity_fields):
             raise ValueError(f"Existing release identity has a different Build Hash: {path}")
-        if previous.get("assets") != record.get("assets"):
-            raise ValueError(f"Same Build Hash produced different release assets: {path}")
-        # Same content-addressed build already published: leave immutable record.
-        return path
+        if previous.get("assets") == record.get("assets"):
+            # Same content-addressed package already published: immutable.
+            return path
+        old_format = int(previous.get("package_format", 1))
+        new_format = int(record.get("package_format", 1))
+        if not native or new_format <= old_format:
+            raise ValueError(f"Same ABI/build identity changed archives without "
+                             f"a package-format revision: {path}")
+        # New filenames preserve old GitHub Release assets. A strictly higher
+        # package-format version may update the index after verified publication.
     if not native and not re.fullmatch(r"[0-9a-f]{64}", str(record.get("build_hash", ""))):
         raise ValueError("Cannot publish without full verified Build Hash")
     _atomic_yaml(path, record)
