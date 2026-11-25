@@ -56,17 +56,15 @@ Shared variants also include a **develop** archive with debug symbols.
 ### File naming
 
 ```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary (runnable + dev files)
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symbols)
-         ↑       ↑           ↑      ↑
-     version   triplet    linkage license
+ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
-- **Version**: FFmpeg release number (e.g. `8.1.1`) or git describe for Master
-- **Revision** (`-r2`): bump count when a version is rebuilt
-- **Triplet**: `{arch}-windows` — `x64`, `x86`, `arm64`, `arm`
-- **Linkage**: `shared` (DLLs) or `static` (self-contained exe)
-- **License**: `gpl` or `lgpl`
+Dates use UTC YYMMDD, fixed once by the plan. No ABI, Revision, or packaging format suffix appears in public filenames. Release tags use version and date, e.g. `ffmpeg-9.1-261125` (same-day batches use R2, R3, etc.). Tags are created after verification, not as build triggers. Full native ABI and archive SHA-256 remain in the data branch. Incremental publication reuses unchanged ZIPs with their original filename/date and digest; history is immutable.
+
+A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop). All license evidence for redistribution is collected in `share/ffmpeg/copyright` and `share/ffmpeg/sbom.spdx.json`, with the primary license in `LICENSE.txt`. Build provenance and original dependency evidence remain outside the public ZIP. Corresponding source obligations remain separate.
 
 ### Binary vs Develop (shared only)
 
@@ -89,7 +87,8 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 | Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB)                   |
 | Carry one exe, no DLLs           | **Static Binary**                                   |
 
-**Static** variants contain only executables — no headers, no import libraries.
+**Static** variants contain executables and lightweight license/SPDX files,
+but no headers or imported/static libraries.
 
 ---
 
@@ -100,8 +99,12 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 - **CLI tools**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`
 - **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
 - **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFmpeg.cmake`
-- **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
-- All dependencies are statically linked or bundled — **zero runtime DLLs to install**
+- **Licenses**: `LICENSE.txt`, combined `share/ffmpeg/copyright`
+- **SBOM**: `share/ffmpeg/sbom.spdx.json` (SPDX 2.3)
+- `share/` contains only the FFmpeg package namespace; native vcpkg metadata
+  and original dependency SPDX are retained as audit evidence outside the ZIP.
+- No extra third-party runtime DLL deployment is intended; normal Windows
+  operating-system DLLs are still required.
 
 ### Develop (shared only, adds to binary)
 
@@ -110,7 +113,14 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symb
 
 ### Static
 
-- Self-contained executables only — no external DLLs needed at runtime
+- Self-contained executables plus compliance metadata — no external FFmpeg
+  DLLs needed at runtime
+
+The SPDX document describes the **installed vcpkg dependency graph**, not an
+object-file-level link map. The `lgpl`/`gpl` filename is FFmpeg's configured
+license mode, **not** proof that every third-party redistribution obligation is
+satisfied. Source availability, applicable notices, and LGPL relinking
+obligations must still be evaluated before downstream redistribution.
 
 ---
 
@@ -135,7 +145,7 @@ See [`examples/README.md`](./examples/README.md) for CMake, Meson, and GNU Make 
 - **MSVC compiled** — native Windows compatibility with optimal performance
 - **Multi-architecture** — x64, x86, ARM, ARM64
 - **Weekly master builds** — tracks the latest FFmpeg development branch
-- **Automated upstream detection** — new releases are automatically detected and built
+- **Automated upstream detection** — new upstream releases receive version-scoped validation PRs
 - **LTS maintenance** — stable versions with long-term support
 
 ---

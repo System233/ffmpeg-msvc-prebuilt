@@ -56,17 +56,15 @@ Shared 变体额外包含一个 **develop** 包（含调试符号）。
 ### 文件命名
 
 ```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary（可运行 + 开发文件）
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符号）
-         ↑       ↑           ↑      ↑
-     版本号    triplet    链接方式  许可证
+ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
-- **版本号**: FFmpeg 发布号（如 `8.1.1`）或 Master 的 git describe
-- **修订号** (`-r2`): 同一版本重新构建的次数
-- **Triplet**: `{架构}-windows` — `x64`、`x86`、`arm64`、`arm`
-- **链接方式**: `shared`（DLL）或 `static`（独立 exe）
-- **许可证**: `gpl` 或 `lgpl`
+日期采用 UTC 的 YYMMDD，由规划阶段统一确定。公开文件名不含 ABI、Revision 或打包格式编号。Release 按版本及日期分组，例如 `ffmpeg-9.1-261125`（同日发布批次追加 R2、R3 等）。Tag 仅在构建和产物验证成功后创建，不触发构建。完整构建 ABI 与 ZIP SHA-256 保留在 data 分支。增量构建复用已有归档，保留其原始日期和 SHA-256。历史资产不覆盖。
+
+常规完整矩阵仅发布 24 个 ZIP（8 Static、8 Shared、8 Develop）；主许可证保留于 `LICENSE.txt`，合并版权及 SPDX 位于 `share/ffmpeg/copyright` 和 `share/ffmpeg/sbom.spdx.json`；构建溯源和原始依赖证据不进入公开 ZIP。对应源码仍须按许可证义务提供。
 
 ### Binary 与 Develop 的区别（仅 shared）
 
@@ -89,7 +87,7 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符�
 | 调试 FFmpeg 相关应用   | **Shared Develop**（含 PDB）                    |
 | 单个 exe，无需 DLL     | **Static Binary**                               |
 
-**Static** 变体仅包含可执行文件 — 没有头文件和导入库。
+**Static** 变体仅包含可执行文件及许可证/SPDX 文件，没有头文件和导入库。
 
 ---
 
@@ -100,8 +98,10 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符�
 - **命令行工具**: `ffmpeg.exe`、`ffplay.exe`、`ffprobe.exe`
 - **开发文件**（仅 shared）：头文件 (`.h`)、导入库 (`.lib`)、DLL
 - **集成支持**（仅 shared）：pkg-config 文件 (`.pc`)、CMake `FindFFmpeg.cmake`
-- **元数据**: `BUILD_INFO`、`CONTROL`、`LICENSE.txt`
-- 所有依赖已静态链接或打包 —— **零运行时 DLL 依赖**
+- **许可证**：`LICENSE.txt`、合并版权 `share/ffmpeg/copyright`
+- **SBOM**：`share/ffmpeg/sbom.spdx.json`（SPDX 2.3）
+- `share/` 仅包含 FFmpeg 命名空间，原生 vcpkg 元数据及依赖 SPDX 保存在 ZIP 外的审计证据中。
+- 第三方依赖不单独分发运行时 DLL；仍需要 Windows 系统 DLL。
 
 ### Develop（仅 shared，在 Binary 基础上增加）
 
@@ -110,7 +110,7 @@ ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符�
 
 ### Static
 
-- 仅独立可执行文件 —— 运行时无需任何外部 DLL
+- 独立可执行文件及许可证/SPDX 文件，无需独立的 FFmpeg DLL
 
 ---
 
@@ -135,7 +135,7 @@ cmake --build build
 - **MSVC 编译** — 原生 Windows 兼容，性能出色
 - **多架构支持** — x64、x86、ARM、ARM64
 - **每周 Master 构建** — 追踪 FFmpeg 最新开发分支
-- **自动上游检测** — 新版本发布后自动检测并构建
+- **自动上游检测** — 检测新上游版本并创建单版本验证 PR
 - **LTS 长期维护** — 稳定版持续支持
 
 ---
