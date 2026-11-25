@@ -6,8 +6,7 @@ inputs:
     default: '3.12'
   cache:
     description: 'Whether to enable pip caching'
-    default: true
-    type: boolean
+    default: 'true'
   install:
     description: 'Space-separated list of packages to pip install'
     required: false
@@ -21,7 +20,7 @@ runs:
     - uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
-        cache: ${{ inputs.cache && 'pip' || '' }}
+        cache: ${{ inputs.cache == 'true' && 'pip' || '' }}
 
     - name: Install from requirements file
       shell: bash

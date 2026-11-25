@@ -13,12 +13,11 @@ Age-based retention with weekly / monthly / quarterly bucketing.
 
 For each deleted version the script:
   - Deletes the entire version directory (version.yaml + variants/*.yaml)
-  - Prints DELETE_RELEASE:<release_tag> and DELETE_TAG:<release_tag> for CI
+  - Prints DELETE_RELEASE:<release_tag> for CI; Git tags are retained
 
 Output
 ------
     DELETE_RELEASE:ffmpeg-n8.0-1234-gabc
-    DELETE_TAG:ffmpeg-n8.0-1234-gabc
     Kept: 12, Deleted: 3
 """
 
@@ -35,6 +34,8 @@ from typing import Any
 import yaml
 
 from naming import build_release_tag, parse_version_dir, VERSION_DIR_RE
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +154,8 @@ def delete_version_dir(
 ) -> None:
     """Delete an entire version directory (version.yaml + variants/*.yaml).
 
-    Prints ``DELETE_RELEASE:`` and ``DELETE_TAG:`` lines that the CI
-    workflow uses to delete the corresponding GitHub Release and git tag.
+    Prints ``DELETE_RELEASE:`` lines that the CI
+    workflow uses to delete the corresponding GitHub Release; tags remain.
     """
     if not dry_run:
         try:
@@ -166,7 +167,6 @@ def delete_version_dir(
 
     # CI-consumable output
     print(f"DELETE_RELEASE:{release_tag}")
-    print(f"DELETE_TAG:{release_tag}")
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +199,8 @@ def process_snapshots(
 
     Returns ``(kept, deleted)`` counts.
     """
+    if (data_dir / "index.json").is_file():
+        return process_catalog_snapshots(data_dir, dry_run=dry_run)
     major_dirs = sorted(
         d for d in data_dir.iterdir()
         if d.is_dir() and re.match(r"^\d+\.x$", d.name)
@@ -214,7 +216,7 @@ def process_snapshots(
             except Exception:
                 data = {}
 
-            if not is_snapshot_ref(data.get("ffmpeg_ref", "")):
+            if data.get("channel") != "master" and not is_snapshot_ref(data.get("ffmpeg_ref", "")):
                 continue  # tagged release, skip
 
             created = parse_created(data, version_yaml)
@@ -229,46 +231,7 @@ def process_snapshots(
                 "data": data,
             })
 
-    if not versions:
-        return 0, 0
-
-    # ---- Age-based retention ----
-    keep_tags: set[str] = set()
-
-    # < 7 days: keep everything
-    for v in versions:
-        if v["age_days"] < 7:
-            keep_tags.add(v["release_tag"])
-
-    # 7–30 days: keep newest per ISO week
-    week_buckets: dict[str, list[dict[str, Any]]] = {}
-    for v in versions:
-        if 7 <= v["age_days"] < 30:
-            wk = compute_week_key(v["created"])
-            week_buckets.setdefault(wk, []).append(v)
-    for bucket in week_buckets.values():
-        best = max(bucket, key=lambda x: x["created"])
-        keep_tags.add(best["release_tag"])
-
-    # 30 days – 1 year: keep newest per calendar month
-    month_buckets: dict[str, list[dict[str, Any]]] = {}
-    for v in versions:
-        if 30 <= v["age_days"] < 365:
-            mo = compute_month_key(v["created"])
-            month_buckets.setdefault(mo, []).append(v)
-    for bucket in month_buckets.values():
-        best = max(bucket, key=lambda x: x["created"])
-        keep_tags.add(best["release_tag"])
-
-    # >= 1 year: keep newest per calendar quarter
-    quarter_buckets: dict[str, list[dict[str, Any]]] = {}
-    for v in versions:
-        if v["age_days"] >= 365:
-            q = compute_quarter_key(v["created"])
-            quarter_buckets.setdefault(q, []).append(v)
-    for bucket in quarter_buckets.values():
-        best = max(bucket, key=lambda x: x["created"])
-        keep_tags.add(best["release_tag"])
+    keep_tags = retention_keep_tags(versions)
 
     # ---- Execute deletions ----
     kept = 0
@@ -285,6 +248,142 @@ def process_snapshots(
             deleted += 1
 
     return kept, deleted
+
+
+def _retention_order(row: dict):
+    from ffbuild.identity import release_order
+    created = row["created"]
+    return (created, release_order(created.date().isoformat(), row["release_tag"]))
+
+
+def retention_keep_tags(versions):
+    keep_tags: set[str] = set()
+
+    # < 7 days: keep everything
+    for v in versions:
+        if v["age_days"] < 7:
+            keep_tags.add(v["release_tag"])
+
+    # 7–30 days: keep newest per ISO week
+    week_buckets: dict[str, list[dict[str, Any]]] = {}
+    for v in versions:
+        if 7 <= v["age_days"] < 30:
+            wk = compute_week_key(v["created"])
+            week_buckets.setdefault(wk, []).append(v)
+    for bucket in week_buckets.values():
+        best = max(bucket, key=_retention_order)
+        keep_tags.add(best["release_tag"])
+
+    # 30 days – 1 year: keep newest per calendar month
+    month_buckets: dict[str, list[dict[str, Any]]] = {}
+    for v in versions:
+        if 30 <= v["age_days"] < 365:
+            mo = compute_month_key(v["created"])
+            month_buckets.setdefault(mo, []).append(v)
+    for bucket in month_buckets.values():
+        best = max(bucket, key=_retention_order)
+        keep_tags.add(best["release_tag"])
+
+    # >= 1 year: keep newest per calendar quarter
+    quarter_buckets: dict[str, list[dict[str, Any]]] = {}
+    for v in versions:
+        if v["age_days"] >= 365:
+            q = compute_quarter_key(v["created"])
+            quarter_buckets.setdefault(q, []).append(v)
+    for bucket in quarter_buckets.values():
+        best = max(bucket, key=_retention_order)
+        keep_tags.add(best["release_tag"])
+
+    return keep_tags
+
+
+def process_catalog_snapshots(data_dir: Path, *, dry_run: bool = False) -> tuple[int, int]:
+    # The script can be launched directly by the existing retention Workflow.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from ffbuild import catalog
+    manifest = catalog.manifest(data_dir)
+    shards = {}
+    versions = []
+    now = datetime.now(timezone.utc)
+    for year in manifest["master"]:
+        path = catalog.shard_path(data_dir, "master", year)
+        if not path.is_file():
+            raise ValueError("Missing master catalog shard")
+        shard = catalog.load_shard(data_dir, "master", year)
+        shards[year] = shard
+        for release in shard["releases"]:
+            created = datetime.fromisoformat(release["date"]).replace(tzinfo=timezone.utc)
+            versions.append({"created": created, "age_days": (now - created).days,
+                             "release_tag": release["tag"]})
+    keep = retention_keep_tags(versions)
+    deleted = [row["release_tag"] for row in versions if row["release_tag"] not in keep]
+    if not dry_run:
+        for year, shard in shards.items():
+            filtered = [r for r in shard["releases"] if r["tag"] in keep]
+            if filtered == shard["releases"]:
+                continue
+            path = catalog.shard_path(data_dir, "master", year)
+            if filtered:
+                catalog.write_json(path, dict(shard, releases=filtered))
+            else:
+                path.unlink()
+                manifest["master"].remove(year)
+        catalog.write_json(data_dir / "index.json", manifest)
+    for tag in deleted:
+        print(f"DELETE_RELEASE:{tag}")
+    return len(versions) - len(deleted), len(deleted)
+
+
+def apply_remote_retention(data_dir: Path) -> tuple[int, int]:
+    """Plan from v2 only; delete verified prereleases, never refs; commit later."""
+    from ffbuild import catalog
+    from ffbuild.publication import _release_api, _run
+    from ffbuild.autoheal.github import repository
+    if not (data_dir / "index.json").is_file():
+        raise ValueError("Migrate Data before automatic cleanup")
+    manifest = catalog.manifest(data_dir)
+    shards = {}
+    candidates = []
+    now = datetime.now(timezone.utc)
+    for year in manifest["master"]:
+        path = catalog.shard_path(data_dir, "master", year)
+        if not path.is_file():
+            raise ValueError("Missing Master catalog shard")
+        shard = catalog.load_shard(data_dir, "master", year)
+        shards[year] = shard
+        for item in shard["releases"]:
+            created = datetime.fromisoformat(item["date"]).replace(tzinfo=timezone.utc)
+            tag = item["tag"]
+            if not (re.fullmatch(r"ffmpeg-master-[0-9]{6}(?:R[2-9][0-9]*|R1[0-9]+)?", tag)
+                    or re.fullmatch(r"ffmpeg-n?[0-9]+\.[A-Za-z0-9.+-]*-[0-9]+-g[0-9a-f]+(?:-r[0-9]+)?", tag)):
+                raise ValueError(f"Refusing non-Master retention candidate: {tag}")
+            candidates.append({"created": created, "age_days": (now-created).days, "release_tag": tag})
+    keep = retention_keep_tags(candidates)
+    delete = {r["release_tag"] for r in candidates} - keep
+    # No local index mutation before all remote operations are confirmed.
+    for tag in sorted(delete):
+        release = _release_api(tag)
+        if release is not None:
+            if release.get("tag_name") != tag or release.get("draft") is not False or release.get("prerelease") is not True:
+                raise ValueError(f"Refusing to delete non-snapshot or draft Release: {tag}")
+            if type(release.get("id")) is not int or release["id"] <= 0:
+                raise ValueError("Invalid GitHub Release identity")
+            _run("gh", "api", f"repos/{repository()}/releases/{release['id']}", "--method", "DELETE")
+            if _release_api(tag) is not None:
+                raise RuntimeError(f"Release deletion not confirmed: {tag}")
+        print(f"CONFIRMED_RELEASE_REMOVED:{tag}")
+    for year, shard in shards.items():
+        filtered = [r for r in shard["releases"] if r["tag"] not in delete]
+        if filtered == shard["releases"]:
+            continue
+        path = catalog.shard_path(data_dir, "master", year)
+        if filtered:
+            catalog.write_json(path, dict(shard, releases=filtered))
+        else:
+            path.unlink()
+            manifest["master"].remove(year)
+    catalog.write_json(data_dir / "index.json", manifest)
+    return len(candidates)-len(delete), len(delete)
 
 
 # ---------------------------------------------------------------------------
@@ -304,8 +403,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print actions without deleting files",
+        help="Print actions without deleting files (default unless --apply-remote)",
     )
+    parser.add_argument("--apply-remote", action="store_true", help="Delete verified Master Releases only, preserve all tags")
     return parser.parse_args(argv)
 
 
@@ -319,7 +419,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     # Only clean snapshots (ffmpeg_ref matches git describe format)
-    kept, deleted = process_snapshots(data_dir, dry_run=dry_run)
+    if args.apply_remote and dry_run:
+        raise ValueError("Choose apply or dry-run")
+    kept, deleted = (apply_remote_retention(data_dir) if args.apply_remote else
+                     process_snapshots(data_dir, dry_run=True))
 
     print(f"Kept: {kept}, Deleted: {deleted}")
 

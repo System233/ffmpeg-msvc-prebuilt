@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FFmpeg release catalog shard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "releases"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+    },
+    "year": {
+      "type": "integer",
+      "minimum": 2000,
+      "maximum": 2099
+    },
+    "releases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/release"
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "version"
+      ],
+      "not": {
+        "required": [
+          "year"
+        ]
+      },
+      "properties": {
+        "releases": {
+          "items": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "version"
+                  ]
+                },
+                {
+                  "required": [
+                    "commit"
+                  ]
+                },
+                {
+                  "required": [
+                    "ref"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "year"
+      ],
+      "not": {
+        "required": [
+          "version"
+        ]
+      },
+      "properties": {
+        "releases": {
+          "items": {
+            "required": [
+              "version"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "required": [
+        "file",
+        "size",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.+\\-]+\\.zip$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": [
+        "binary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "abi": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "format": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "binary": {
+          "$ref": "#/$defs/asset"
+        },
+        "develop": {
+          "$ref": "#/$defs/asset"
+        }
+      },
+      "dependentRequired": {
+        "abi": [
+          "format"
+        ],
+        "format": [
+          "abi"
+        ],
+        "date": [
+          "abi"
+        ]
+      }
+    },
+    "release": {
+      "type": "object",
+      "required": [
+        "tag",
+        "date",
+        "variants"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tag": {
+          "type": "string",
+          "pattern": "^ffmpeg-[A-Za-z0-9.+_-]+$"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variants": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^(x64|x86|arm|arm64)-windows-(static|shared)-(lgpl|gpl|nonfree)$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/variant"
+          }
+        }
+      }
+    }
+  }
+}

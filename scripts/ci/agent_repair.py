@@ -28,6 +28,22 @@ from typing import List
 
 from _allowed import find_violations
 
+# Direct script invocation sets sys.path to scripts/ci, not the repository root.
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from ffbuild.autoheal.models import version_name
+
+
+def _require_target_yaml() -> str:
+    path = Path("agent_context.json")
+    if not path.is_file():
+        raise ValueError("Missing agent_context.json with mandatory target_yaml")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Invalid agent context")
+    return version_name(data.get("target_yaml"))
+
 # ── Feedback generation (bash _generate_feedback equivalent) ──────────────────
 
 def _generate_feedback(attempt: int, violations: List[str], feedback_file: str) -> None:
@@ -56,13 +72,13 @@ def _git_check(*args: str) -> str:
 
 # ── OpenCode execution ────────────────────────────────────────────────────────
 
-def _run_opencode(prompt_text: str, model: str) -> int:
+def _run_opencode(prompt_text: str, model: str, *, resume: bool = False) -> int:
     """Run opencode with the given prompt as a single argument.
     Returns the process exit code."""
     result = subprocess.run(
         ["opencode", "run", "--model", model,
          "--dangerously-skip-permissions",
-         prompt_text],
+         *(["--continue"] if resume else []), prompt_text],
     )
     return result.returncode
 
@@ -126,15 +142,12 @@ def main() -> None:
         sys.exit(1)
 
     # ── Read target_yaml from context (bash: read target_yaml from agent_context.json) ─
-    context_path = Path("agent_context.json")
-    target_yaml = None
-    if context_path.is_file():
-        ctx = json.loads(context_path.read_text(encoding="utf-8"))
-        target_yaml = ctx.get("target_yaml")
-    if target_yaml:
-        print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
-    else:
-        print("WARNING: target_yaml not found in context, allowing any ffmpeg/*.yaml", file=sys.stderr)
+    try:
+        target_yaml = _require_target_yaml()
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"ERROR: Auto-Heal target is not authenticated: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
 
     # ── Resolve BASE_SHA (bash: [ -z "$BASE_SHA" ] && BASE_SHA=$(git rev-parse HEAD)) ─
     base_sha = args.base_sha
@@ -157,13 +170,16 @@ def main() -> None:
 
     # ── Main repair loop ──────────────────────────────────────────────────────
     attempt = 0
+    supervised = bool(os.environ.get("FFBUILD_REPAIR_BASE"))
 
     while attempt < max_retries:
         attempt += 1
         print(f"=== Agent repair attempt {attempt}/{max_retries} ===")
 
-        # Reset to the loop's start SHA so each attempt begins cleanly.
-        _git_check("reset", "--hard", start_sha)
+        # Keep the supervised repair candidate and resume its existing session.
+        # The initial checkout and legacy unbound callers start clean.
+        if attempt == 1 or not supervised:
+            _git_check("reset", "--hard", start_sha)
 
         # If feedback.txt exists, append it to prompt.txt
         # (bash: if [ -f feedback.txt ]; then cat feedback.txt >> prompt.txt; fi)
@@ -174,7 +190,7 @@ def main() -> None:
 
         # Run opencode with accumulated prompt (bash: opencode run ... "$(cat prompt.txt)" &)
         prompt_text = Path("prompt.txt").read_text(encoding="utf-8")
-        oc_rc = _run_opencode(prompt_text, model)
+        oc_rc = _run_opencode(prompt_text, model, resume=supervised and attempt > 1)
         if oc_rc != 0:
             print(f"[WARNING] opencode failed (exit {oc_rc})", file=sys.stderr)
             continue
@@ -219,6 +235,12 @@ def main() -> None:
         files_output = _git_check("diff", "HEAD~1..HEAD", "--name-only")
         changed_files = [line for line in files_output.splitlines() if line.strip()]
         violations = find_violations(changed_files, yaml=target_yaml)
+        if os.environ.get("FFBUILD_REPAIR_BASE"):
+            from ffbuild.autoheal.scope import check_worktree
+            try:
+                check_worktree(target_yaml, start_sha, Path.cwd())
+            except ValueError as exc:
+                violations.append(str(exc))
 
         if violations:
             print(f"[WARNING] Scope violation on attempt {attempt}:", file=sys.stderr)
@@ -244,6 +266,9 @@ def main() -> None:
                 changed_files = [line for line in files_output.splitlines() if line.strip()]
                 violations = find_violations(changed_files, yaml=target_yaml)
                 if not violations:
+                    if os.environ.get("FFBUILD_REPAIR_BASE"):
+                        from ffbuild.autoheal.scope import check_worktree
+                        check_worktree(target_yaml, start_sha, Path.cwd())
                     sys.exit(0)
         # (bash: echo "[ERROR] Max retries exhausted with violations" >&2; exit 1)
         print("[ERROR] Max retries exhausted without a valid fix", file=sys.stderr)

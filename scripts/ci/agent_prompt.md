@@ -5,21 +5,18 @@
 第一步：先读取 SKILL.md，理解决策树和各文件的用途。
 
 ## 上下文
-- `agent_context.json` — PR 编号、`target_yaml`（你唯一需要修复的版本）、失败的 Job 列表、日志路径
-- `failed_steps_hint.txt` — 失败的 Job 名称
-- `error_logs/build-logs-{triplet}-{license}-{linkage}/` — 构建日志目录
+- `agent_context.json` — `target_yaml`（唯一可以修复的版本）、失败 Run/Attempt、原生 Variant/ABI 身份与日志路径
+- `failed_steps_hint.txt` — 失败的 Job 步骤
+- `error_logs/build-logs-a{run_attempt}-{target_yaml}-{variant_id}/` — 与 ffbuild-plan 关联的本次 Attempt 原始构建日志
 - **关键**：你只能修复 `agent_context.json` 中 `target_yaml` 字段指定的版本！
 
 ## 约束
 - **只修改 `ffmpeg/{target_yaml}.yaml`（来自 `agent_context.json` 的 `target_yaml` 字段）**
 - **禁止修改其他版本的 YAML 文件（如 `base.yaml`）**
-- 族 YAML（如 7.0.yaml、8.0.yaml）禁止修改 build.*、features.*、dep_overrides
-- 优先通过补丁修复：在 patches/{family}/ 搜索现有补丁
-- 修改前检查继承影响：grep -rl "extends: \"$(basename $file .yaml)\"" ffmpeg/
-- patches 规则：
-  - `agent_context.json` 的 `new_patches` 字段列出的是本 PR 新增的 patch，可以修改或删除
-  - 不在 `new_patches` 中的 patch 是 main 分支已有的，禁止修改
-  - 需要修正时应修改已有的 PR patch，而非重复新增
+- 版本家族/继承配置（例如 base.yaml）禁止修改；不要扩大更改范围
+- 优先检查现有补丁，但**禁止修改、覆盖或删除任何已有 Patch**；仅可在 `patches/{major}.x/` 新增本版本专属的 `*.patch`
+- 新增 Patch 必须由目标 `ffmpeg/{target_yaml}.yaml` 新增引用，并且不得被其他版本 YAML 引用；共享 Patch 问题只报告，不自动修复
+- 修改前检查 YAML 继承关系和 Patch 引用归属，避免影响其他版本
 - 禁止修改 `scripts/` `ports/` `.github/` `data/` `web/` `build/`
 - 禁止运行 `vcpkg install`
 - 大文件用 grep/tail，禁止完整读取
@@ -28,21 +25,24 @@
 1. 读取 `agent_context.json` → 确定哪些矩阵变体失败
 2. 读取 `.opencode/skills/auto-heal/SKILL.md` → 获取诊断知识
 3. 在 `error_logs/` 下找到对应日志目录 → 按 SKILL 的决策树分析根因
-4. 修改 `ffmpeg/*.yaml` 或 patches 修复（new_patches 中的可修改，其余的仅可移除或新增）
-5. 验证：
-  - 改 YAML → `python scripts/ffport.py generate <version>`
-  - 改 patch → `git apply --check` 按 YAML 顺序应用
-6. 将修复摘要写入 `fix_report.md`：
+4. 只修改目标 `ffmpeg/{target_yaml}.yaml`，必要时新增目标版本独占引用的 Patch
+5. 验证（必须在当前会话内迭代，不要退出等待外部重启）：
+  - 每次完成修改后运行 `python -m ffbuild autoheal check-worktree`。返回 JSON 的 ok=false 时立即根据 violations 修复，并重复调用直至 ok=true。
+  - 提交之前和提交之后均必须调用该检查器。不得修改检查器或其上下文、基准和环境变量。
+  - 配置校验 → `python -m ffbuild validate`
+  - Patch 校验 → 检查目标 YAML 引用、作用域和适用于原始源码的 git apply --check
+  - 禁止执行完整 FFmpeg 或第三方依赖构建；真实 MSVC 验证由后续 PR CI 承担
+6. 使用英文将修复摘要写入 `fix_report.md`：
   ## Fix Summary
   - Root cause: <一句话说明>
   - Files changed:
     - 列出修改的文件
   - Verification: <验证命令的输出>
-7. 验证通过后提交到本地仓库：
+7. 验证通过后仅在**本地**创建用于生成候选差异的 Git 提交，不得推送、修改 PR 正文或调用 GitHub API：
    git add ffmpeg/ patches/
    git diff --staged --stat # 检查是否提交了无关文件
    git commit -m "fix(<version>): <简短、描述性的消息>"
-   提交消息遵循 conventional commit 规范，不包含 attempt 计数器。
+   提交消息使用英文 conventional commit 规范，准确描述实际修复动作（例如 fix(master): adapt AMF version requirement），不包含 attempt 计数器。
    **禁止提交 fix_report.md 到 git！fix_report.md 是构建产物，不是源码。**
    **禁止提交其他无关文件**
    **只能提交修复`target_yaml`所必须的文件**

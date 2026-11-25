@@ -395,6 +395,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     control_version = ctrl["version"]
     revision = ctrl["revision"]
     license_variant = args.license or detect_license(ctrl["features"])
+    actual_license = detect_license(ctrl["features"])
+    if args.license and license_variant != actual_license:
+        raise ValueError(
+            f"License mismatch: requested {license_variant}, actual FFmpeg features "
+            f"require {actual_license}; refusing to mislabel artifacts"
+        )
     linkage = parse_build_info(pkg_dir)
     triplet = triplet_from_dirname(pkg_dir)
 
@@ -405,13 +411,13 @@ def main(argv: Optional[List[str]] = None) -> None:
     print()
 
     # ---- Version resolution (priority: --version > --ref > CONTROL) ----
-    if args.ref:
+    if args.version:
+        version_final = args.version
+        ffmpeg_ref_val = args.ref or f"n{control_version}"
+    elif args.ref:
         parsed = parse_version(args.ref)
         version_final = parsed["version"]
         ffmpeg_ref_val = args.ref
-    elif args.version:
-        version_final = args.version
-        ffmpeg_ref_val = f"n{args.version}"
     else:
         version_final = control_version
         ffmpeg_ref_val = f"n{control_version}"

@@ -117,8 +117,12 @@ class TestFfportGenerate(unittest.TestCase):
         self.assertNotIn("lensfun", reachable("all-lgpl"))
         self.assertNotIn("license-gpl", reachable("all-lgpl"))
         self.assertIn("lensfun", reachable("all-gpl"))
-        self.assertIn("license-gpl", reachable("lensfun"))
+        self.assertNotIn("license-gpl", reachable("lensfun"))
         self.assertIn("lensfun", feature_map["lensfun"]["dependencies"])
+        constraints = (self._tmpdir / "ffmpeg" / "constraints.cmake").read_text()
+        self.assertIn('if("lensfun" IN_LIST FEATURES)', constraints)
+        self.assertIn('if(NOT "license-gpl" IN_LIST FEATURES)', constraints)
+        self.assertIn('if(NOT "license-gpl" IN_LIST FEATURES)', constraints)
 
     def test_generate_master_no_version_fails(self):
         """generate master without --version/--ref fails (can't infer version)."""

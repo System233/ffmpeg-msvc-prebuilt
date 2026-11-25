@@ -26,7 +26,8 @@ features:
     flag: "--enable-cuda --enable-nvenc"
   openssl:
     flag: "--enable-openssl"
-    depends: ["openssl", "@license-nonfree"]
+    depends: ["openssl"]
+    license: nonfree
     description: "Use OpenSSL for TLS support"
 
 patches:

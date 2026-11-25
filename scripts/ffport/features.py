@@ -216,3 +216,35 @@ def _normalise_list(raw):
     if isinstance(raw, dict):
         return [raw]
     return list(raw) if raw else []
+
+
+def check_constraints(features: dict, selected: set[str], package_names: set[str] | None = None) -> list[str]:
+    """Validate explicit policy without expanding or changing dependencies.
+
+    ``depends`` is the only field that adds packages/features.  ``license``
+    checks explicitly enabled FFmpeg configure modes; ``requires`` and
+    ``conflicts`` check feature/package presence only.  The generated CMake
+    port performs the same checks for direct vcpkg callers.
+    """
+    errors: list[str] = []
+    packages = package_names or set()
+    for name in sorted(selected):
+        info = features.get(name, {})
+        policy = info.get("license")
+        if policy not in (None, "lgpl", "gpl", "nonfree"):
+            errors.append(f"{name}: invalid license policy {policy!r}")
+        if policy in ("gpl", "nonfree") and f"license-{policy}" not in selected:
+            errors.append(f"{name}: requires explicitly enabled {policy} license mode")
+        for kind in ("requires", "conflicts"):
+            for value in _normalise_list(info.get(kind, [])):
+                if not isinstance(value, str) or ":" not in value:
+                    errors.append(f"{name}: invalid {kind} constraint {value!r}")
+                    continue
+                target, operand = value.split(":", 1)
+                if not operand or target not in ("feature", "package"):
+                    errors.append(f"{name}: unsupported {kind} constraint {value!r}")
+                    continue
+                found = operand in (selected if target == "feature" else packages)
+                if (kind == "requires" and not found) or (kind == "conflicts" and found):
+                    errors.append(f"{name}: {kind} {value}")
+    return errors

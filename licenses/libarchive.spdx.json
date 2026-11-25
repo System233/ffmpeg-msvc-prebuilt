@@ -1,0 +1,43 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "libarchive-3.8.7 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/libarchive/3.8.7/1",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "libarchive",
+      "versionInfo": "3.8.7",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND LicenseRef-Libarchive-Public-Domain",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING",
+      "licenseComments": "Library C sources: BSD terms, public-domain date parser, and CC0 selected for the triple-licensed BLAKE2 implementation. Build scripts are not linked."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Libarchive-Public-Domain",
+      "extractedText": "* The following source files are in the public domain:\n   libarchive/archive_parse_date.c",
+      "seeAlsos": [
+        "https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING"
+      ]
+    }
+  ]
+}

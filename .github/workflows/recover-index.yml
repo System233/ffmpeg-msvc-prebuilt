@@ -1,0 +1,51 @@
+name: Recover Release index
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        required: true
+        description: Existing public Release tag (no compilation)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-branch
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: actions/create-github-app-token@v3
+        id: bot
+        with:
+          client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
+          permission-contents: write
+      - uses: actions/checkout@v6
+        with:
+          ref: data
+          path: data
+          fetch-depth: 0
+          token: ${{ steps.bot.outputs.token }}
+      - name: Verify published assets and recover exact Data entry
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          GIT_AUTHOR_NAME: ffmpeg-dev
+          GIT_AUTHOR_EMAIL: ffmpeg-dev@users.noreply.github.com
+          GIT_COMMITTER_NAME: ffmpeg-dev
+          GIT_COMMITTER_EMAIL: ffmpeg-dev@users.noreply.github.com
+        run: python -m ffbuild recover-index --tag "$RELEASE_TAG" --data-dir data

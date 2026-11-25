@@ -12,6 +12,7 @@ import re
 # Dev snapshots (e.g. 9.1-dev-829-g6092f06) and dated builds
 # (e.g. 7.1-20260101) intentionally do NOT match.
 _RELEASE_VERSION_RE = re.compile(r"^n?\d+\.\d+(?:\.\d+)?$")
+_HASH_VERSION_SUFFIX_RE = re.compile(r"-h[0-9a-f]{12,64}$")
 
 
 def is_lts(major: int, minor: int) -> bool:
@@ -23,7 +24,7 @@ def is_lts(major: int, minor: int) -> bool:
 
 def is_release_version(version: str) -> bool:
     """Return True if *version* is a plain ``X.Y`` / ``X.Y.Z`` release."""
-    return bool(_RELEASE_VERSION_RE.match(version))
+    return bool(_RELEASE_VERSION_RE.match(_HASH_VERSION_SUFFIX_RE.sub("", version)))
 
 
 def is_lts_version(version: str) -> bool:
@@ -35,5 +36,5 @@ def is_lts_version(version: str) -> bool:
     """
     if not is_release_version(version):
         return False
-    parts = version.lstrip("n").split(".")
+    parts = _HASH_VERSION_SUFFIX_RE.sub("", version).lstrip("n").split(".")
     return is_lts(int(parts[0]), int(parts[1]))

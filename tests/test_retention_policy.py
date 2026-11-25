@@ -280,7 +280,7 @@ class TestDeleteVersionDir(unittest.TestCase):
             self.assertTrue(d.exists())
             output = mock_stdout.getvalue()
             self.assertIn("DELETE_RELEASE:ffmpeg-8.0-abc", output)
-            self.assertIn("DELETE_TAG:ffmpeg-8.0-abc", output)
+            self.assertNotIn("DELETE_TAG:ffmpeg-8.0-abc", output)
 
     @patch("shutil.rmtree")
     def test_real_delete_calls_rmtree(self, mock_rmtree: MagicMock):
@@ -371,14 +371,14 @@ class TestProcessSnapshots(unittest.TestCase):
 
     @patch("sys.stdout", new_callable=io.StringIO)
     def test_output_format(self, mock_stdout: MagicMock):
-        """Output includes DELETE_RELEASE and DELETE_TAG for deleted items."""
+        """Output includes DELETE_RELEASE only for deleted items."""
         self._make_version("8.x", "8.0-new", "n8.0-2-gabc1234", age_days=400)
         self._make_version("8.x", "8.0-old", "n8.0-1-gdeadbeef", age_days=410)
         process_snapshots(self.data_dir, dry_run=True)
         output = mock_stdout.getvalue()
         # deleted (older, same quarter)
         self.assertIn("DELETE_RELEASE:ffmpeg-8.0-old", output)
-        self.assertIn("DELETE_TAG:ffmpeg-8.0-old", output)
+        self.assertNotIn("DELETE_TAG:ffmpeg-8.0-old", output)
         # kept (newer, same quarter)
         self.assertNotIn("DELETE_RELEASE:ffmpeg-8.0-new", output)
         self.assertNotIn("DELETE_TAG:ffmpeg-8.0-new", output)

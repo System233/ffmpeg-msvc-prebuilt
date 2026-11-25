@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FFmpeg release catalog v2",
+  "type": "object",
+  "required": [
+    "schema",
+    "releases",
+    "master"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": 2
+    },
+    "releases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+      }
+    },
+    "master": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 2000,
+        "maximum": 2099
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "glslang-16.3.0#1 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/glslang/16.3.0-port-1/2",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "glslang",
+      "versionInfo": "16.3.0#1",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "Apache-2.0 AND BSD-3-Clause AND GPL-3.0-or-later AND MIT",
+      "licenseConcluded": "Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/KhronosGroup/glslang/blob/16.3.0/LICENSE.txt",
+      "licenseComments": "Correct vcpkg's incomplete license declaration. The compiled glslang_tab.cpp generated parser explicitly retains the Bison exception. Preserve the other upstream terms, including AML-glslang and MIT-Khronos-old (see Qt 6.12 attribution). Exact installed copyright required."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-copyright"
+    }
+  ],
+  "files": [
+    {
+      "SPDXID": "SPDXRef-copyright",
+      "fileName": "./copyright",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "fedc9cfdc6bd8c89006188d0f98dd69435b879b0"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "NOASSERTION"
+      ],
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

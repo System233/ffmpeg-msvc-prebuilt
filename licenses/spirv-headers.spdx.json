@@ -1,0 +1,34 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "spirv-headers-1.4.350.0 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/spirv-headers/1.4.350.0/1",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "spirv-headers",
+      "versionInfo": "1.4.350.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "MIT-Khronos-old AND MIT",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/KhronosGroup/SPIRV-Headers/blob/vulkan-sdk-1.4.350.0/LICENSE",
+      "licenseComments": "Khronos header notice and MIT for other covered files; preserve original LICENSE."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    }
+  ]
+}

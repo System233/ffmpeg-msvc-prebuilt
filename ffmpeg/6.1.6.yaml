@@ -13,6 +13,5 @@ patches:
 - 6.x/0041-add-const-for-opengl-definition.patch
 - 6.x/0050-lensfun-0.3.4-compat-6.x.patch
 - 6.x/0052-svtav1-3.x-compat-6.x.patch
-revision: 0
 source:
   sha512: e37ecef84dbba515e05c5aeb5857c500ad42dd5eda6d6e7c0a6225957b34147fa464bd3d05ada02765e783ed8b277be3b0727f3a736851cac3e5a34e1c78a8d1

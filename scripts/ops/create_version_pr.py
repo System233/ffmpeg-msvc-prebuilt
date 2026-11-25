@@ -20,6 +20,7 @@ Steps:
 import argparse
 import hashlib
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -126,7 +127,7 @@ def _create_pr(branch: str, version: str) -> None:
         print(f"  Auto-merge enabled for #{pr_number}")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Create a PR for a new FFmpeg version.",
     )
@@ -134,7 +135,7 @@ def main() -> None:
     parser.add_argument("--closest-yaml", required=True, help="Closest existing YAML stem (e.g. 6.1)")
     parser.add_argument("--sha512", default=None, help="Pre-computed SHA-512 (skip download)")
     parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.dry_run:
         print("[DRY RUN] No remote changes will be made.")
@@ -168,7 +169,7 @@ def main() -> None:
                 _create_pr(branch, version)
         sys.exit(0)
 
-    _run(["cp", str(src_yaml), str(dst_yaml)])
+    shutil.copy2(src_yaml, dst_yaml)
     print(f"  Copied {src_yaml.name} -> {dst_yaml.name}")
 
     set_revision_yaml(dst_yaml, "0")
@@ -177,8 +178,9 @@ def main() -> None:
     print(f"  sha512: {sha512}")
     set_source_sha512_yaml(dst_yaml, sha512)
 
-    print(f"  Running: python scripts/ffport.py generate {version}")
-    _run([sys.executable, "scripts/ffport.py", "generate", version])
+    print(f"  Generating FFmpeg port for {version}")
+    from scripts.ffport import _generate
+    _generate(version)
     print("  Port files generated")
 
     _run(["git", "checkout", "-b", branch])

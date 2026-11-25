@@ -1,78 +1,83 @@
-# ---------------------------------------------------------------------------
-# build-all.yml — Build all FFmpeg versions
-#
-# Triggered by:
-#   - Schedule (daily 06:00 UTC): scans all versions, builds missing ones
-#   - Push to main with ffmpeg/*.yaml changes: detects changed versions, builds
-#   - Manual workflow_dispatch: same as schedule
-#
-# dl-seed and seed run once globally (not per-version) to avoid redundant
-# source downloads and base dependency builds.  build-release.yml handles
-# per-version FFmpeg compilation, packaging, and release.
-# ---------------------------------------------------------------------------
-
 name: Build All FFmpeg Versions
 
 on:
-  schedule:
-    - cron: "0 6 * * *"
   push:
-    branches:
-      - main
-    paths:
-      - 'ffmpeg/*.yaml'
-  workflow_dispatch:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: ci-quick-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  scan:
+  validate:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.scan.outputs.matrix }}
+      version: ${{ steps.scope.outputs.version }}
     steps:
+      # The guard must be loaded from the trusted base, never the PR.
+      - uses: actions/checkout@v6
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'ffmpeg-dev[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'ffmpeg-dev[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+        with:
+          requirements: requirements.txt
+      - name: Authenticate and scope automatic version PR
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'ffmpeg-dev[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+        id: scope
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
+          test "$(git rev-parse FETCH_HEAD)" = "$PR_HEAD"
+          python -m ffbuild.release_trigger pr-gate --github-output
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-
+          persist-credentials: false
       - uses: ./.github/actions/setup-python
         with:
-          requirements: 'requirements.txt'
-
-      - name: Scan versions to build
-        id: scan
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
-        run: |
-          if [ "$EVENT_NAME" = "push" ]; then
-            matrix=$(python scripts/ci/scan_versions.py --mode push --base "$BEFORE" --head "$AFTER")
-          else
-            matrix=$(python scripts/ci/scan_versions.py --mode all)
-          fi
-          echo "Versions to build: $matrix"
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
-  seed-setup:
-    uses: ./.github/workflows/seed-setup.yml
-    with:
-      name: global
+          requirements: requirements.txt
+      - run: python -m ffbuild validate
+      - run: python -m unittest discover -s tests
 
   build:
-    needs: [seed-setup, scan]
-    if: needs.scan.outputs.matrix != '[]'
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        config: ${{ fromJSON(needs.scan.outputs.matrix) }}
+    needs: validate
+    if: ${{ needs.validate.outputs.version != '' }}
     uses: ./.github/workflows/build-release.yml
+    permissions:
+      contents: read
+      actions: read
     with:
-      yaml: ${{ matrix.config.version }}
-      skip_seed: true
-      skip_pages: true
-    secrets: inherit
+      yaml: ${{ needs.validate.outputs.version }}
+      dry_run: true
+      force: true
+      skip_publish: true
 
-  pages:
-    needs: build
-    if: success()
-    uses: ./.github/workflows/pages.yml
+  all-checks-passed:
+    needs: [validate, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require correct event-specific checks
+        env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          test "$VALIDATE_RESULT" = success
+          if [[ -n "$VERSION" ]]; then
+            test "$BUILD_RESULT" = success
+          else
+            test "$BUILD_RESULT" = skipped
+          fi

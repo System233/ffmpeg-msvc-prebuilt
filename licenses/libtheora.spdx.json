@@ -1,0 +1,34 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "libtheora-1.2.0 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/libtheora/1.2.0/1",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "libtheora",
+      "versionInfo": "1.2.0",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/xiph/theora/blob/v1.2.0/COPYING",
+      "licenseComments": "Preserve the separate patent statement in LICENSE as included by the Port."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    }
+  ]
+}
