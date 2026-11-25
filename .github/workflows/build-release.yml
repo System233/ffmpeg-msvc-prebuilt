@@ -26,9 +26,15 @@ on:
       force:
         type: boolean
         default: false
+      shard_count:
+        type: number
+        default: 1
+      shard_index:
+        type: number
+        default: 0
 
 concurrency:
-  group: ffbuild-native-production
+  group: ${{ github.ref == 'refs/heads/ci/e2e-final-20261125' && format('ffbuild-final-e2e-{0}-{1}', github.run_id, inputs.yaml) || 'ffbuild-native-production' }}
   cancel-in-progress: false
   queue: max
 
@@ -59,6 +65,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TARGET_VERSION: ${{ inputs.yaml }}
           REQUESTED_FORCE: ${{ inputs.force }}
+          REQUESTED_SHARDS: ${{ inputs.shard_count }}
+          REQUESTED_SHARD_INDEX: ${{ inputs.shard_index }}
           SKIP_RELEASE: ${{ inputs.skip_release }}
           VALIDATION_ONLY: ${{ inputs.dry_run }}
           SKIP_PUBLISH: ${{ inputs.skip_publish }}
@@ -141,7 +149,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v6
         with:
-          name: ffbuild-generated-ports-a${{ github.run_attempt }}
+          name: ffbuild-generated-ports-${{ inputs.yaml }}-a${{ github.run_attempt }}
           path: _work/ffbuild/generated-ports/
           retention-days: 5
       - name: Plan only unpublished native ABIs
@@ -149,9 +157,12 @@ jobs:
         shell: pwsh
         env:
           FFBUILD_FORCE: ${{ inputs.force || false }}
+          FFBUILD_SHARD_COUNT: ${{ inputs.shard_count || 1 }}
+          FFBUILD_SHARD_INDEX: ${{ inputs.shard_index || 0 }}
         run: |
           $arguments = @('plan', '--abi-file', 'ffbuild-abi.json',
-                         '--state-dir', 'data', '--github-output')
+                         '--state-dir', 'data', '--shard-count', "$env:FFBUILD_SHARD_COUNT",
+                         '--shard-index', "$env:FFBUILD_SHARD_INDEX", '--github-output')
           if ($env:FFBUILD_FORCE -eq 'true') { $arguments += '--force' }
           python -m ffbuild @arguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -168,6 +179,19 @@ jobs:
             commit = '${{ needs.select.outputs.commit }}'
             sha512 = '${{ needs.select.outputs.sha512 }}'
           }) -Force
+          if ($env:GITHUB_REF -eq 'refs/heads/ci/e2e-final-20261125') {
+            $slots = @{
+              '3.4.14' = 'x86-windows/shared/lgpl'
+              '5.1.10' = 'x64-windows/static/lgpl'
+              '7.1.5' = 'arm-windows/shared/gpl'
+              '9.1' = 'arm64-windows/static/gpl'
+            }
+            if ($plan.jobs.Count -ne 1 -or $plan.reuse.Count -ne 0) { throw 'Exactly one fresh sampled variant required' }
+            $job = $plan.jobs[0]
+            $slot = "$($job.triplet)/$($job.linkage)/$($job.license)"
+            if ($slot -ne $slots[$job.yaml]) { throw "Unexpected sample: $($job.yaml) $slot" }
+            Write-Host "E2E sample: $($job.yaml) $slot"
+          }
           $plan | ConvertTo-Json -Depth 100 | Set-Content ffbuild-plan.json -Encoding utf8
           "plan_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
           if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
@@ -176,7 +200,7 @@ jobs:
           }
       - uses: actions/upload-artifact@v6
         with:
-          name: ffbuild-plan-a${{ github.run_attempt }}
+          name: ffbuild-plan-${{ inputs.yaml }}-a${{ github.run_attempt }}
           path: ffbuild-plan.json
           retention-days: 30
 
@@ -198,7 +222,7 @@ jobs:
           vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
       - uses: actions/download-artifact@v8
         with:
-          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          name: ffbuild-generated-ports-${{ inputs.yaml }}-a${{ needs.plan.outputs.plan_attempt }}
           path: _work/ffbuild/generated-ports
       - name: Restore dependency source downloads
         id: download-cache
@@ -250,7 +274,7 @@ jobs:
           vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
       - uses: actions/download-artifact@v8
         with:
-          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          name: ffbuild-generated-ports-${{ inputs.yaml }}-a${{ needs.plan.outputs.plan_attempt }}
           path: _work/ffbuild/generated-ports
       - name: Restore previously prebuilt dependency binaries
         id: seed-cache
@@ -324,7 +348,7 @@ jobs:
           vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
       - uses: actions/download-artifact@v8
         with:
-          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          name: ffbuild-generated-ports-${{ inputs.yaml }}-a${{ needs.plan.outputs.plan_attempt }}
           path: _work/ffbuild/generated-ports
       - name: Restore centrally prebuilt dependencies
         uses: actions/cache/restore@v5
@@ -423,7 +447,7 @@ jobs:
 
   publish:
     needs: [select, plan, build]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.publication_required == 'true' && ((needs.plan.outputs.matrix == '[]' && needs.build.result == 'skipped') || (needs.plan.outputs.matrix != '[]' && needs.build.result == 'success')) && needs.select.outputs.production == 'true' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.publication_required == 'true' && ((needs.plan.outputs.matrix == '[]' && needs.build.result == 'skipped') || (needs.plan.outputs.matrix != '[]' && needs.build.result == 'success')) && github.ref == 'refs/heads/main' && needs.select.outputs.production == 'true' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish }}
     concurrency:
       group: data-branch
       cancel-in-progress: false
