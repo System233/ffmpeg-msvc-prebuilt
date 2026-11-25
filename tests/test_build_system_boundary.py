@@ -120,6 +120,7 @@ class OriginalArchiveContract(unittest.TestCase):
             ("share/ffmpeg", "copyright"),
             (f"share/{port}", "copyright"),
             (f"share/{port}", "vcpkg_abi_info.txt"),
+            (f"share/{port}", "vcpkg.spdx.json"),
         ):
             path = package / subdir / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +129,7 @@ class OriginalArchiveContract(unittest.TestCase):
             (package / name).write_bytes(name.encode())
         return package
 
-    def test_static_and_shared_archive_contents_match_original_packager(self):
+    def test_static_and_shared_payload_matches_original_without_internal_metadata(self):
         with tempfile.TemporaryDirectory() as temporary:
             port = "ffmpeg"
             package = self._fixture(Path(temporary), port)
@@ -140,15 +141,17 @@ class OriginalArchiveContract(unittest.TestCase):
                         package, linkage, variant_type=variant)
                     original_files = {Path(name).as_posix(): path.read_bytes()
                                       for path, name in legacy}
-                    # Application content should match across Port namespace
-                    # migration, even though its source directory is renamed.
+                    # v3 deliberately replaces raw copyright with a combined
+                    # notice and moves native build metadata to the audit ZIP.
+                    removed = {"CONTROL", "BUILD_INFO", "share/ffmpeg/copyright",
+                               "share/ffmpeg/vcpkg_abi_info.txt", "share/ffmpeg/vcpkg.spdx.json"}
+                    expected_payload = {name: data for name, data in original_files.items()
+                                        if name not in removed}
                     actual = _files(package, linkage, develop=variant == "develop",
                                     port=port)
-                    self.assertEqual(set(original_files), set(actual),
-                                     f"{linkage}/{variant} must preserve archive layout")
-                    for name, expected in original_files.items():
-                        if name.endswith("ffmpeg.exe"):
-                            continue  # Source directory differs by Port identity.
+                    self.assertEqual(set(expected_payload), set(actual),
+                                     f"{linkage}/{variant} must preserve executable/SDK layout")
+                    for name, expected in expected_payload.items():
                         self.assertEqual(expected, actual[name].read_bytes())
 
     def test_no_static_sdk_and_shared_archive_keeps_original_cmake_targets(self):
@@ -156,12 +159,13 @@ class OriginalArchiveContract(unittest.TestCase):
             port = "ffmpeg"
             package = self._fixture(Path(temporary), port)
             static = _files(package, "static", develop=False, port=port)
-            self.assertEqual({"ffmpeg.exe", "CONTROL", "BUILD_INFO"}, set(static))
+            self.assertEqual({"ffmpeg.exe"}, set(static))
             shared = _files(package, "shared", develop=False, port=port)
             self.assertIn("share/ffmpeg/FindFFmpeg.cmake", shared)
             self.assertIn("share/ffmpeg/vcpkg-cmake-wrapper.cmake", shared)
-            # The original Shared SDK includes the vcpkg ABI provenance file.
-            self.assertIn("share/ffmpeg/vcpkg_abi_info.txt", shared)
+            self.assertNotIn("share/ffmpeg/vcpkg_abi_info.txt", shared)
+            self.assertNotIn("share/ffmpeg/vcpkg.spdx.json", shared)
+            self.assertNotIn("share/ffmpeg/copyright", shared)  # replaced by merged evidence
             self.assertNotIn("debug/lib/avcodec.lib", shared)
 
 

@@ -16,6 +16,7 @@ import argparse
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 
 def git_add_all(directory: str) -> None:
@@ -123,6 +124,7 @@ def main() -> None:
         default=5.0,
         help="Seconds to wait between retries (default: %(default)s).",
     )
+    parser.add_argument("--index-only", action="store_true", help="Stage only published Release index files")
     args = parser.parse_args()
 
     directory: str = args.directory
@@ -132,8 +134,13 @@ def main() -> None:
     delay: float = args.delay
 
     # 1. Stage all changes
-    print("Staging changes (git add -A)...")
-    git_add_all(directory)
+    if args.index_only:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from ffbuild.catalog import stage_index
+        stage_index(Path(directory))
+    else:
+        print("Staging changes (git add -A)...")
+        git_add_all(directory)
 
     # 3. Bail out early if nothing to commit
     if not has_staged_changes(directory):

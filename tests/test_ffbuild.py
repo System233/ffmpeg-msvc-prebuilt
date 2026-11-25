@@ -340,7 +340,7 @@ class PackageCliTests(unittest.TestCase):
         from ffbuild.cli import build_parser
 
         commands = next(action for action in build_parser()._actions if action.dest == "command")
-        self.assertEqual({"scan", "generate", "prepare", "plan", "package", "publish", "validate", "autoheal"},
+        self.assertEqual({"scan", "generate", "prepare", "plan", "package", "publish", "validate", "autoheal", "migrate-index"},
                          set(commands.choices))
         plan_options = commands.choices["plan"].format_help()
         self.assertNotIn("--licenses", plan_options)

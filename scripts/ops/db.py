@@ -794,6 +794,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # This tool is retained for legacy YAML only; never recreate it in v2.
+    if (DATA_DIR / "index.json").is_file():
+        parser.error("Legacy YAML database commands cannot operate on catalog v2")
     # Dispatch
     if args.command == "import":
         cmd_import(args)

@@ -8,6 +8,7 @@ from the verified plan, and the resulting YAML is written for the data branch.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import zipfile
 from datetime import datetime, timezone
@@ -17,7 +18,7 @@ import yaml
 
 from .identity import is_lts, variant_name, archive_name
 from .fingerprint import variant_fingerprint
-from .compliance import PACKAGE_FORMAT_VERSION, compliance_files, verify_system_archive_members
+from .compliance import PACKAGE_FORMAT_VERSION, compliance_files, PUBLIC_COPYRIGHT, PUBLIC_SPDX, verify_system_archive_members
 
 
 def _read_control(package: Path) -> tuple[str, int, set[str], set[str]]:
@@ -101,14 +102,11 @@ def _files(package: Path, linkage: str, *, develop: bool,
                 continue
             for path in sorted(root.rglob("*")):
                 if path.is_file() and (develop or path.suffix.lower() != ".pdb"):
-                    paths[path.relative_to(package).as_posix()] = path
-    for name in ("CONTROL", "BUILD_INFO"):
-        path = package / name
-        if path.is_file():
-            paths[name] = path
+                    member = path.relative_to(package).as_posix()
+                    if member not in (PUBLIC_COPYRIGHT, PUBLIC_SPDX, "share/ffmpeg/vcpkg.spdx.json", "share/ffmpeg/vcpkg_abi_info.txt"):
+                        paths[member] = path
     if linkage == "static":
-        # The legacy static archive is flat: ffmpeg.exe, ffprobe.exe,
-        # CONTROL and BUILD_INFO, without a bin/ prefix or SDK contents.
+        # The static archive is flat, without a bin/ prefix or SDK contents.
         return {Path(member).name: source for member, source in paths.items()}
     return paths
 
@@ -170,10 +168,10 @@ def package_job(package: Path, job: dict, output: Path,
     if identifier != job["id"]:
         raise ValueError("Build Plan variant identity mismatch")
     if installed_root is None or source_tree is None:
-        raise ValueError("Package-format v2 requires --installed-root and --source-tree "
+        raise ValueError("Package-format v3 requires --installed-root and --source-tree "
                          "for license and upstream COPYING evidence")
     copyright_file = package / "share" / port / "copyright"
-    evidence, evidence_summary = compliance_files(
+    public, evidence, evidence_summary = compliance_files(
         installed_root, job, ffmpeg_copyright=copyright_file, source_tree=source_tree)
     system_dependency = any(p["scope"] == "system-dependency" for p in evidence_summary["packages"])
     for develop in ([False, True] if linkage == "shared" else [False]):
@@ -184,11 +182,25 @@ def package_job(package: Path, job: dict, output: Path,
     binary_name = archive_name(job) if dated else f"{identifier}.zip"
     assets = {"binary": _archive(output / binary_name,
                                  _files(package, linkage, develop=False, port=port),
-                                 copyright_file, evidence=evidence)}
+                                 copyright_file, evidence=public)}
     if linkage == "shared":
         assets["develop"] = _archive(output / (archive_name(job, develop=True) if dated else f"{identifier}-develop.zip"),
                                      _files(package, linkage, develop=True, port=port),
-                                     copyright_file, evidence=evidence)
+                                     copyright_file, evidence=public)
+    # Audit evidence is an internal sibling artifact, never a release asset.
+    audit = output / f"{identifier}.audit.zip"
+    for name in ("CONTROL", "BUILD_INFO", "share/ffmpeg/vcpkg_abi_info.txt"):
+        file = package / name
+        if file.is_file():
+            evidence["native/" + name] = file.read_bytes()
+    provenance = json.loads(evidence["metadata/BUILD_PROVENANCE.json"])
+    provenance["assets"] = assets
+    evidence["metadata/BUILD_PROVENANCE.json"] = (json.dumps(provenance, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+    with zipfile.ZipFile(audit, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for member, data in sorted(evidence.items()):
+            archive.writestr(member, data)
+    with audit.open("rb") as source:
+        evidence_summary["audit_sha256"] = hashlib.file_digest(source, "sha256").hexdigest()
     record = {
         "variant_id": identifier,
         "version": job["version"],

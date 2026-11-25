@@ -64,7 +64,7 @@ ffmpeg-master_x64-windows-static-gpl-261125.zip
 
 Dates use UTC YYMMDD, fixed once by the plan. No ABI, Revision, or packaging format suffix appears in public filenames. Release tags use version and date, e.g. `ffmpeg-9.1-261125`. Full native ABI and archive SHA-256 remain in the data branch. Incremental publication reuses unchanged ZIPs with their original filename/date and digest; history is immutable.
 
-A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop). License evidence is under LICENSES/; SBOM and provenance are under metadata/. Corresponding source obligations remain separate.
+A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop). All license evidence for redistribution is collected in `share/ffmpeg/copyright` and `share/ffmpeg/sbom.spdx.json`, with the primary license in `LICENSE.txt`. Build provenance and original dependency evidence remain outside the public ZIP. Corresponding source obligations remain separate.
 
 ### Binary vs Develop (shared only)
 
@@ -87,7 +87,7 @@ A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop
 | Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB)                   |
 | Carry one exe, no DLLs           | **Static Binary**                                   |
 
-**Static** variants contain executables and lightweight legal/build metadata,
+**Static** variants contain executables and lightweight license/SPDX files,
 but no headers or imported/static libraries.
 
 ---
@@ -99,10 +99,10 @@ but no headers or imported/static libraries.
 - **CLI tools**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`
 - **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
 - **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFmpeg.cmake`
-- **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
-- **Compliance evidence**: `LICENSES/THIRD_PARTY_NOTICES.md`, upstream copyright
-  and original vcpkg SPDX under `LICENSES/`, plus
-  `metadata/SBOM.spdx.json` and `metadata/BUILD_PROVENANCE.json`
+- **Licenses**: `LICENSE.txt`, combined `share/ffmpeg/copyright`
+- **SBOM**: `share/ffmpeg/sbom.spdx.json` (SPDX 2.3)
+- `share/` contains only the FFmpeg package namespace; native vcpkg metadata
+  and original dependency SPDX are retained as audit evidence outside the ZIP.
 - No extra third-party runtime DLL deployment is intended; normal Windows
   operating-system DLLs are still required.
 

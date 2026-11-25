@@ -14,10 +14,11 @@ from pathlib import Path
 import yaml
 
 from .fingerprint import variant_fingerprint
-from .identity import record_release_tag, archive_name, dated_variant_path, variant_name, date_suffix
-from .store import register_variant
+from .identity import record_release_tag, archive_name, variant_name, date_suffix, audit_name
+from .store import register_variant, release_index
+from . import catalog
 from .license_policy import POLICY_VERSION, scoped_compatibility
-from .compliance import _ffmpeg_license, resolve_port_license, dependency_scopes, declared_root_hosts, manifest_host_edges, verify_system_archive_members
+from .compliance import _ffmpeg_license, resolve_port_license, dependency_scopes, declared_root_hosts, manifest_host_edges, verify_system_archive_members, distribution_evidence, PUBLIC_COPYRIGHT, PUBLIC_SPDX, PACKAGE_FORMAT_VERSION
 
 
 def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -146,7 +147,7 @@ def _release_assets(tag: str, files: list[Path], *, upstream_version: str,
 
 
 def _push_data(checkout: Path) -> None:
-    _run("git", "add", "-A", cwd=checkout)
+    catalog.stage_index(checkout)
     has_staged = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=checkout)
     if has_staged.returncode == 0:
         return
@@ -168,32 +169,44 @@ def _digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
-    """Require the actual uploaded ZIP to carry the declared license evidence."""
+def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, develop: bool = False) -> None:
+    """Revalidate original installed evidence and reproduce public license files."""
     summary = record["compliance"]
-    with zipfile.ZipFile(path) as archive:
+    if not audit_file.is_file() or _digest(audit_file) != summary.get("audit_sha256"):
+        raise ValueError("Missing or invalid internal license audit archive")
+    with zipfile.ZipFile(path) as public, zipfile.ZipFile(audit_file) as archive:
         names = set(archive.namelist())
-        for name in ("LICENSE.txt", "LICENSES/THIRD_PARTY_NOTICES.md",
-                     "metadata/SBOM.spdx.json", "metadata/BUILD_PROVENANCE.json"):
-            if name not in names:
-                raise ValueError(f"Package-format v2 archive lacks {name}: {path.name}")
-        if not any(name.startswith("LICENSES/") and name.endswith("/copyright")
-                   for name in names):
-            raise ValueError(f"Package-format v2 archive has no per-Port notices: {path.name}")
-        for name, field in (("metadata/SBOM.spdx.json", "spdx_sha256"),
-                            ("LICENSES/THIRD_PARTY_NOTICES.md", "notices_sha256")):
-            if hashlib.sha256(archive.read(name)).hexdigest() != summary.get(field):
-                raise ValueError(f"Compliance metadata hash differs for {name}: {path.name}")
-        try:
-            document = json.loads(archive.read("metadata/SBOM.spdx.json"))
-        except (ValueError, UnicodeError) as exc:
-            raise ValueError(f"Unparseable compliance SPDX in {path.name}") from exc
-        if len(document.get("packages", [])) != summary.get("package_count"):
-            raise ValueError(f"Compliance package count differs in {path.name}")
-        if len(names) != len(archive.namelist()):
+        public_names = set(public.namelist())
+        if len(names) != len(archive.namelist()) or len(public_names) != len(public.namelist()):
             raise ValueError(f"Duplicate ZIP members: {path.name}")
+        if len({name.casefold() for name in public_names}) != len(public_names):
+            raise ValueError("Case-insensitive ZIP member collision")
+        static_members = {"ffmpeg.exe", "ffprobe.exe", "ffplay.exe", "LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX}
+        allowed_roots = {"bin", "lib", "include", "share"} | ({"debug"} if develop else set())
+        for name in public_names:
+            parts = name.lower().split("/")
+            if record["linkage"] == "static":
+                if name not in static_members:
+                    raise ValueError(f"Unexpected public archive member: {name}")
+            elif name != "LICENSE.txt" and parts[0] not in allowed_roots:
+                raise ValueError(f"Unexpected public archive member: {name}")
+            if (name.startswith("/") or "\\" in name or ":" in name or any(part in ("", ".", "..") for part in parts) or
+                    parts[0] in ("licenses", "metadata") or
+                    (parts[0] == "share" and (len(parts) < 3 or parts[1] != "ffmpeg")) or
+                    parts[-1] in ("control", "build_info", "vcpkg_abi_info.txt", "vcpkg.spdx.json")):
+                raise ValueError(f"Unexpected public archive member: {name}")
+        for name in ("LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX):
+            if name not in public_names:
+                raise ValueError(f"Missing distribution license file {name}: {path.name}")
+        for name, field in ((PUBLIC_SPDX, "spdx_sha256"), (PUBLIC_COPYRIGHT, "copyright_sha256")):
+            if hashlib.sha256(public.read(name)).hexdigest() != summary.get(field):
+                raise ValueError(f"Compliance metadata hash differs for {name}: {path.name}")
         provenance = json.loads(archive.read("metadata/BUILD_PROVENANCE.json"))
-        for field in ("abi_hash", "triplet", "features", "variant_id"):
+        if provenance.get("assets") != record["assets"]:
+            raise ValueError("Audit evidence does not bind the distribution assets")
+        if record.get("abi_hash") and hashlib.sha256(archive.read("native/share/ffmpeg/vcpkg_abi_info.txt")).hexdigest() != record["abi_hash"]:
+            raise ValueError("Audit native ABI input differs")
+        for field in ("abi_hash", "triplet", "features", "variant_id", "package_spec"):
             if field in record and provenance.get(field) != record[field]:
                 raise ValueError(f"Archive provenance differs on {field}: {path.name}")
         if record.get("release_date") and provenance.get("release_date") != record["release_date"]:
@@ -210,7 +223,7 @@ def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
             raise ValueError(f"Installed package evidence differs: {path.name}")
         if summary.get("license_policy") != POLICY_VERSION or provenance.get("license_policy") != POLICY_VERSION:
             raise ValueError("License policy version differs; repackaging required")
-        main_expression, primary = _ffmpeg_license(archive.read("LICENSE.txt"), record["license"])
+        main_expression, primary = _ffmpeg_license(public.read("LICENSE.txt"), record["license"])
         if main_expression != summary.get("ffmpeg_license") or main_expression != provenance.get("ffmpeg_license"):
             raise ValueError("FFmpeg GNU license differs from compatibility report")
         required = {primary}
@@ -248,7 +261,7 @@ def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
             declaration = None
             if key == ("ffmpeg", record["triplet"]):
                 expression, source = main_expression, "ffmpeg-copyright"
-                if copyright != archive.read("LICENSE.txt"):
+                if copyright != public.read("LICENSE.txt"):
                     raise ValueError("FFmpeg license evidence differs")
             else:
                 expression, source, declaration = resolve_port_license(
@@ -256,7 +269,7 @@ def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
             scope = "system-dependency" if source == "external-system" else scopes[key]
             if package["scope"] != scope:
                 raise ValueError("Dependency scope differs from archived graph")
-            verify_system_archive_members(names, system_dependency=scope == "system-dependency")
+            verify_system_archive_members(public_names, system_dependency=scope == "system-dependency")
             if declaration != package.get("license_declaration"):
                 raise ValueError("Supplemental license declaration differs")
             if (expression, source) != (package["license_expression"], package["license_source"]):
@@ -267,6 +280,9 @@ def _verify_v2_compliance_archive(path: Path, record: dict) -> None:
                 build_only=scope == "build-only", system_dependency=scope == "system-dependency")
             if decision != package["compatibility"]:
                 raise ValueError("License compatibility result differs")
+        for name, expected in distribution_evidence(archive.read, provenance).items():
+            if public.read(name) != expected:
+                raise ValueError(f"Public license evidence differs from original audit: {name}")
 
 
 
@@ -298,8 +314,10 @@ def _validate_dated_record(record: dict) -> None:
         raise ValueError("Tagged release requires a numeric upstream version")
 
 
-def _verify_distribution(record: dict, directory: Path) -> None:
-    if int(record.get("package_format", 1)) < 2 or not record.get("compliance"):
+def _verify_distribution(record: dict, directory: Path, *, reused: bool = False) -> None:
+    # Fresh artifacts always need the full CI evidence. Previously published
+    # assets are trusted only by the current-format Data index and exact bytes.
+    if int(record.get("package_format", 1)) != PACKAGE_FORMAT_VERSION or (not reused and not record.get("compliance")):
         raise ValueError("Missing required license evidence")
     if record.get("release_date"):
         _validate_dated_record(record)
@@ -314,22 +332,22 @@ def _verify_distribution(record: dict, directory: Path) -> None:
         path = directory / asset["file"]
         if not path.is_file() or path.stat().st_size != asset["size"] or "sha256:" + _digest(path) != asset["digest"]:
             raise ValueError(f"Distribution asset digest or size mismatch: {asset['file']}")
-        _verify_v2_compliance_archive(path, record)
+        if not reused:
+            _verify_compliance_archive(path, record, directory / audit_name(record), develop=kind == "develop")
 
 
 def _check_reuse(job: dict, record: dict) -> None:
-    for field in ("version", "triplet", "linkage", "license", "abi_hash", "features"):
+    for field in ("version", "triplet", "linkage", "license", "abi_hash"):
         if job[field] != record.get(field):
             raise ValueError(f"Reuse record differs from planned {field}")
     _validate_dated_record(record)
-    if not record.get("compliance") or int(record.get("package_format", 0)) < 2:
-        raise ValueError("Cannot reuse an undated or noncompliant distribution")
+    if int(record.get("package_format", 0)) != PACKAGE_FORMAT_VERSION:
+        raise ValueError("Cannot reuse an undated or outdated distribution")
     if record["channel"] != ("master" if job.get("yaml") == "master" else "release"):
         raise ValueError("Reuse record differs from planned channel")
     if job.get("source_ref") and job["source_ref"] != record.get("source_commit"):
         raise ValueError("Reuse record differs from planned source commit")
-    if record.get("package_spec") != job.get("package"):
-        raise ValueError("Reuse record differs from planned package")
+
 
 
 def _fetch_reused(record: dict, directory: Path) -> None:
@@ -342,7 +360,7 @@ def _fetch_reused(record: dict, directory: Path) -> None:
         if not path.exists():
             _run("gh", "release", "download", source_tag, "--repo",
                  os.environ["GITHUB_REPOSITORY"], "--pattern", name, "--dir", str(directory))
-    _verify_distribution(record, directory)
+    _verify_distribution(record, directory, reused=True)
 
 
 def publish(*, artifacts_dir: Path, data_dir: Path,
@@ -413,7 +431,7 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
             job, source = entry["job"], entry["record"]
             _check_reuse(job, source)
             # Original archive name/date and SHA remain unchanged.
-            reused.append((source, dict(source, publication_date=job["release_date"],
+            reused.append((source, dict(release_index(source), publication_date=job["release_date"],
                                         expected_variants=job.get("expected_variants", 0))))
 
     groups: dict[str, list[dict]] = {}
@@ -444,24 +462,27 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
     if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):
         raise RuntimeError("GitHub token is required for release publication")
 
+    if (data_dir / "index.json").exists() and any(not r.get("release_date") for group in groups.values() for r in group):
+        raise ValueError("Legacy undated artifacts cannot be published into the v2 catalog")
+
     # Preflight the data index before any upload; a date cannot silently
     # replace a previously published logical slot with another ABI.
     for tag, group in groups.items():
         for record in group:
             if not record.get("release_date"):
                 continue
-            path = data_dir / dated_variant_path(record)
-            if path.exists():
-                old = yaml.safe_load(path.read_text(encoding="utf-8"))
-                if old["abi_hash"] != record["abi_hash"] or old["assets"] != record["assets"]:
-                    raise ValueError(f"Dated release already contains a different build: {tag}")
+            catalog.preflight(data_dir, group, require_complete=False)
+            break
     if expected_plan is None and any(r.get("release_date") for group in groups.values() for r in group):
         raise ValueError("A complete native build plan is required for dated publication")
     # Plan-time data is not enough: retention or concurrent publication may
     # have changed the current data checkout before the publisher acquired its lock.
+    from .state import PublishedState
+    current_state = PublishedState(directory=data_dir)
     for source, _ in reused:
-        source_path = data_dir / dated_variant_path(source)
-        if not source_path.is_file() or yaml.safe_load(source_path.read_text(encoding="utf-8")) != source:
+        current = current_state.find_abi(source["version"], source["triplet"], source["abi_hash"],
+                                         channel=source["channel"], source_commit=source.get("source_commit"))
+        if current != source:
             raise ValueError("Reusable variant changed or disappeared from current data")
     with tempfile.TemporaryDirectory(prefix="ffbuild-reuse-") as scratch:
         reused_dir = Path(scratch)
@@ -477,12 +498,12 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
             _release_assets(tag, sorted(paths), upstream_version=first["version"],
                             snapshot=first.get("channel") == "master" or "-g" in str(first.get("ffmpeg_ref", "")),
                             **({"strict_batch": True} if first.get("release_date") else {}))
-    for group in groups.values():
-        for record in group:
-            if repository := os.environ.get("GITHUB_REPOSITORY"):
-                binary = record["assets"]["binary"]["file"]
-                tag = record_release_tag(record)
-                record["download_url"] = f"https://github.com/{repository}/releases/download/{tag}/{binary}"
-            register_variant(data_dir, record)
+        for group in groups.values():
+            if group[0].get("release_date"):
+                catalog.register_release(data_dir, group)
+            else:
+                # Legacy compatibility path, not used by native dated CI.
+                for record in group:
+                    register_variant(data_dir, release_index(record))
     _push_data(data_dir)
     return sorted(groups)

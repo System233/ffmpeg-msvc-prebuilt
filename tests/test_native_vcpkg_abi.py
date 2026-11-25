@@ -18,7 +18,7 @@ from ffbuild.package import _verify_native_package_abi, package_job
 from ffbuild.planner import plan_native
 from ffbuild.port import ffmpeg_port_name, generate_port
 from ffbuild.state import PublishedState
-from ffbuild.store import register_variant
+from ffbuild.catalog import register_release
 from ffbuild.targets import Target
 from ffbuild.versions import ROOT, generate_all, has_source, versions
 
@@ -245,8 +245,8 @@ class NativePublication(unittest.TestCase):
             self.assertNotIn('feature_hash', record)
             self.assertEqual(1, len(plan_native(scan, state=PublishedState(
                 directory=root / 'data'))['jobs']))
-            data_path = register_variant(root / 'data', record)
-            self.assertEqual("x64-windows-shared-lgpl.yaml", data_path.name)
+            data_path = register_release(root / 'data', [dict(record, expected_variants=1)])
+            self.assertEqual(record["version"] + ".json", data_path.name)
             self.assertNotIn("revision", record)
             self.assertTrue(record["assets"]["binary"]["file"].endswith(
                 "-" + job["release_date"][2:].replace("-", "") + ".zip"))

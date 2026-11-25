@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .versions import ROOT, GENERATED_PORTS, config
 from .spec import resolve_features
@@ -22,7 +23,12 @@ from .port import ffmpeg_port_name
 from .license_policy import POLICY_VERSION, scoped_compatibility, same_expression
 
 _NAME = re.compile(r"^[a-z0-9][a-z0-9+.-]*$")
-_FORMAT = 2
+# A publication format identifies both the public layout and the qualification
+# gate that accepted its bytes. Advance the format when the policy changes;
+# Data needs no separate compliance report or policy metadata for reuse.
+_FORMAT = 3
+if POLICY_VERSION != 4:
+    raise RuntimeError("Update the publication format when changing the license policy")
 LICENSE_DECLARATIONS = ROOT / "licenses"
 
 
@@ -544,8 +550,8 @@ def _source_provenance(job: dict) -> dict:
 
 def compliance_files(installed_root: Path, job: dict, *,
                      ffmpeg_copyright: Path,
-                     source_tree: Path | None = None) -> tuple[dict[str, bytes], dict]:
-    """Assemble actual Port evidence and consolidated SPDX, without copying libraries.
+                     source_tree: Path | None = None) -> tuple[dict[str, bytes], dict[str, bytes], dict]:
+    """Return public license files, internal raw evidence and compliance summary.
 
     Exact installed target packages are discovered from vcpkg's status graph.
     Host tools, if reachable, are identified as such. This documents the
@@ -581,13 +587,9 @@ def compliance_files(installed_root: Path, job: dict, *,
         ffmpeg_copyright.read_bytes(), job["license"])
     contents: dict[str, bytes] = {}
     summary: list[dict] = []
-    id_by_name: dict[tuple[str, str], str] = {}
-    extracted_licenses: dict[str, dict] = {}
     failures = []
-    for index, port in enumerate(selected, 1):
+    for port in selected:
         key = (port.name, port.triplet)
-        spdx_id = f"SPDXRef-vcpkg-{index}"
-        id_by_name[key] = spdx_id
         try:
             folder = installed_root / port.triplet / "share" / port.name
             copyright_file = ffmpeg_copyright if port.name == "ffmpeg" and port.triplet == triplet else folder / "copyright"
@@ -607,12 +609,6 @@ def compliance_files(installed_root: Path, job: dict, *,
             else:
                 declared, license_source, declaration = resolve_port_license(
                     parsed, f"{port.name}:{port.triplet}", port.version, port.revision, copyright_data)
-                if declaration:
-                    for item in declaration.get("hasExtractedLicensingInfos", []):
-                        reference = item["licenseId"]
-                        if reference in extracted_licenses and extracted_licenses[reference] != item:
-                            raise ValueError(f"Conflicting extracted license: {reference}")
-                        extracted_licenses[reference] = item
             scope = "system-dependency" if license_source == "external-system" else scopes[key]
             decision = scoped_compatibility(declared, main_expression, f"{port.name}:{port.triplet}",
                 name=port.name, version=port.version, port_revision=port.revision,
@@ -656,31 +652,6 @@ def compliance_files(installed_root: Path, job: dict, *,
     else:
         raise ValueError("The exact FFmpeg upstream COPYING terms are required")
 
-    names = {(p.name, p.triplet): p for p in selected}
-    relationships = [{"spdxElementId": "SPDXRef-DOCUMENT",
-                      "relationshipType": "DESCRIBES",
-                      "relatedSpdxElement": id_by_name[("ffmpeg", triplet)]}]
-    for port in selected:
-        for child in sorted(port.dependency_keys):
-            if child not in names:
-                raise ValueError(f"Missing installed dependency edge {port.name} -> {child}")
-            relationships.append({
-                "spdxElementId": id_by_name[(port.name, port.triplet)],
-                "relationshipType": "DEPENDS_ON",
-                "relatedSpdxElement": id_by_name[child],
-            })
-    packages = [{
-        "SPDXID": id_by_name[(p["name"], p["triplet"])],
-        "name": p["name"], "versionInfo": p["version"],
-        "downloadLocation": "NOASSERTION", "filesAnalyzed": False,
-        "licenseConcluded": p["license_expression"] if p["license_source"] != "licenseDeclared" else "NOASSERTION",
-        "licenseDeclared": p["license_expression"] if p["license_source"] == "licenseDeclared" else "NOASSERTION",
-        "copyrightText": "NOASSERTION",
-        "comment": (f"License evidence from {p['license_source']}; "
-                    "vcpkg installed status and attached original SPDX/copyright; "
-                    "this is a package dependency graph, not proof of which "
-                    "object files were linked into an executable."),
-    } for p in summary]
     provenance = {
         "schema": 1,
         "variant_id": job["id"],
@@ -690,7 +661,8 @@ def compliance_files(installed_root: Path, job: dict, *,
         "triplet": triplet,
         "features": sorted(job["features"]),
         "source": _source_provenance(job),
-        "ci_commit": None,  # filled from CI environment by packager when available
+        "ci_commit": os.environ.get("GITHUB_SHA"),
+        "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "installed_packages": summary,
         "license_policy": POLICY_VERSION,
         "ffmpeg_license": main_expression,
@@ -699,45 +671,9 @@ def compliance_files(installed_root: Path, job: dict, *,
         "dependency_evidence": "installed vcpkg status and per-package copyright/SPDX",
         "not_a_link_map": True,
     }
-    provenance["ci_commit"] = os.environ.get("GITHUB_SHA")
-    spdx = {
-        "spdxVersion": "SPDX-2.3", "dataLicense": "CC0-1.0",
-        "SPDXID": "SPDXRef-DOCUMENT",
-        "name": f"FFmpeg vcpkg dependency closure {job['id']}",
-        "documentNamespace": f"https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/{job['id']}",
-        "creationInfo": {"creators": ["Tool: ffbuild-compliance-2"],
-                         "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
-        "packages": packages, "relationships": relationships,
-        "comment": ("Generated from installed vcpkg package dependency relationships. "
-                    "Per-package original vcpkg SPDX documents and notices are included "
-                    "under LICENSES/. No claim of object-file-level attribution."),
-    }
-    if extracted_licenses:
-        spdx["hasExtractedLicensingInfos"] = list(extracted_licenses.values())
-    lines = [
-        "# Third-party notices — FFmpeg MSVC distribution",
-        "",
-        f"Variant: {job['id']}",
-        "",
-        "The following packages were reachable from the installed FFmpeg vcpkg "
-        "dependency graph. Inclusion does not mean each package is physically "
-        "linked into the executable. Consult original SPDX files and notices "
-        "in LICENSES/ for authoritative legal terms.",
-        "",
-        "| Installed Port | Version | Triplet | Effective license | Evidence field | Scope | Selected terms |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    for p in summary:
-        lines.append(f"| {p['name']} | {p['version']}#{p['port_revision']} | "
-                     f"{p['triplet']} | {p['license_expression']} | {p['license_source']} | "
-                     f"{p['scope']} | {', '.join(p['compatibility']['selected']) or p['scope']} |")
-    lines.extend(["", "License expressions come from the installed FFmpeg copyright, native vcpkg SPDX, "
-                  "or evidence-bound supplemental SPDX declarations. External system dependencies retain "
-                  "NOASSERTION and are not themselves redistributed. This is not a full legal compliance certification.", ""])
-    contents["LICENSES/THIRD_PARTY_NOTICES.md"] = ("\n".join(lines) + "\n").encode("utf-8")
-    contents["metadata/SBOM.spdx.json"] = _json(spdx)
     contents["metadata/BUILD_PROVENANCE.json"] = _json(provenance)
-    return contents, {"package_count": len(summary), "license_policy": POLICY_VERSION,
+    public = distribution_evidence(contents.__getitem__, provenance)
+    return public, contents, {"package_count": len(summary), "license_policy": POLICY_VERSION,
                       "ffmpeg_license": main_expression,
                       "packages": [
                           {key: item[key] for key in (
@@ -745,8 +681,98 @@ def compliance_files(installed_root: Path, job: dict, *,
                               "abi", "scope", "license_expression", "license_source", "compatibility")}
                           for item in summary
                       ],
-                      "spdx_sha256": _sha256(contents["metadata/SBOM.spdx.json"]),
-                      "notices_sha256": _sha256(contents["LICENSES/THIRD_PARTY_NOTICES.md"])}
+                      "spdx_sha256": _sha256(public[PUBLIC_SPDX]),
+                      "copyright_sha256": _sha256(public[PUBLIC_COPYRIGHT])}
+
+
+PUBLIC_COPYRIGHT = "share/ffmpeg/copyright"
+PUBLIC_SPDX = "share/ffmpeg/sbom.spdx.json"
+
+
+def distribution_evidence(read: Callable[[str], bytes], provenance: dict) -> dict[str, bytes]:
+    """Reproduce the two public files from unmodified audit evidence.
+
+    No linked-object attribution is inferred. Keep all target-candidate
+    notices, and omit only verified build-only/external system notices.
+    Original SPDX documents remain in the internal audit archive.
+    """
+    installed = provenance["installed_packages"]
+    root = ("ffmpeg", provenance["triplet"])
+    ids = {(p["name"], p["triplet"]): f"SPDXRef-vcpkg-{i}"
+           for i, p in enumerate(installed, 1)}
+    if len(ids) != len(installed) or root not in ids:
+        raise ValueError("Invalid installed package identities")
+    by_key = {(p["name"], p["triplet"]): p for p in installed}
+    main = read(f"LICENSES/ffmpeg-{root[1]}/copyright")
+    _, primary = _ffmpeg_license(main, "lgpl" if provenance["ffmpeg_license"].startswith("LGPL-") else "gpl")
+    sections = []
+    def append(title, data):
+        if not data:
+            raise ValueError(f"Empty license text: {title}")
+        # Delimit but never decode, trim, or rewrite original license bytes.
+        sections.append(title.encode("utf-8") + b"\n" + b"=" * 64 + b"\n" + data + b"\n\n")
+    append(f"FFmpeg {by_key[root]['version']}", main)
+    required = [primary] + (["COPYING.GPLv3"] if primary == "COPYING.LGPLv3" else [])
+    for name in required:
+        raw = read(f"LICENSES/ffmpeg/upstream/{name}")
+        if raw != main:
+            append(f"FFmpeg upstream {name}", raw)
+    packages = []
+    extracted = {}
+    relationships = [{"spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES",
+                      "relatedSpdxElement": ids[root]}]
+    for key, p in by_key.items():
+        base = f"LICENSES/{p['name']}-{p['triplet']}/"
+        native = json.loads(read(base + "vcpkg.spdx.json"))
+        binary = next((row for row in native.get("packages", []) if row.get("SPDXID") == "SPDXRef-binary"), {})
+        if key != root and p["scope"] == "target-candidate":
+            append(f"{p['name']} {p['version']}#{p['port_revision']} ({p['triplet']})", read(base + "copyright"))
+        local = p.get("license_declaration")
+        declared = p["license_expression"] if p["license_source"] == "licenseDeclared" else "NOASSERTION"
+        if p["license_source"] == "local-correction":
+            declared = local["packages"][0]["licenseDeclared"]
+        concluded = p["license_expression"] if p["license_source"] != "licenseDeclared" else "NOASSERTION"
+        references = set(re.findall(r"\bLicenseRef-[A-Za-z0-9.-]+", declared + " " + concluded))
+        for reference in sorted(references):
+            candidates = [item for doc in (local or {}, native)
+                          for item in doc.get("hasExtractedLicensingInfos", [])
+                          if item.get("licenseId") == reference]
+            if not candidates or any(item != candidates[0] for item in candidates[1:]):
+                raise ValueError(f"Missing or conflicting extracted license: {reference}")
+            item = candidates[0]
+            if reference in extracted and extracted[reference] != item:
+                raise ValueError(f"Conflicting extracted license: {reference}")
+            extracted[reference] = item
+        packages.append({"SPDXID": ids[key], "name": p["name"],
+                         "versionInfo": p["version"] + (f"#{p['port_revision']}" if p["port_revision"] else ""),
+                         "downloadLocation": "NOASSERTION", "filesAnalyzed": False,
+                         "licenseDeclared": declared, "licenseConcluded": concluded,
+                         "copyrightText": binary.get("copyrightText") or "NOASSERTION",
+                         "comment": f"Triplet: {p['triplet']}; scope: {p['scope']}. Installed dependency graph, not a link map."})
+        if key == root:
+            source = provenance["source"]
+            packages[-1]["sourceInfo"] = f"Upstream: {source['upstream_repository']} @ {source['upstream_ref']}"
+        elif local and local["packages"][0].get("sourceInfo"):
+            packages[-1]["sourceInfo"] = local["packages"][0]["sourceInfo"]
+        for edge in sorted(p["dependency_keys"]):
+            child = tuple(edge.split(":", 1))
+            if child not in ids:
+                raise ValueError(f"Missing installed dependency edge {key} -> {child}")
+            if by_key[child]["scope"] == "build-only":
+                relationships.append({"spdxElementId": ids[child], "relationshipType": "BUILD_DEPENDENCY_OF", "relatedSpdxElement": ids[key]})
+            else:
+                relationships.append({"spdxElementId": ids[key], "relationshipType": "DEPENDS_ON", "relatedSpdxElement": ids[child]})
+    spdx = {"spdxVersion": "SPDX-2.3", "dataLicense": "CC0-1.0", "SPDXID": "SPDXRef-DOCUMENT",
+            "name": f"FFmpeg {by_key[root]['version']} ({root[1]})",
+            "creationInfo": {"creators": ["Tool: ffbuild-compliance-3"], "created": provenance["created"]},
+            "packages": packages, "relationships": relationships,
+            "comment": "Installed vcpkg dependency graph, not a link map. Distributed license texts: share/ffmpeg/copyright. Build-only and external system dependencies are not distributed as separate packages."}
+    if extracted:
+        spdx["hasExtractedLicensingInfos"] = list(extracted.values())
+    # Namespace changes if either the actual build identity or SBOM content changes.
+    spdx["documentNamespace"] = "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/" + _sha256(
+        _json({"variant": provenance["variant_id"], "date": provenance["release_date"], "document": spdx}))
+    return {PUBLIC_COPYRIGHT: b"".join(sections), PUBLIC_SPDX: _json(spdx)}
 
 
 PACKAGE_FORMAT_VERSION = _FORMAT

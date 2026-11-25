@@ -13,9 +13,9 @@ import yaml
 from compliance_fixture import make_compliance_fixture
 from ffbuild.compliance import (
     _dependency_names, _paragraphs, _spdx_license, compliance_files, find_ffmpeg_source,
-    reachable_ports,
+    reachable_ports, distribution_evidence, PUBLIC_COPYRIGHT, PUBLIC_SPDX,
 )
-from ffbuild.identity import variant_name
+from ffbuild.identity import variant_name, audit_name
 from ffbuild.package import package_job
 from ffbuild.publication import publish
 from ffbuild.store import register_variant
@@ -53,7 +53,7 @@ class InstalledLicenseEvidenceTests(unittest.TestCase):
             self.assertEqual(["ffmpeg", "zlib"],
                              [p.name for p in reachable_ports(installed, job["triplet"])])
             self.assertEqual(source, find_ffmpeg_source(root / "buildtrees"))
-            files, summary = compliance_files(
+            public, files, summary = compliance_files(
                 installed, job, ffmpeg_copyright=copyright, source_tree=source)
             self.assertEqual(2, summary["package_count"])
             for name in (
@@ -61,13 +61,18 @@ class InstalledLicenseEvidenceTests(unittest.TestCase):
                 "LICENSES/zlib-arm64-windows/copyright",
                 "LICENSES/zlib-arm64-windows/vcpkg.spdx.json",
                 "LICENSES/ffmpeg/upstream/COPYING.GPLv3",
-                "LICENSES/THIRD_PARTY_NOTICES.md", "metadata/BUILD_PROVENANCE.json",
-                "metadata/SBOM.spdx.json",
+                "metadata/BUILD_PROVENANCE.json",
             ):
                 self.assertIn(name, files)
-            self.assertNotIn("ffmpeg-tester", files["LICENSES/THIRD_PARTY_NOTICES.md"].decode())
-            self.assertNotIn("extraneous", files["LICENSES/THIRD_PARTY_NOTICES.md"].decode())
-            sbom = json.loads(files["metadata/SBOM.spdx.json"])
+            manifest = json.loads(files["metadata/BUILD_PROVENANCE.json"])
+            self.assertEqual(public, distribution_evidence(files.__getitem__, manifest))
+            self.assertEqual({PUBLIC_COPYRIGHT, PUBLIC_SPDX}, set(public))
+            self.assertNotIn(b"ffmpeg-tester", public[PUBLIC_COPYRIGHT])
+            self.assertNotIn(b"extraneous", public[PUBLIC_COPYRIGHT])
+            self.assertIn(b"zlib license text", public[PUBLIC_COPYRIGHT])
+            self.assertIn(b"upstream COPYING.GPLv3", public[PUBLIC_COPYRIGHT])
+            self.assertNotIn(b"upstream COPYING.GPLv2", public[PUBLIC_COPYRIGHT])
+            sbom = json.loads(public[PUBLIC_SPDX])
             self.assertEqual(2, len(sbom["packages"]))
             self.assertTrue(any(r["relationshipType"] == "DEPENDS_ON"
                                 for r in sbom["relationships"]))
@@ -216,11 +221,11 @@ class InstalledLicenseEvidenceTests(unittest.TestCase):
                 row["name"] = row["name"].replace("zlib", "pkgconf")
                 row["licenseConcluded"] = "LicenseRef-vcpkg-null"
             spdx.write_text(json.dumps(document))
-            files, summary = compliance_files(installed, job, ffmpeg_copyright=copyright, source_tree=source)
+            public, files, summary = compliance_files(installed, job, ffmpeg_copyright=copyright, source_tree=source)
             pkg = next(row for row in summary["packages"] if row["name"] == "pkgconf")
             self.assertEqual("local-declaration", pkg["license_source"])
             self.assertEqual("LicenseRef-Pkgconf-2.5.1", pkg["license_expression"])
-            sbom = json.loads(files["metadata/SBOM.spdx.json"])
+            sbom = json.loads(public[PUBLIC_SPDX])
             extracted = sbom["hasExtractedLicensingInfos"][0]
             self.assertEqual(pkg["license_expression"], extracted["licenseId"])
             self.assertEqual(notice.decode(), extracted["extractedText"])
@@ -287,19 +292,20 @@ class ImmutableComplianceUpgradeTests(unittest.TestCase):
                                    installed_root=installed,
                                    source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text())
-            self.assertEqual(2, record["package_format"])
+            self.assertEqual(3, record["package_format"])
             self.assertEqual("ffmpeg-9.1_arm64-windows-static-lgpl-261125.zip", record["assets"]["binary"]["file"])
             self.assertEqual(2, record["compliance"]["package_count"])
             self.assertEqual(2, len(record["compliance"]["packages"]))
             self.assertEqual({"binary"}, set(record["assets"]))
             self.assertNotIn("revision", record)
-            self.assertEqual({metadata.name, record["assets"]["binary"]["file"]},
+            self.assertEqual({metadata.name, audit_name(record), record["assets"]["binary"]["file"]},
                              {p.name for p in artifacts.iterdir()})
             with zipfile.ZipFile(artifacts / record["assets"]["binary"]["file"]) as archive:
                 names = set(archive.namelist())
-                self.assertIn("LICENSES/zlib-arm64-windows/copyright", names)
-                self.assertIn("LICENSES/ffmpeg/upstream/COPYING.GPLv3", names)
-                self.assertIn("metadata/SBOM.spdx.json", names)
+                self.assertEqual({"ffmpeg.exe", "LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX}, names)
+                self.assertIn(b"zlib license text", archive.read(PUBLIC_COPYRIGHT))
+                self.assertIn(b"upstream COPYING.GPLv3", archive.read(PUBLIC_COPYRIGHT))
+                self.assertNotIn(b"upstream COPYING.GPLv2", archive.read(PUBLIC_COPYRIGHT))
                 self.assertNotIn("lib/avcodec.lib", names)
                 self.assertEqual(None, archive.testzip())
             self.assertEqual(["ffmpeg-9.1-261125"], publish(artifacts_dir=artifacts,

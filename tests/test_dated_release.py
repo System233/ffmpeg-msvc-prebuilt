@@ -14,12 +14,14 @@ from unittest.mock import patch
 import yaml
 
 from compliance_fixture import make_compliance_fixture
-from ffbuild.identity import archive_name, record_release_tag, dated_variant_path, variant_name
+from ffbuild.identity import archive_name, record_release_tag, dated_variant_path, variant_name, audit_name
 from ffbuild.package import package_job
+from ffbuild.compliance import PUBLIC_COPYRIGHT, PUBLIC_SPDX
 from ffbuild.planner import plan_native
 from ffbuild.publication import publish, _release_assets, _release_api
 from ffbuild.state import PublishedState
-from ffbuild.store import register_variant
+from ffbuild import catalog
+from ffbuild.catalog import register_release
 
 
 def make_variant(root, date, triplet, linkage, abi_input, *, version="9.1", channel="release"):
@@ -75,7 +77,7 @@ class DatedPublication(unittest.TestCase):
             prior = package_variant(old, old_dir)
             data = root / "data"
             (data / ".git").mkdir(parents=True)
-            register_variant(data, prior)
+            register_release(data, [dict(prior, expected_variants=1)])
             unchanged = dict(old[0], release_date="2026-11-25")
             new = make_variant(root / "new", "2026-11-25", "arm64-windows", "static", b"new static")
             result = plan_native({"schema": 3, "jobs": [unchanged, new[0]]},
@@ -93,7 +95,7 @@ class DatedPublication(unittest.TestCase):
                 self.assertEqual(prior["assets"], source["assets"])
                 for asset in source["assets"].values():
                     shutil.copyfile(old_dir / asset["file"], directory / asset["file"])
-                _verify_distribution(source, directory)
+                _verify_distribution(source, directory, reused=True)
             def upload(tag, files, **kwargs):
                 self.assertTrue(kwargs["strict_batch"])
                 uploads.append((tag, {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in files}))
@@ -107,13 +109,17 @@ class DatedPublication(unittest.TestCase):
             for asset in prior["assets"].values():
                 self.assertEqual(asset["digest"].removeprefix("sha256:"), uploads[0][1][asset["file"]])
             copied = dict(prior, publication_date="2026-11-25")
-            stored = yaml.safe_load((data / dated_variant_path(copied)).read_text(encoding="utf-8"))
+            shard = catalog.load_shard(data, "releases", "9.1")
+            rows = catalog.expanded("releases", "9.1", shard["releases"][0])
+            stored = next(row for row in rows if row["triplet"] == prior["triplet"])
             self.assertEqual(prior["assets"], stored["assets"])
+            self.assertNotIn("compliance", stored)
+            self.assertTrue(all(p.suffix == ".json" for p in data.rglob("*") if p.is_file()))
             self.assertEqual("2026-11-24", stored["release_date"])
             self.assertEqual("2026-11-25", stored["publication_date"])
-            index = yaml.safe_load((data / dated_variant_path(copied)).parent.parent.joinpath("version.yaml").read_text(encoding="utf-8"))
-            self.assertTrue(index["complete"])
-            self.assertNotIn("revision", index)
+            self.assertEqual(2, len(rows))
+            self.assertEqual("ffmpeg-9.1-261125", shard["releases"][0]["tag"])
+            self.assertNotIn("revision", shard["releases"][0])
             self.assertEqual([], plan_native({"schema": 3, "jobs": [unchanged, new[0]]},
                                             state=PublishedState(directory=data))["jobs"])
 
@@ -124,7 +130,7 @@ class DatedPublication(unittest.TestCase):
             prior = package_variant(old, root / "old_assets")
             data = root / "data"
             (data / ".git").mkdir(parents=True)
-            register_variant(data, prior)
+            register_release(data, [dict(prior, expected_variants=1)])
             new = make_variant(root / "new", "2026-11-25", "x64-windows", "static", b"new")
             package_variant(new, root / "new_assets")
             with patch.dict(os.environ, {"GH_TOKEN": "mock", "GITHUB_REPOSITORY": "test/repo"}), \
@@ -193,7 +199,7 @@ class DatedPublication(unittest.TestCase):
             self.assertEqual(["ffmpeg-master-261125"], publish(
                 artifacts_dir=output, data_dir=root / "unused", dry_run=True))
             path = output / record["assets"]["binary"]["file"]
-            with zipfile.ZipFile(path) as archive:
+            with zipfile.ZipFile(output / audit_name(record)) as archive:
                 self.assertEqual("a" * 40, json.loads(
                     archive.read("metadata/BUILD_PROVENANCE.json"))["source"]["upstream_ref"])
 
@@ -207,14 +213,92 @@ class DatedPublication(unittest.TestCase):
             rebuilt = root / "stripped.zip"
             with zipfile.ZipFile(path) as original, zipfile.ZipFile(rebuilt, "w") as target:
                 for name in original.namelist():
-                    if name != "LICENSES/zlib-x64-windows/copyright":
+                    if name != PUBLIC_COPYRIGHT:
                         target.writestr(name, original.read(name))
             rebuilt.replace(path)
             record["assets"]["binary"].update(size=path.stat().st_size,
                 digest="sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
             metadata = next(output.glob("*.var.yaml"))
             metadata.write_text(yaml.safe_dump(record), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "per-Port evidence"):
+            with self.assertRaisesRegex(ValueError, "Missing distribution license file"):
+                publish(artifacts_dir=output, data_dir=root / "unused", dry_run=True)
+
+    def test_data_contains_only_release_index_and_reuse_survives_audit_expiry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant = make_variant(root / "build", "2026-11-25", "x64-windows", "static", b"audit payload")
+            output = root / "assets"
+            record = package_variant(variant, output)
+            audit = output / audit_name(record)
+            data = root / "data"
+            scan = {"schema": 3, "jobs": [variant[0]]}
+            record["internal_debug"] = {"must_not_persist": True}
+            location = register_release(data, [dict(record, expected_variants=1)])
+            shard = catalog.read_json(location)
+            stored = catalog.expanded("releases", "9.1", shard["releases"][0])[0]
+            self.assertEqual(record["assets"], stored["assets"])
+            self.assertNotIn("compliance", location.read_text())
+            self.assertNotIn("internal_debug", location.read_text())
+            self.assertNotIn("features", location.read_text())
+            self.assertEqual(2, len(list(data.rglob("*.json"))))
+            self.assertTrue(all(p.suffix == ".json" for p in data.rglob("*") if p.is_file()))
+            audit.unlink()
+            self.assertEqual([], plan_native(scan, state=PublishedState(directory=data))["jobs"])
+            from ffbuild.publication import _verify_distribution
+            _verify_distribution(stored, output, reused=True)
+            with self.assertRaisesRegex(ValueError, "Missing or invalid internal license audit"):
+                publish(artifacts_dir=output, data_dir=root / "unused", dry_run=True)
+            # The published archive digest is still mandatory on the reuse path.
+            public = output / stored["assets"]["binary"]["file"]
+            public.write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "digest or size mismatch"):
+                _verify_distribution(stored, output, reused=True)
+            shard["releases"][0]["variants"]["x64-windows-static-lgpl"]["format"] = 2
+            catalog.write_json(location, shard)
+            self.assertEqual(1, len(plan_native(scan, state=PublishedState(directory=data))["jobs"]))
+
+    def test_public_copyright_reproduced_from_original_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "assets"
+            variant = make_variant(root / "build", "2026-11-25", "x64-windows", "static", b"audit payload")
+            record = package_variant(variant, output)
+            public = output / record["assets"]["binary"]["file"]
+            audit = output / audit_name(record)
+            def rewrite(path, transform):
+                replacement = path.with_suffix(".replacement.zip")
+                with zipfile.ZipFile(path) as source, zipfile.ZipFile(replacement, "w") as target:
+                    for name in source.namelist():
+                        target.writestr(name, transform(name, source.read(name)))
+                replacement.replace(path)
+            altered = b"FFmpeg only, third-party license omitted"
+            rewrite(public, lambda name, raw: altered if name == PUBLIC_COPYRIGHT else raw)
+            record["assets"]["binary"].update(size=public.stat().st_size, digest="sha256:" + hashlib.sha256(public.read_bytes()).hexdigest())
+            record["compliance"]["copyright_sha256"] = hashlib.sha256(altered).hexdigest()
+            def bind_assets(name, raw):
+                if name != "metadata/BUILD_PROVENANCE.json":
+                    return raw
+                provenance = json.loads(raw)
+                provenance["assets"] = record["assets"]
+                return json.dumps(provenance).encode()
+            rewrite(audit, bind_assets)
+            record["compliance"]["audit_sha256"] = hashlib.sha256(audit.read_bytes()).hexdigest()
+            next(output.glob("*.var.yaml")).write_text(yaml.safe_dump(record), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Public license evidence differs from original audit"):
+                publish(artifacts_dir=output, data_dir=root / "unused", dry_run=True)
+
+    def test_reject_other_share_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "assets"
+            variant = make_variant(root / "build", "2026-11-25", "x64-windows", "shared", b"share payload")
+            record = package_variant(variant, output)
+            path = output / record["assets"]["binary"]["file"]
+            with zipfile.ZipFile(path, "a") as archive:
+                archive.writestr("share/zlib/copyright", b"conflicting package")
+            record["assets"]["binary"].update(size=path.stat().st_size, digest="sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
+            next(output.glob("*.var.yaml")).write_text(yaml.safe_dump(record), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unexpected public archive member: share/zlib"):
                 publish(artifacts_dir=output, data_dir=root / "unused", dry_run=True)
 
     def test_all_cached_abis_with_different_latest_matrix_publish_without_build(self):
@@ -230,10 +314,8 @@ class DatedPublication(unittest.TestCase):
             prior = package_variant(old, old_dir)
             other = package_variant(common, common_dir)
             latest = package_variant(changed, root / "latest_assets")
-            register_variant(data, prior)
-            register_variant(data, other)
-            register_variant(data, latest)
-            register_variant(data, dict(other, publication_date="2026-11-24"))
+            register_release(data, [prior, other])
+            register_release(data, [latest, dict(other, publication_date="2026-11-24")])
             scan = {"schema": 3, "jobs": [dict(old[0], release_date="2026-11-25"),
                                          dict(common[0], release_date="2026-11-25")]}
             result = plan_native(scan, state=PublishedState(directory=data))
@@ -257,17 +339,20 @@ class DatedPublication(unittest.TestCase):
             self.assertFalse(current["publication_required"])
             self.assertEqual([], current["reuse"])
 
-    def test_register_recovers_missing_index(self):
+    def test_register_batch_is_idempotent_and_rejects_partial_release(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             variant = make_variant(root / "build", "2026-11-25", "x64-windows", "static", b"payload")
             record = package_variant(variant, root / "assets")
-            location = register_variant(root / "data", record)
-            index = location.parent.parent / "version.yaml"
-            index.unlink()
-            register_variant(root / "data", record)
-            self.assertTrue(index.is_file())
-
+            data = root / "data"
+            with self.assertRaisesRegex(ValueError, "Incomplete dated release matrix"):
+                register_release(data, [record])
+            self.assertFalse(data.exists())
+            record["expected_variants"] = 1
+            location = register_release(data, [record])
+            original = {p: p.read_bytes() for p in data.rglob("*.json")}
+            self.assertEqual(location, register_release(data, [record]))
+            self.assertEqual(original, {p: p.read_bytes() for p in data.rglob("*.json")})
 
     def test_verified_same_triplet_host_tool_is_not_target_gpl(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -304,6 +389,9 @@ class DatedPublication(unittest.TestCase):
             record = package_variant(variant, output)
             tool_record = next(p for p in record["compliance"]["packages"] if p["name"] == "tool")
             self.assertEqual("build-only", tool_record["scope"])
+            with zipfile.ZipFile(output / record["assets"]["binary"]["file"]) as archive:
+                self.assertNotIn(b"Tool GNU GPL terms", archive.read(PUBLIC_COPYRIGHT))
+                self.assertTrue(any(r["relationshipType"] == "BUILD_DEPENDENCY_OF" for r in json.loads(archive.read(PUBLIC_SPDX))["relationships"]))
             self.assertEqual(["ffmpeg-9.1-261125"], publish(
                 artifacts_dir=output, data_dir=root / "unused", dry_run=True))
             manifest.write_bytes(raw + b" ")
@@ -331,7 +419,7 @@ class DatedPublication(unittest.TestCase):
             item = next(p for p in record["compliance"]["packages"] if p["name"] == "liblzma")
             self.assertEqual("0BSD", item["license_expression"])
             self.assertEqual("local-declaration", item["license_source"])
-            with zipfile.ZipFile(output / record["assets"]["binary"]["file"]) as archive:
+            with zipfile.ZipFile(output / audit_name(record)) as archive:
                 self.assertEqual(raw, archive.read("LICENSES/liblzma-x64-windows/vcpkg.spdx.json"))
                 provenance = json.loads(archive.read("metadata/BUILD_PROVENANCE.json"))
                 declaration = next(p["license_declaration"] for p in provenance["installed_packages"] if p["name"] == "liblzma")

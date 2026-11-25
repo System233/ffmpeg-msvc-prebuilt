@@ -7,7 +7,8 @@ from pathlib import Path
 
 import yaml
 
-from .license_policy import POLICY_VERSION
+from .compliance import PACKAGE_FORMAT_VERSION
+from . import catalog
 from .identity import family_dir, variant_path, version_dir, public_version, date_suffix, archive_name
 from .versions import ROOT
 
@@ -19,11 +20,19 @@ class PublishedState:
         self.directory = directory if directory is not None else ROOT / "data"
         self._cache: dict[str, dict | None] = {}
         self._paths: set[str] | None = None
+        self._catalog = None
+        self._shards = {}
+        self._abi = {}
+        self._latest = {}
 
     def refresh(self) -> None:
         """Reload local DB after an external synchronization."""
         self._paths = None
         self._cache.clear()
+        self._catalog = None
+        self._shards.clear()
+        self._abi.clear()
+        self._latest.clear()
 
     def paths(self) -> set[str]:
         if self._paths is not None:
@@ -94,11 +103,60 @@ class PublishedState:
                 return True
         return False
 
+    def _catalog_shards(self, name: str):
+        if self._catalog is None:
+            self._catalog = catalog.manifest(self.directory)
+        keys = self._catalog["master"] if name == "master" else ([name] if name in self._catalog["releases"] else [])
+        kind = "master" if name == "master" else "releases"
+        for key in keys:
+            identity = (kind, key)
+            if identity not in self._shards:
+                if not catalog.shard_path(self.directory, kind, key).is_file():
+                    raise ValueError("Catalog manifest references missing shard")
+                self._shards[identity] = catalog.load_shard(self.directory, kind, key)
+            yield kind, key, self._shards[identity]
+
+    def _catalog_lookup(self, name: str):
+        if name in self._abi:
+            return
+        lookup = {}
+        latest = None
+        for kind, key, shard in self._catalog_shards(name):
+            for release in shard["releases"]:
+                rows = catalog.expanded(kind, key, release)
+                if not rows or any(not row.get("abi_hash") for row in rows):
+                    continue
+                if latest is None or release["date"] > latest["release_date"]:
+                    latest = {"release_date": release["date"], "variants": rows}
+                for row in rows:
+                    if row.get("package_format") != PACKAGE_FORMAT_VERSION:
+                        continue
+                    try:
+                        kinds = {"binary", "develop"} if row["linkage"] == "shared" else {"binary"}
+                        if set(row["assets"]) != kinds or any(
+                            asset["file"] != archive_name(row, develop=k == "develop")
+                            for k, asset in row["assets"].items()):
+                            continue
+                    except (KeyError, ValueError):
+                        continue
+                    identity = (row["version"], row["triplet"], row["abi_hash"], row.get("source_commit"))
+                    old = lookup.get(identity)
+                    if old is not None and (old["linkage"], old["license"]) != (row["linkage"], row["license"]):
+                        raise ValueError("One native ABI maps to different public slots")
+                    if old is None or row["publication_date"] > old["publication_date"]:
+                        lookup[identity] = row
+        self._abi[name] = lookup
+        self._latest[name] = latest
+
     def find_abi(self, version: str, triplet: str, abi_hash: str, *,
                  channel: str | None = None, source_commit: str | None = None) -> dict | None:
-        """Find a dated, compliant published asset by full native ABI."""
+        """Find an indexed, current-format published asset by full native ABI."""
         if not re.fullmatch(r"[0-9a-f]{64}", abi_hash):
             raise ValueError("Full native vcpkg ABI required")
+        if (self.directory / "index.json").is_file():
+            name = "master" if channel == "master" else version
+            self._catalog_lookup(name)
+            return self._abi[name].get((version, triplet, abi_hash, source_commit))
         prefix = f"{family_dir(version)}/"
         found = []
         for relative in self.paths():
@@ -114,9 +172,8 @@ class PublishedState:
             if (str(record.get("version")) == version
                     and record.get("triplet") == triplet
                     and record.get("abi_hash") == abi_hash
-                    and record.get("release_date") and record.get("compliance")
-                    and int(record.get("package_format", 0)) >= 2
-                    and record["compliance"].get("license_policy") == POLICY_VERSION
+                    and record.get("release_date")
+                    and int(record.get("package_format", 0)) == PACKAGE_FORMAT_VERSION
                     and record.get("assets", {}).get("binary")
                     and (channel is None or record.get("channel") == channel)
                     and (source_commit is None or record.get("source_commit") == source_commit)):
@@ -132,7 +189,7 @@ class PublishedState:
                            or not re.fullmatch(r"sha256:[0-9a-f]{64}", asset["digest"])
                            or asset["size"] <= 0 for kind, asset in record["assets"].items()):
                         continue
-                except (KeyError, TypeError, ValueError):
+                except (KeyError, TypeError, ValueError, OSError):
                     continue
                 found.append(record)
         return max(found, key=lambda row: row.get("publication_date", row["release_date"]), default=None)
@@ -140,6 +197,9 @@ class PublishedState:
     def latest_release(self, job: dict) -> dict | None:
         """Find the latest complete dated batch for the public version/channel."""
         name = public_version(job)
+        if (self.directory / "index.json").is_file():
+            self._catalog_lookup(name)
+            return self._latest[name]
         candidates = []
         for relative in self.paths():
             if not relative.endswith("/version.yaml"):

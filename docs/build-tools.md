@@ -115,13 +115,12 @@ packaging are both tested. A second independent publication guard prevents
 *any* `ci/` ref from entering the production publish job even if inputs are
 accidentally changed.
 
-The final isolated regression smoke adds four complementary families:
-5.1.10 (x64/LGPL/static), 7.1.5 (ARM/GPL/shared),
-8.0.1 (ARM64/GPL/shared), and 9.0.2 (x86/LGPL/static), using a 16-way
-shard of each release's ABI-sorted variants. Earlier real CI already
-verified 3.4.14 x64/shared, 4.4.8 ARM/static, 6.1.6 x86/shared, and
-9.1 ARM64/static. No 8.1.x reruns, full historical matrices,
-production PRs or Release/data publication are required.
+The current isolated regression smoke selects 5.1.10 (x64/LGPL/static)
+and 7.1.5 (ARM/GPL/shared), using a 16-way shard of each release's ABI-sorted
+variants. Previous isolated builds also validated 8.0.1 (ARM64/GPL/shared),
+9.0.2 (x86/LGPL/static), 3.4.14 x64/shared, 4.4.8 ARM/static,
+6.1.6 x86/shared, and 9.1 ARM64/static. No full historical matrices,
+production PRs or Release/data publication are required for this smoke.
 
 ## Shared dependency prebuild and CI caches
 
@@ -244,7 +243,7 @@ vcpkg ABI input file** at `share/ffmpeg/vcpkg_abi_info.txt` and refuses to publi
 from the proposed pre-build ABI. The dry-run ABI is only the proposal, not
 independent evidence that the package was built with those inputs.
 
-Package-format v2 also requires the Worker-installed vcpkg root and unpacked
+Package-format v3 also requires the Worker-installed vcpkg root and unpacked
 FFmpeg source (`--installed-root`, `--buildtrees` or `--source-tree`).
 It enumerates dependency packages actually installed and reachable from
 FFmpeg's status records, copies reachable Port copyright and original SPDX,
@@ -259,10 +258,26 @@ pkgconf 2.5.1 uses a custom permissive copyright text verified byte-for-byte
 against upstream COPYING. Its exact SHA-256 is pinned and the SBOM contains
 a LicenseRef with the full extracted text. Unknown or altered notices still
 fail closed; no package-name-only exemption is used.
-Binary and Develop ZIPs contain LICENSES/THIRD_PARTY_NOTICES.md,
-metadata/SBOM.spdx.json and metadata/BUILD_PROVENANCE.json.
-No independent compliance ZIP, SBOM, checksum or YAML is published.
-Static retains its executable-only binary payload.
+All public ZIPs have one share namespace, `share/ffmpeg/`, with a combined
+`copyright` (the unmodified applicable FFmpeg GNU terms and target-candidate
+Port notices, separated by component headers) and `sbom.spdx.json` (one
+SPDX 2.3 installed dependency graph). `LICENSE.txt` retains the original
+FFmpeg primary license. Verified build-only and external system notices are
+not included in the combined copyright; their roles remain in SPDX and the
+internal audit. No `LICENSES/`, `metadata/`, `CONTROL`, `BUILD_INFO`,
+`vcpkg.spdx.json` or `vcpkg_abi_info.txt` is distributed. Static retains its
+executable-only binary payload; Shared and Develop retain consumer metadata.
+One internal `<variant>.audit.zip` accompanies the CI artifact (not a public
+Release asset). It holds the original per-Port notices/SPDX, upstream COPYING,
+ABI inputs and provenance bound to the exact public archive digests. The
+publisher independently rechecks the evidence and reproduces both public
+license files. The audit archive remains in the finite-retention CI artifact
+only; no audit archive, SPDX, provenance, or compliance report is written to
+Data. Data is a Release index containing only published variant metadata,
+asset names, sizes, digests and archive format. Reuse verifies exact indexed
+ZIP bytes and current package format, without needing expired CI artifacts.
+No independent compliance ZIP, SBOM, checksum or YAML is published as a
+GitHub Release asset.
 
 The compatibility gate uses license-expression (SPDX AND/OR/WITH) and an
 explicit, versioned policy in ffbuild/license_policy.py. The actual FFmpeg
@@ -280,14 +295,16 @@ only from the matching Port manifest whose SHA-256 is recorded by vcpkg in
 its original SPDX. Only relevant manifest evidence is retained in provenance;
 unproven roles are target candidates. Build-only tools still require license evidence, but
 their copyleft terms do not by themselves determine target linkage licensing.
-The ZIP records policy version, actual license profile, scope, and selected
-license terms. Publication recomputes decisions from original evidence;
-ABI reuse requires the current policy version. See SPDX 2.3 Annex D and
+The CI audit records policy version, actual license profile, scope, and selected
+license terms. Fresh publication recomputes decisions from original evidence;
+ABI reuse requires the current publication format and original archive digest.
+Policy changes must advance the publication format; no independent policy
+record is stored in Data. See SPDX 2.3 Annex D and
 the GNU license list and GPL FAQ for the rule basis. The internal
 license_reviews.yaml registry supports scoped approval of unknown atoms or
 WITH exceptions: exact installed package version/revision, copyright SHA-256,
 complete expression, GNU profile, linkage and review source/reason. Explicit
-policy denials cannot be overridden. Update POLICY_VERSION when rules change.
+policy denials cannot be overridden. Update POLICY_VERSION and the publication format when rules change.
 
 
 The scan pins a UTC date shared by the build plan. Public filenames use
@@ -310,12 +327,32 @@ fulfill every source-distribution or LGPL relinking obligation; final legal
 compatibility, including disputed historical components, requires review.
 
 Native records keep an internal ABI-qualified CI identifier and the full
-abi_hash. Public archive names have no ABI suffix. Dated variant records
-remain under the existing family/version-date/variants layout. Historical
-records without dated compliance evidence are retained but not reused.
+abi_hash. Public archive names have no ABI suffix. The native publisher writes one release record per batch into a v2 catalog:
+`index.json` lists version/year shards, `releases/<version>.json` stores stable
+release history and `master/<year>.json` stores snapshots. No duplicate variant
+files or audit data are stored. The original asset date is recorded only when
+a ZIP is reused in a newer release. CI looks up ABI in a lazily loaded in-memory
+map per version (or master history). Legacy records without current native ABI
+and format remain discoverable but are not reused.
+
+Before production cutover, explicitly migrate an up-to-date local Data checkout
+to a separate empty directory:
+
+```sh
+python -m ffbuild migrate-index --source data --output catalog-v2
+```
+
+The migration compares the legacy individual and embedded variant asset records,
+rejects discrepancies and preserves original release tags, filenames, sizes and
+SHA-256 digests. It does not invent unavailable ABI or full snapshot commits.
+Review the generated JSON, coordinate the separate consumer migration, and replace
+the old YAML index with the catalog in one Data commit. Preserve existing repository
+configuration. The command never changes the source checkout, commits or pushes.
+The new publisher rejects a legacy Data checkout before release uploads; the old
+reader remains available until cutover.
 
 `ffbuild publish` verifies the plan and archive digests, creates or uploads
-assets to GitHub Release, then writes the variant and version index YAML into
+assets to GitHub Release, then writes the release catalog JSON into
 the local `data` checkout and commits/pushes that branch. `--dry-run` only
 validates local assets; it does not upload or update the database. Nonfree
 artifacts are prohibited from publication. Existing GitHub Release assets are
@@ -337,9 +374,10 @@ restoring the recipe restores the original hashes. A real minimal package
 installation reported exactly the ABI calculated beforehand.
 
 Earlier isolated native MSVC builds validated eight distinct version/Triplet
-combinations using the pre-v2 archive layout. Package-format v2 and its
-new fail-closed license gates require a separate end-to-end smoke before
-being considered production-ready; offline tests alone are insufficient.
+combinations using the pre-v2 archive layout. Two real MSVC variants passed
+format v2. Format v3 requires a separate end-to-end smoke before being
+considered production-ready; offline tests alone are insufficient. Historical
+formats are still readable, but cannot satisfy v3 ABI reuse.
 
 
 ### Supplemental license declarations

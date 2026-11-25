@@ -170,6 +170,11 @@ class PackageRoundTrip(unittest.TestCase):
             (package / "share" / "ffmpeg" / "copyright").write_text(
                 "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n",
                 encoding="utf-8")
+            (package / "share/ffmpeg/vcpkg.spdx.json").write_bytes(b"native SPDX")
+            (package / "share/ffmpeg/vcpkg_abi_info.txt").write_bytes(b"native ABI")
+            (package / "share/ffmpeg/FindFFmpeg.cmake").write_bytes(b"consumer config")
+            (package / "share/zlib").mkdir()
+            (package / "share/zlib/copyright").write_bytes(b"unrelated share payload")
             (package / "bin" / "ffmpeg.exe").write_bytes(b"FFMPEG binary")
             (package / "bin" / "avcodec.dll").write_bytes(b"release dll")
             (package / "include" / "avcodec.h").write_bytes(b"header")
@@ -183,7 +188,7 @@ class PackageRoundTrip(unittest.TestCase):
                 package, job, root / "release",
                 installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
-            self.assertEqual(2, record["package_format"])
+            self.assertEqual(3, record["package_format"])
             self.assertEqual(job["id"] + ".zip", record["assets"]["binary"]["file"])
             self.assertEqual({"binary", "develop"}, set(record["assets"]))
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",
@@ -193,11 +198,18 @@ class PackageRoundTrip(unittest.TestCase):
             with zipfile.ZipFile(root / "release" / record["assets"]["binary"]["file"]) as archive:
                 self.assertIn("bin/ffmpeg.exe", archive.namelist())
                 self.assertNotIn("debug/lib/avcodec.lib", archive.namelist())
-                self.assertIn("LICENSES/THIRD_PARTY_NOTICES.md", archive.namelist())
-                self.assertIn("LICENSES/zlib-x64-windows/copyright", archive.namelist())
-                self.assertIn("metadata/SBOM.spdx.json", archive.namelist())
+                self.assertIn("share/ffmpeg/copyright", archive.namelist())
+                self.assertIn(b"zlib license text", archive.read("share/ffmpeg/copyright"))
+                self.assertIn("share/ffmpeg/sbom.spdx.json", archive.namelist())
+                self.assertFalse(any(n.startswith(("LICENSES/", "metadata/")) for n in archive.namelist()))
+                self.assertNotIn("CONTROL", archive.namelist())
+                self.assertNotIn("BUILD_INFO", archive.namelist())
+                self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json", "share/ffmpeg/FindFFmpeg.cmake"},
+                                 {name for name in archive.namelist() if name.startswith("share/")})
             with zipfile.ZipFile(root / "release" / record["assets"]["develop"]["file"]) as archive:
                 self.assertIn("debug/lib/avcodec.lib", archive.namelist())
+                self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json", "share/ffmpeg/FindFFmpeg.cmake"},
+                                 {name for name in archive.namelist() if name.startswith("share/")})
             db = root / "data"
             record_path = register_variant(db, record)
             self.assertTrue(record_path.exists())

@@ -99,7 +99,7 @@ jobs:
         with:
           tag: 2026.06.01
           vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
-      - name: Restore local build database from data branch
+      - name: Restore Release catalog from data branch
         uses: actions/checkout@v6
         with:
           ref: data
@@ -422,13 +422,16 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v6
+      - name: Upload distribution and internal audit evidence
+        uses: actions/upload-artifact@v6
         if: ${{ !inputs.skip_release }}
         with:
           name: ${{ matrix.id }}-a${{ github.run_attempt }}
+          # Includes the internal *.audit.zip; only record.assets is published.
           path: |
             Release/*.zip
             Release/*.var.yaml
+          if-no-files-found: error
           retention-days: 5
           compression-level: 0
       - uses: actions/upload-artifact@v6
@@ -539,13 +542,16 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v6
+      - name: Upload distribution and internal audit evidence
+        uses: actions/upload-artifact@v6
         if: ${{ !inputs.skip_release }}
         with:
           name: ${{ matrix.id }}-a${{ github.run_attempt }}
+          # Includes the internal *.audit.zip; only record.assets is published.
           path: |
             Release/*.zip
             Release/*.var.yaml
+          if-no-files-found: error
           retention-days: 5
           compression-level: 0
       - uses: actions/upload-artifact@v6

@@ -29,8 +29,31 @@ def _atomic_yaml(path: Path, record: dict) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
+# Data is a Release index, not a CI artifact or compliance database.
+# Explicit projection prevents newly added Worker fields leaking into Data.
+_INDEX_FIELDS = frozenset("""
+    variant_id version arch triplet linkage license lts ffmpeg_ref build_date
+    assets features dependencies package_spec port abi_hash expected_variants
+    release_date publication_date channel source_commit revision feature_hash
+    build_hash variant_hash download_url package_format
+""".split())
+
+
+def release_index(record: dict) -> dict:
+    result = {key: value for key, value in record.items() if key in _INDEX_FIELDS}
+    if "assets" in result:
+        result["assets"] = {kind: {key: value for key, value in asset.items()
+                                    if key in ("file", "size", "digest")}
+                            for kind, asset in result["assets"].items()
+                            if kind in ("binary", "develop")}
+    return result
+
+
 def register_variant(root: Path, record: dict) -> Path:
     """Verify canonical identity and update one release's variant index."""
+    if (root / "index.json").exists():
+        raise ValueError("Legacy variant writer cannot modify a v2 release catalog")
+    record = release_index(record)
     version = str(record["version"])
     revision = int(record.get("revision", 0))
     common = (version, revision, str(record["triplet"]),
@@ -51,7 +74,7 @@ def register_variant(root: Path, record: dict) -> Path:
     if not native and not re.fullmatch(r"[0-9a-f]{64}", str(record.get("variant_hash", ""))):
         raise ValueError("Missing canonical variant hash")
     if path.exists():
-        previous = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        previous = release_index(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
         identity_fields = ("abi_hash",) if native else ("build_hash", "variant_hash")
         if any(previous.get(field) != record.get(field) for field in identity_fields):
             raise ValueError(f"Existing release identity has a different Build Hash: {path}")
@@ -65,7 +88,7 @@ def register_variant(root: Path, record: dict) -> Path:
             raise ValueError("Cannot publish without full verified Build Hash")
         _atomic_yaml(path, record)
     variant_files = sorted(path.parent.glob("*.yaml"))
-    variants = [yaml.safe_load(file.read_text(encoding="utf-8")) for file in variant_files]
+    variants = [release_index(yaml.safe_load(file.read_text(encoding="utf-8"))) for file in variant_files]
     index = path.parent.parent / "version.yaml"
     old = yaml.safe_load(index.read_text(encoding="utf-8")) if index.is_file() else {}
     old = old or {}

@@ -1,13 +1,13 @@
 # =============================================================================
-# Schema for .var.yaml files (produced by package_release.py)
+# Schema for published variant index YAML
 # Schema version: 1
 # =============================================================================
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://ffmpeg-msvc-prebuilt.example/schema/v1/variant.schema.yaml"
 title: "Variant YAML"
 description: >
-  Schema for .var.yaml files produced by package_release.py.
-  One file per build variant.
+  Release index records only, one file per published variant.
+  CI-only compliance evidence is not stored in Data.
 
 type: object
 required:
@@ -44,40 +44,11 @@ properties:
     type: integer
     minimum: 2
 
-  compliance:
-    type: object
-    required: [package_count, packages, spdx_sha256, notices_sha256]
-    properties:
-      license_policy:
-        type: integer
-        minimum: 1
-        description: Internal compatibility policy version; not a public filename suffix
-      ffmpeg_license:
-        type: string
-        description: Actual GNU profile identified from FFmpeg copyright
-      packages:
-        type: array
-        items:
-          type: object
-          properties:
-            scope:
-              enum: [target-candidate, build-only, system-dependency]
-            license_expression:
-              type: string
-            license_source:
-              type: string
-            compatibility:
-              type: object
-              required: [status, selected, reasons]
-              properties:
-                status:
-                  enum: [allow]
-                selected:
-                  type: array
-                  items: {type: string}
-                reasons:
-                  type: array
-                  items: {type: string}
+    description: Version of the public archive format and publication qualification gate
+
+  download_url:
+    type: string
+    format: uri
 
   abi_hash:
     type: string

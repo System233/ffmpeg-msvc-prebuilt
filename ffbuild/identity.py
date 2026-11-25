@@ -109,3 +109,10 @@ def dated_variant_path(record: dict) -> str:
     # Keep the existing family/version/variants layout for historical readers.
     return (f"{family_dir(str(record['version']))}/{tag.removeprefix('ffmpeg-')}/variants/"
             f"{record['triplet']}-{record['linkage']}-{record['license']}.yaml")
+
+
+def audit_name(record: dict) -> str:
+    identifier = record["variant_id"]
+    if not re.fullmatch(r"ffmpeg-[A-Za-z0-9._+-]+", identifier):
+        raise ValueError("Invalid audit variant identity")
+    return identifier + ".audit.zip"

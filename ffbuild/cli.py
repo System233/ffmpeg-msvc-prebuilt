@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--plan-file", type=Path)
     publish.add_argument("--dry-run", action="store_true")
 
+    migrate = sub.add_parser("migrate-index", help="Convert legacy release YAML into a separate JSON catalog")
+    migrate.add_argument("--source", required=True, type=Path)
+    migrate.add_argument("--output", required=True, type=Path)
+
     sub.add_parser("validate", help="Check configuration, feature and generated port validity")
     autoheal = sub.add_parser("autoheal", help="Guarded FFmpeg CI Auto-Heal")
     autoheal.add_argument("args", nargs=argparse.REMAINDER)
@@ -260,6 +264,10 @@ def main(argv: list[str] | None = None) -> None:
                            data_dir=args.data_dir, dry_run=args.dry_run,
                            expected_plan=args.plan_file):
             print(f"Published/validated: {tag}")
+    elif args.command == "migrate-index":
+        from .catalog import migrate
+        releases, variants, assets = migrate(args.source, args.output)
+        print(f"Migrated {releases} releases, {variants} variants, {assets} assets")
     elif args.command == "validate":
         _validate()
     elif args.command == "autoheal":

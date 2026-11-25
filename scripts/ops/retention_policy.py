@@ -199,6 +199,8 @@ def process_snapshots(
 
     Returns ``(kept, deleted)`` counts.
     """
+    if (data_dir / "index.json").is_file():
+        return process_catalog_snapshots(data_dir, dry_run=dry_run)
     major_dirs = sorted(
         d for d in data_dir.iterdir()
         if d.is_dir() and re.match(r"^\d+\.x$", d.name)
@@ -229,10 +231,26 @@ def process_snapshots(
                 "data": data,
             })
 
-    if not versions:
-        return 0, 0
+    keep_tags = retention_keep_tags(versions)
 
-    # ---- Age-based retention ----
+    # ---- Execute deletions ----
+    kept = 0
+    deleted = 0
+    for v in versions:
+        if v["release_tag"] in keep_tags:
+            kept += 1
+        else:
+            delete_version_dir(
+                v["path"],
+                v["release_tag"],
+                dry_run=dry_run,
+            )
+            deleted += 1
+
+    return kept, deleted
+
+
+def retention_keep_tags(versions):
     keep_tags: set[str] = set()
 
     # < 7 days: keep everything
@@ -270,21 +288,45 @@ def process_snapshots(
         best = max(bucket, key=lambda x: x["created"])
         keep_tags.add(best["release_tag"])
 
-    # ---- Execute deletions ----
-    kept = 0
-    deleted = 0
-    for v in versions:
-        if v["release_tag"] in keep_tags:
-            kept += 1
-        else:
-            delete_version_dir(
-                v["path"],
-                v["release_tag"],
-                dry_run=dry_run,
-            )
-            deleted += 1
+    return keep_tags
 
-    return kept, deleted
+
+def process_catalog_snapshots(data_dir: Path, *, dry_run: bool = False) -> tuple[int, int]:
+    # The script can be launched directly by the existing retention Workflow.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from ffbuild import catalog
+    manifest = catalog.manifest(data_dir)
+    shards = {}
+    versions = []
+    now = datetime.now(timezone.utc)
+    for year in manifest["master"]:
+        path = catalog.shard_path(data_dir, "master", year)
+        if not path.is_file():
+            raise ValueError("Missing master catalog shard")
+        shard = catalog.load_shard(data_dir, "master", year)
+        shards[year] = shard
+        for release in shard["releases"]:
+            created = datetime.fromisoformat(release["date"]).replace(tzinfo=timezone.utc)
+            versions.append({"created": created, "age_days": (now - created).days,
+                             "release_tag": release["tag"]})
+    keep = retention_keep_tags(versions)
+    deleted = [row["release_tag"] for row in versions if row["release_tag"] not in keep]
+    if not dry_run:
+        for year, shard in shards.items():
+            filtered = [r for r in shard["releases"] if r["tag"] in keep]
+            if filtered == shard["releases"]:
+                continue
+            path = catalog.shard_path(data_dir, "master", year)
+            if filtered:
+                catalog.write_json(path, dict(shard, releases=filtered))
+            else:
+                path.unlink()
+                manifest["master"].remove(year)
+        catalog.write_json(data_dir / "index.json", manifest)
+    for tag in deleted:
+        print(f"DELETE_RELEASE:{tag}")
+        print(f"DELETE_TAG:{tag}")
+    return len(versions) - len(deleted), len(deleted)
 
 
 # ---------------------------------------------------------------------------
