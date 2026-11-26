@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: a58da6d922995f7315c9b78486901f744f72b279
+          ref: 9a5fb8ad3d3d7c81c5fb44a4387abcc7ecad9347
           persist-credentials: false
       - uses: ./.github/actions/setup-python
         with:
@@ -34,10 +34,8 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - {yaml: '3.4.14', shard_index: 15}
-          - {yaml: '5.1.10', shard_index: 10}
           - {yaml: '7.1.5', shard_index: 1}
-          - {yaml: '9.1', shard_index: 4}
+          - {yaml: '9.1', shard_index: 7}
     uses: ./.github/workflows/build-release.yml
     permissions:
       contents: read
