@@ -202,11 +202,20 @@ its normal required GitHub CI passes; that production build is separate from
 mechanism testing. Remaining operational limitations must be recorded rather
 than mislabeled as tests passed.
 
-Signature equality is deliberately conservative: if multiple variants of one
-version show different compiler diagnostics, Auto-Heal performs diagnosis only
-instead of claiming a shared root cause. A later normalized root-cause
-clustering algorithm could improve repair coverage without weakening scope
-checks.
+Eligibility for bounded diagnosis is not proof that a repair exists.
+Readable native build failures are eligible unless a concrete infrastructure,
+external dependency, ABI, packaging or other out-of-scope failure is present.
+Patch application failures are recognized explicitly. Unknown compiler,
+configure, linker and consumer errors receive diagnosis without a filename
+allowlist. Different source diagnostics for one version are retained separately
+in one incident; the Agent does not assume a common root cause. A normalized
+patch identity avoids Hunk offsets and runner paths splitting the same failure.
+Missing evidence and mixed out-of-scope failures remain fail closed.
+The Agent may explicitly decline with `Decision: no_safe_fix` and leave the
+source unchanged; the supervisor emits a source-bound no-op manifest, and
+Delivery performs no GitHub writes. A candidate still requires the same strict
+scope validation and complete 16-variant CI. Existing retry and round limits
+are unchanged.
 
 The legacy scripts/ci auto_heal_decide.py, auto_heal_context.py and
 apply_fix.py are no longer referenced by GitHub workflows; the existing

@@ -68,8 +68,10 @@ class SimulatedSafetyCases(unittest.TestCase):
                                [artifact("v1"), artifact("v2")],
                                {"jobs": [left, right]}, logs=logs)
         self.assertEqual(1, len(value["groups"]))
-        self.assertFalse(value["groups"][0]["repairable"],
-                         "Unrelated source errors must not become one automatic fix")
+        group = value["groups"][0]
+        self.assertTrue(group["repairable"], "Distinct source diagnostics permit bounded diagnosis")
+        self.assertEqual("multiple_build_diagnostics", group["classification"])
+        self.assertEqual(2, len({j["signature"] for j in group["jobs"]}))
 
     def test_closed_historical_pr_can_start_new_occurrence(self):
         value = source()
