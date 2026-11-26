@@ -13,7 +13,7 @@ import yaml
 from ffbuild import catalog
 from ffbuild.identity import archive_name, variant_name
 from ffbuild.state import PublishedState
-from ffbuild.store import register_variant
+from ffbuild.identity import record_release_tag
 
 
 def record(version="9.1", when="2026-11-25", arch="x64", channel="release", commit=None):
@@ -69,7 +69,12 @@ class CatalogTests(unittest.TestCase):
             source, dest = root / "old", root / "new"
             row = record()
             # Build a legacy dated v1 record for migration compatibility.
-            path = register_variant(source, row)
+            path = source / "9.x/9.1-261125/variants/x64-windows-static-lgpl.yaml"
+            path.parent.mkdir(parents=True)
+            path.write_text(yaml.safe_dump(row), encoding="utf-8")
+            (path.parent.parent / "version.yaml").write_text(yaml.safe_dump({
+                "version": row["version"], "release_tag": record_release_tag(row),
+                "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
             before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
             self.assertEqual((1, 1, 1), catalog.migrate(source, dest))
             self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
@@ -121,8 +126,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_retention_only_removes_master_rows(self):
         import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts/ops"))
-        from retention_policy import process_snapshots
+        from ffbuild.retention import process_snapshots
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             catalog.register_release(root, [record()])

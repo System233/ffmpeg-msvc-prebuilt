@@ -1,4 +1,4 @@
-"""Tests for scripts/ops/retention_policy.py."""
+"""Tests for ffbuild.retention."""
 from __future__ import annotations
 
 import io
@@ -9,8 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ops"))
-from retention_policy import (
+from ffbuild.retention import (
     _collect_version_dirs,
     compute_month_key,
     compute_quarter_key,
@@ -282,23 +281,14 @@ class TestDeleteVersionDir(unittest.TestCase):
             self.assertIn("DELETE_RELEASE:ffmpeg-8.0-abc", output)
             self.assertNotIn("DELETE_TAG:ffmpeg-8.0-abc", output)
 
-    @patch("shutil.rmtree")
-    def test_real_delete_calls_rmtree(self, mock_rmtree: MagicMock):
-        """Real (non-dry-run) delete calls shutil.rmtree."""
-        d = Path("/tmp/fake-dir")
-        with patch("sys.stdout", new_callable=io.StringIO):
-            delete_version_dir(d, "ffmpeg-8.0-abc", dry_run=False)
-        mock_rmtree.assert_called_once_with(d)
+    def test_legacy_delete_refuses_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "historical"
+            d.mkdir()
+            with self.assertRaisesRegex(ValueError, "legacy YAML is read-only"):
+                delete_version_dir(d, "ffmpeg-8.0-abc", dry_run=False)
+            self.assertTrue(d.exists())
 
-    @patch("shutil.rmtree", side_effect=FileNotFoundError)
-    def test_real_delete_file_not_found_is_idempotent(
-        self, mock_rmtree: MagicMock
-    ):
-        """FileNotFoundError during delete is silently caught."""
-        d = Path("/tmp/already-gone")
-        with patch("sys.stdout", new_callable=io.StringIO):
-            delete_version_dir(d, "ffmpeg-8.0-abc", dry_run=False)
-        # Should not raise
 
 
 # =========================================================================

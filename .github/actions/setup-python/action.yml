@@ -35,3 +35,8 @@ runs:
       run: pip install $PACKAGES
       env:
         PACKAGES: ${{ inputs.install }}
+
+    - name: Install repository build tools
+      shell: bash
+      if: inputs.requirements != ''
+      run: python -m pip install --no-deps -e .

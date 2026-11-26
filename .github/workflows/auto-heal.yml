@@ -90,11 +90,6 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           requirements: requirements.txt
-      - name: Fetch trusted OpenCode knowledge
-        run: |
-          git fetch origin opencode --depth 1
-          mkdir -p .opencode
-          git archive FETCH_HEAD | tar -x -C .opencode
       - name: Install pinned OpenCode
         run: |
           curl -fsSL -o /tmp/opencode.tar.gz \

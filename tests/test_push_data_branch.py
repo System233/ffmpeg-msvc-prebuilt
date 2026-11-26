@@ -1,14 +1,12 @@
-"""Tests for scripts/ci/push_data_branch.py."""
+"""Tests for ffbuild.data_git."""
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
-from push_data_branch import (
+from ffbuild.data_git import (
     has_staged_changes,
-    git_add_all,
     git_commit,
     git_push,
 )
@@ -16,7 +14,7 @@ from push_data_branch import (
 
 class TestHasStagedChanges(unittest.TestCase):
     def setUp(self):
-        patcher = mock.patch("push_data_branch.subprocess.run")
+        patcher = mock.patch("ffbuild.data_git.subprocess.run")
         self.mock_run = patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -45,10 +43,10 @@ class TestHasStagedChanges(unittest.TestCase):
 
 class TestGitPushRetry(unittest.TestCase):
     def setUp(self):
-        patcher_run = mock.patch("push_data_branch.subprocess.run")
+        patcher_run = mock.patch("ffbuild.data_git.subprocess.run")
         self.mock_run = patcher_run.start()
         self.addCleanup(patcher_run.stop)
-        patcher_sleep = mock.patch("push_data_branch.time.sleep")
+        patcher_sleep = mock.patch("ffbuild.data_git.time.sleep")
         self.mock_sleep = patcher_sleep.start()
         self.addCleanup(patcher_sleep.stop)
 
@@ -63,7 +61,7 @@ class TestGitPushRetry(unittest.TestCase):
                 cwd="data", check=True,
             ),
             mock.call(
-                ["git", "push", "origin", "main"],
+                ["git", "push", "origin", "HEAD:main"],
                 cwd="data", check=True,
             ),
         ])
@@ -109,7 +107,7 @@ class TestGitPushRetry(unittest.TestCase):
                 cwd="/tmp/repo", check=True,
             ),
             mock.call(
-                ["git", "push", "origin", "data-branch"],
+                ["git", "push", "origin", "HEAD:data-branch"],
                 cwd="/tmp/repo", check=True,
             ),
         ])
@@ -117,7 +115,7 @@ class TestGitPushRetry(unittest.TestCase):
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):
-        patcher = mock.patch("push_data_branch.subprocess.run")
+        patcher = mock.patch("ffbuild.data_git.subprocess.run")
         self.mock_run = patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -136,7 +134,6 @@ class TestIntegration(unittest.TestCase):
         self.mock_run.side_effect = side_effect
 
         # Simulate the full flow from main()
-        git_add_all("data")
 
         self.assertTrue(has_staged_changes("data"))
 
@@ -144,11 +141,10 @@ class TestIntegration(unittest.TestCase):
         git_push("data", "data", max_retries=3, delay=5.0)
 
         expected_commands = [
-            ["git", "add", "-A"],
             ["git", "diff", "--staged", "--quiet"],  # has_staged_changes
             ["git", "commit", "-m", "test commit"],
             ["git", "pull", "--rebase", "origin", "data"],
-            ["git", "push", "origin", "data"],
+            ["git", "push", "origin", "HEAD:data"],
         ]
         for i, expected in enumerate(expected_commands):
             self.assertEqual(call_results[i], expected)

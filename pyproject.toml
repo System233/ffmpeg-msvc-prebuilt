@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ffmpeg-msvc-build-tools"
+version = "0.1.0"
+description = "Native vcpkg build and release tooling for FFmpeg"
+requires-python = ">=3.11"
+dependencies = ["PyYAML", "license-expression==30.4.4"]
+
+[project.scripts]
+ffbuild = "ffbuild.cli:main"
+ffvcpkg = "ffvcpkg:main"
+
+[tool.setuptools]
+package-dir = {"" = "scripts"}
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+include = ["ffbuild", "ffbuild.*", "ffvcpkg"]
+namespaces = false
+
+[tool.setuptools.package-data]
+ffbuild = ["*.yaml", "autoheal/prompts/*.md"]

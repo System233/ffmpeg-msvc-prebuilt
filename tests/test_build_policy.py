@@ -13,8 +13,8 @@ from unittest import mock
 
 import yaml
 
-from ffbuild.fingerprint import ROOT, _add_file, recipe_fingerprint, variant_fingerprint
-from ffbuild.planner import plan
+from ffbuild.versions import ROOT
+from native_fixture import scan_fixture, install_abi
 from ffbuild.state import PublishedState
 from ffbuild.versions import generate, validate_variant
 from ffvcpkg import command
@@ -31,9 +31,9 @@ class PolicyTests(unittest.TestCase):
             package = Path(tmp)
             (package / "CONTROL").write_text("Version: 3.4.14\n\nFeature: license-nonfree\n",encoding="utf-8")
             (package / "BUILD_INFO").write_text("LibraryLinkage: dynamic\n", encoding="utf-8")
-            job = {"version":"3.4.14-h"+"a"*12, "revision":0, "triplet":"x64-windows",
-                   "yaml":"3.4.14", "build_hash":"a"*64,"variant_hash":"b"*64,
-                   "license":"lgpl", "linkage":"shared"}
+            job = scan_fixture(version="3.4.14", targets=(
+                Target("ffmpeg[all-lgpl]", "x64-windows", ("all-lgpl",)),))["jobs"][0]
+            install_abi(package, job)
             with self.assertRaisesRegex(ValueError, "license mismatch"):
                 package_job(package, job, package)
 
@@ -97,67 +97,38 @@ class PolicyTests(unittest.TestCase):
 
 
 class HashAndStateTests(unittest.TestCase):
-    def test_text_hash_is_cross_platform_stable(self):
-        # Fresh CI worktrees do not contain ignored build directories.
-        (ROOT / "_work").mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=ROOT / "_work") as tmp:
-            path = Path(tmp) / "sample.txt"
-            path.write_bytes(b"first\r\nsecond\r\n")
-            windows = hashlib.sha256()
-            _add_file(windows, path)
-            path.write_bytes(b"first\nsecond\n")
-            linux = hashlib.sha256()
-            _add_file(linux, path)
-            self.assertEqual(windows.hexdigest(), linux.hexdigest())
+    def test_feature_closure_is_deterministic(self):
+        target = Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static"))
+        self.assertEqual(compile_target(config("8.1.3"), "8.1.3", target),
+                         compile_target(config("8.1.3"), "8.1.3", target))
 
-    def test_version_hash_and_variant_hash_are_deterministic(self):
-        digest = recipe_fingerprint("8.1.3")
-        self.assertEqual(64, len(digest))
-        self.assertEqual(digest, recipe_fingerprint("8.1.3"))
+    def test_distinct_feature_requests_remain_distinct(self):
         lgpl = compile_target(config("8.1.3"), "8.1.3",
                               Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static")))
         base = compile_target(config("8.1.3"), "8.1.3",
                               Target("ffmpeg[base,static]", "x64-windows", ("base", "static")))
-        self.assertEqual((lgpl["license"], lgpl["linkage"]),
-                         (base["license"], base["linkage"]))
-        self.assertNotEqual(variant_fingerprint(digest, "x64-windows", lgpl["feature_hash"]),
-                            variant_fingerprint(digest, "x64-windows", base["feature_hash"]))
+        self.assertEqual((lgpl["license"], lgpl["linkage"]), (base["license"], base["linkage"]))
+        self.assertNotEqual(lgpl["features"], base["features"])
 
-    def test_published_hash_dedupes_across_legacy_revisions(self):
+    def test_legacy_recipe_hash_is_not_a_native_abi(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            path = root / "8.x" / "8.1.3-r3" / "variants" / "x64-windows-static-lgpl.yaml"
+            path = root / "8.x/8.1.3-r3/variants/x64-windows-static-lgpl.yaml"
             path.parent.mkdir(parents=True)
-            path.write_text(yaml.safe_dump({"build_hash": "a" * 64,
-                                             "assets": {"binary": {"file": "archive.zip"}}}),
-                            encoding="utf-8")
-            state = PublishedState(directory=root)
-            self.assertTrue(state.variant_exists("8.1.3-habc", 0, "x64-windows",
-                                                 "lgpl", "static", "a" * 64))
-            self.assertFalse(state.variant_exists("8.1.3-hdef", 0, "x64-windows",
-                                                  "lgpl", "static", "b" * 64))
-            self.assertFalse(state.target_exists("8.1.3-habc", 0, "x64-windows",
-                                                 "c" * 64, "a" * 64, "b" * 64),
-                             "Legacy records without Feature identities must not deduplicate new builds")
+            path.write_text(yaml.safe_dump({"version":"8.1.3", "triplet":"x64-windows",
+                "build_hash":"a"*64, "assets":{"binary":{"file":"archive.zip"}}}), encoding="utf-8")
+            self.assertIsNone(PublishedState(directory=root).find_abi("8.1.3", "x64-windows", "a"*64))
 
     def test_master_and_stable_builds_do_not_share_source(self):
-        with mock.patch("ffbuild.planner.changed_paths", return_value={"ffmpeg/base.yaml"}):
-            with mock.patch("ffbuild.master.master_metadata", return_value={
-                "ref": "n9.1-12-gabcdef0", "sha512": "a" * 128,
-                "commit": "a" * 40,
-            }):
-                result = plan(mode="changed", base="x", head="y", include_master=True,
-                              force=True, targets=(Target("ffmpeg[all-lgpl,static]", "x64-windows",
-                                                          ("all-lgpl", "static")),))
-        jobs = result["jobs"]
-        self.assertTrue(any(j["yaml"] == "master" for j in jobs))
+        jobs = scan_fixture(selected_versions=["8.1.3","master"], snapshot={
+            "ref":"n9.1-12-gabcdef0","sha512":"a"*128,"commit":"a"*40},
+            targets=(Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl","static")),))["jobs"]
+        self.assertEqual(2, len(jobs))
         for job in jobs:
-            if job["yaml"] != "master":
-                self.assertEqual("", job["ref"])
-                self.assertEqual("", job["sha512"])
-                self.assertEqual("", job["source_ref"])
+            if job["yaml"] == "master":
+                self.assertEqual("a"*40, job["source_ref"])
             else:
-                self.assertEqual("a" * 40, job["source_ref"])
+                self.assertEqual(("", "", ""), (job["ref"], job["sha512"], job["source_ref"]))
 
     def test_master_port_uses_pinned_full_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

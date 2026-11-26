@@ -16,47 +16,31 @@ from pathlib import Path
 import yaml
 from compliance_fixture import make_compliance_fixture
 
-from ffbuild.identity import variant_name
+from ffbuild.identity import variant_name, archive_name
 from ffbuild.package import package_job
 from ffbuild.port import generate_port
 from ffbuild.spec import FeatureSet, read_spec, resolve_features
 from ffbuild.state import PublishedState
-from ffbuild.store import register_variant
+from ffbuild.catalog import register_release
 from ffbuild.targets import Target
-from ffbuild.planner import plan
+from native_fixture import plan_fixture as plan, install_abi, release_record
 from ffbuild.versions import ROOT, versions
 
 
 class NoLegacyImplementation(unittest.TestCase):
-    def test_same_license_linkage_different_features_have_distinct_data_files(self):
-        targets = (
-            Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static")),
-            Target("ffmpeg[base,static]", "x64-windows", ("base", "static")),
-        )
+    def test_same_slot_distinct_abi_cannot_share_public_release(self):
+        targets = (Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl","static")),
+                   Target("ffmpeg[base,static]", "x64-windows", ("base","static")))
         with tempfile.TemporaryDirectory() as temp:
             db = Path(temp)
-            jobs = plan(version="8.1.3", targets=targets,
-                        state=PublishedState(directory=db))["jobs"]
-            self.assertEqual(2, len(jobs))
-            self.assertEqual({("lgpl", "static")},
-                             {(j["license"], j["linkage"]) for j in jobs})
-            self.assertEqual(2, len({j["feature_hash"] for j in jobs}))
-            self.assertEqual(2, len({j["variant_hash"] for j in jobs}))
+            jobs = plan(version="8.1.3", targets=targets, state=PublishedState(directory=db))["jobs"]
+            self.assertEqual(2, len({j["abi_hash"] for j in jobs}))
             self.assertEqual(2, len({j["id"] for j in jobs}))
-            for job in jobs:
-                record = {**job, "variant_id": job["id"],
-                          "package_spec": job["package"],
-                          "assets": {"binary": {"file": job["id"] + ".zip"}}}
-                register_variant(db, record)
-            state = PublishedState(directory=db)
-            self.assertEqual([], plan(version="8.1.3", targets=targets,
-                                      state=state)["jobs"])
-            self.assertEqual(2, len(list(db.rglob("variants/*.yaml"))))
-            index = next(db.rglob("version.yaml"))
-            self.assertEqual(16, yaml.safe_load(index.read_text())["total_variants"])
+            with self.assertRaisesRegex(ValueError, "Duplicate|duplicate"):
+                register_release(db, [release_record(j) for j in jobs])
 
     def test_import_graph_is_isolated(self):
-        for source in (ROOT / "ffbuild").rglob("*.py"):
+        for source in (ROOT / "scripts/ffbuild").rglob("*.py"):
             tree = ast.parse(source.read_text(encoding="utf-8"))
             for statement in ast.walk(tree):
                 if isinstance(statement, ast.Import):
@@ -86,15 +70,14 @@ def isolated(name, *args, **kwargs):
         raise AssertionError('unexpected legacy import: ' + name)
     return _real_import(name, *args, **kwargs)
 builtins.__import__ = isolated
-from ffbuild.planner import plan
+from ffbuild.native_abi import build_requests
 from ffbuild.port import generate_port
 from ffbuild.state import PublishedState
 with TemporaryDirectory() as temporary:
     from ffbuild.targets import Target
-    result = plan(version='8.1.3', targets=(Target('ffmpeg[all-lgpl,static]',
-                  'x64-windows', ('all-lgpl','static')),),
-                  state=PublishedState(directory=Path(temporary)))
-    assert len(result['jobs']) == 1
+    jobs, blocked = build_requests(version='8.1.3', targets=(Target('ffmpeg[all-lgpl,static]',
+                  'x64-windows', ('all-lgpl','static')),))
+    assert len(jobs) == 1 and not blocked
     assert (generate_port('8.1.3', destination=Path(temporary)) / 'policy.cmake').is_file()
 '''
         run = subprocess.run([sys.executable, "-c", probe], cwd=ROOT,
@@ -181,6 +164,7 @@ class PackageRoundTrip(unittest.TestCase):
             (package / "lib" / "avcodec.lib").write_bytes(b"import lib")
             (package / "debug" / "lib" / "avcodec.lib").write_bytes(b"debug lib")
             job = planned
+            install_abi(package, job)
             version = job["version"]
             installed, source_tree = make_compliance_fixture(
                 root, job, package / "share" / "ffmpeg" / "copyright")
@@ -189,12 +173,12 @@ class PackageRoundTrip(unittest.TestCase):
                 installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
             self.assertEqual(3, record["package_format"])
-            self.assertEqual(job["id"] + ".zip", record["assets"]["binary"]["file"])
+            self.assertEqual(archive_name(job), record["assets"]["binary"]["file"])
             self.assertEqual({"binary", "develop"}, set(record["assets"]))
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",
-                                          job["feature_hash"]),
+                                          abi_hash=job["abi_hash"]),
                              record["variant_id"])
-            self.assertEqual(job["build_hash"], record["build_hash"])
+            self.assertEqual(job["abi_hash"], record["abi_hash"])
             with zipfile.ZipFile(root / "release" / record["assets"]["binary"]["file"]) as archive:
                 self.assertIn("bin/ffmpeg.exe", archive.namelist())
                 self.assertNotIn("debug/lib/avcodec.lib", archive.namelist())
@@ -211,17 +195,13 @@ class PackageRoundTrip(unittest.TestCase):
                 self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json", "share/ffmpeg/FindFFmpeg.cmake"},
                                  {name for name in archive.namelist() if name.startswith("share/")})
             db = root / "data"
-            record_path = register_variant(db, record)
-            self.assertTrue(record_path.exists())
-            self.assertEqual(1, yaml.safe_load((record_path.parent.parent / "version.yaml").read_text())["variant_count"])
-            self.assertTrue(PublishedState(directory=db).target_exists(
-                version, 0, "x64-windows", job["feature_hash"],
-                job["build_hash"], job["variant_hash"]))
-            modified = dict(record)
-            modified["assets"] = dict(record["assets"])
-            modified["assets"]["binary"] = {"file": "different.zip"}
-            with self.assertRaisesRegex(ValueError, "changed immutable archives"):
-                register_variant(db, modified)
+            register_release(db, [record])
+            self.assertEqual(1, len(list(db.glob("releases/*.json"))))
+            self.assertIsNotNone(PublishedState(directory=db).find_abi(version, "x64-windows", job["abi_hash"]))
+            modified = dict(record, assets=dict(record["assets"]))
+            modified["assets"]["binary"] = dict(record["assets"]["binary"], digest="sha256:" + "f"*64)
+            with self.assertRaisesRegex(ValueError, "different|immutable|conflict"):
+                register_release(db, [modified])
 
 
 if __name__ == "__main__":

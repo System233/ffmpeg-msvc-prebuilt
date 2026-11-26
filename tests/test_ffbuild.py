@@ -13,21 +13,21 @@ from unittest import mock
 import yaml
 
 from ffbuild.events import event_options
-from ffbuild.fingerprint import overlay_port_names
+from ffbuild.dependencies import overlay_port_names
 from ffbuild.publication import publish
-from ffbuild.planner import impacted_versions, plan, write_github_output
+from ffbuild.planner import impacted_versions, write_github_output
 from ffbuild.targets import Target
-from ffbuild.versions import ROOT, dependency_names, revision, spec_files
+from ffbuild.versions import ROOT, dependency_names, spec_files
+
+
+from native_fixture import plan_fixture as plan, scan_fixture, install_abi, release_record
+from ffbuild.state import PublishedState
+from ffbuild.catalog import register_release
 
 
 class EmptyState:
-    def target_exists(self, *args):
-        return False
-
-
-class FullState:
-    def target_exists(self, *args):
-        return True
+    def find_abi(self, *args, **kwargs):
+        return None
 
 
 LGPL_STATIC = (Target("ffmpeg[all-lgpl,static]", "x64-windows", ("all-lgpl", "static")),)
@@ -62,25 +62,21 @@ class PlannerTests(unittest.TestCase):
             self.assertEqual(2, len({j["abi_hash"] for j in jobs}))
             self.assertEqual(2, len({j["id"] for j in jobs}))
 
-    def test_existing_revision_kept(self):
-        result = plan(
-            version="8.1.3", targets=LGPL_STATIC,
-            state=EmptyState(),
-        )
-        self.assertEqual(1, len(result["jobs"]))
-        job = result["jobs"][0]
-        self.assertEqual(revision("8.1.3"), job["revision"])
-        self.assertEqual(f"ffmpeg-8.1.3-h{job['build_hash'][:12]}_x64-windows-static-lgpl-f{job['feature_hash'][:12]}",
-                         job["id"])
+    def test_native_identity_kept(self):
+        job = plan(version="8.1.3", targets=LGPL_STATIC, state=EmptyState())["jobs"][0]
+        self.assertNotIn("revision", job)
+        self.assertEqual(f"ffmpeg-8.1.3_x64-windows-static-lgpl-a{job['abi_hash'][:12]}", job["id"])
         self.assertEqual("ffmpeg[all-lgpl,static]", job["package"])
         self.assertIn("static", job["features"])
 
     def test_existing_variant_is_skipped_unless_forced(self):
-        opts = dict(
-            version="8.1.3", targets=LGPL_STATIC, state=FullState(),
-        )
-        self.assertEqual([], plan(**opts)["jobs"])
-        self.assertEqual(1, len(plan(force=True, **opts)["jobs"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp)
+            job = scan_fixture(version="8.1.3", targets=LGPL_STATIC)["jobs"][0]
+            register_release(db, [release_record(job)])
+            opts = dict(version="8.1.3", targets=LGPL_STATIC, state=PublishedState(directory=db))
+            self.assertEqual([], plan(**opts)["jobs"])
+            self.assertEqual(1, len(plan(force=True, **opts)["jobs"]))
 
     def test_full_matrix_is_16_distinct_variants(self):
         result = plan(version="8.1.3", state=EmptyState())
@@ -118,20 +114,11 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("mp3lame", overlay_port_names(dependencies))
 
     def test_master_pr_resolves_snapshot(self):
-        with mock.patch("ffbuild.planner.changed_paths", return_value={"ffmpeg/master.yaml"}):
-            with mock.patch(
-                "ffbuild.master.master_metadata",
-                return_value={"ref": "n9.1-12-gabcdef0", "sha512": "a" * 128,
-                              "commit": "a" * 40},
-            ):
-                result = plan(
-                    mode="changed", base="HEAD~1", head="HEAD",
-                    include_master=True, state=EmptyState(),
-                    targets=LGPL_STATIC, force=True,
-                )
-        matches = [x for x in result["jobs"] if x["yaml"] == "master"]
-        self.assertEqual(1, len(matches))
-        self.assertEqual("n9.1-12-gabcdef0", matches[0]["ref"])
+        snapshot = {"ref": "n9.1-12-gabcdef0", "sha512": "a"*128, "commit": "a"*40}
+        result = plan(version="master", snapshot=snapshot, state=EmptyState(),
+                      targets=LGPL_STATIC, force=True)
+        self.assertEqual(1, len(result["jobs"]))
+        self.assertEqual(snapshot["ref"], result["jobs"][0]["ref"])
 
     def test_github_output_is_single_line_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,13 +216,10 @@ class PublishCompatibilityTests(unittest.TestCase):
             )
             planfile = root / "plan.json"
             planfile.write_text(json.dumps({"jobs": [{"id": name}]}), encoding="utf-8")
-            result = publish(
-                artifacts_dir=artifact,
-                data_dir=root / "unused-data",
-                expected_plan=planfile,
-                dry_run=True,
-            )
-        self.assertEqual(["ffmpeg-8.1.3"], result)
+            with self.assertRaisesRegex(ValueError, "Native dated release metadata"):
+                publish(artifacts_dir=artifact, data_dir=root / "unused-data",
+                        expected_plan=planfile, dry_run=True)
+            self.assertFalse((root / "unused-data").exists())
 
     def test_missing_planned_artifact_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,42 +236,17 @@ class PublishCompatibilityTests(unittest.TestCase):
                     expected_plan=planfile, dry_run=True,
                 )
 
-    def test_multiple_versions_keep_release_assets_separate(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            artifacts = root / "artifacts"
-            artifacts.mkdir()
-            checkout = root / "data"
-            (checkout / ".git").mkdir(parents=True)
-            for version in ("8.1.3", "9.1"):
-                variant = f"ffmpeg-{version}_x64-windows-static-lgpl"
-                (artifacts / f"{variant}.zip").write_bytes(version.encode())
-                (artifacts / f"{variant}.var.yaml").write_text(
-                    yaml.safe_dump({
-                        "variant_id": variant, "version": version, "revision": 0,
-                        "assets": {"binary": {"file": f"{variant}.zip"}},
-                    }), encoding="utf-8",
-                )
-            uploaded: dict[str, list[str]] = {}
-
-            def capture(*, tag, artifacts_dir, **kwargs):
-                uploaded[tag] = sorted(p.name for p in artifacts_dir.glob("*.zip"))
-
-            def capture_native(tag, paths, **kwargs):
-                uploaded[tag] = sorted(p.name for p in paths)
-            with mock.patch.dict(os.environ, {"GH_TOKEN": "mock-token"}):
-                with mock.patch("ffbuild.publication._release_assets", side_effect=capture_native):
-                    with mock.patch("ffbuild.publication.register_variant"):
-                        with mock.patch("ffbuild.publication._push_data"):
-                            publish(artifacts_dir=artifacts, data_dir=checkout)
-            self.assertEqual(
-                ["ffmpeg-8.1.3_x64-windows-static-lgpl.zip"],
-                uploaded["ffmpeg-8.1.3"],
-            )
-            self.assertEqual(
-                ["ffmpeg-9.1_x64-windows-static-lgpl.zip"],
-                uploaded["ffmpeg-9.1"],
-            )
+    def test_legacy_publication_cannot_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "legacy.var.yaml").write_text(yaml.safe_dump({
+                "variant_id": "ffmpeg-8.1.3_x64-windows-static-lgpl", "version": "8.1.3",
+                "revision": 0}), encoding="utf-8")
+            with mock.patch("ffbuild.publication._release_assets") as upload:
+                with self.assertRaisesRegex(ValueError, "Native dated release metadata"):
+                    publish(artifacts_dir=root, data_dir=root / "data")
+                upload.assert_not_called()
+            self.assertFalse((root / "data").exists())
 
 
 class WorkflowTests(unittest.TestCase):
@@ -356,6 +315,7 @@ class PackageCliTests(unittest.TestCase):
                 "\n\n".join(f"Feature: {name}" for name in job["features"] + ["unplanned"]),
                 encoding="utf-8")
             (root / "BUILD_INFO").write_text("LibraryLinkage: static\n", encoding="utf-8")
+            install_abi(root, job)
             with self.assertRaisesRegex(ValueError, "Feature closure differs"):
                 package_job(root, job, root)
 

@@ -18,7 +18,7 @@ from ffbuild.compliance import (
 from ffbuild.identity import variant_name, audit_name
 from ffbuild.package import package_job
 from ffbuild.publication import publish
-from ffbuild.store import register_variant
+from ffbuild.catalog import register_release
 
 
 def fake_job() -> dict:
@@ -319,24 +319,17 @@ class ImmutableComplianceUpgradeTests(unittest.TestCase):
                         dry_run=True)
 
     def test_package_format_does_not_bypass_immutable_abi_identity(self):
-        job = fake_job()
-        base = {
-            "variant_id": job["id"], "version": job["version"],
-            "revision": 0, "triplet": job["triplet"],
-            "linkage": job["linkage"], "license": job["license"],
-            "abi_hash": job["abi_hash"],
-            "assets": {"binary": {"file": job["id"] + ".zip"}},
-        }
+        from test_catalog import record
+        base = record()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            path = register_variant(root, base)
-            upgraded = dict(base)
-            upgraded["package_format"] = 2
-            upgraded["assets"] = {"binary": {"file": job["id"] + ".zip", "digest": "sha256:" + "a" * 64}}
-            with self.assertRaisesRegex(ValueError, "changed immutable archives"):
-                register_variant(root, upgraded)
-            self.assertEqual(base["assets"], yaml.safe_load(path.read_text())["assets"])
-            self.assertEqual(path, register_variant(root, base))
+            register_release(root, [base])
+            before = (root / "releases/9.1.json").read_bytes()
+            upgraded = dict(base, package_format=2, assets={
+                "binary": dict(base["assets"]["binary"], digest="sha256:" + "f"*64)})
+            with self.assertRaisesRegex(ValueError, "different|immutable|conflict"):
+                register_release(root, [upgraded])
+            self.assertEqual(before, (root / "releases/9.1.json").read_bytes())
 
 
 if __name__ == "__main__":

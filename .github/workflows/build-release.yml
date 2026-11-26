@@ -257,7 +257,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
           restore-keys: |
             ffbuild-seed-2026.06.01-${{ matrix.triplet }}-
             ffbuild-native-2026.06.01-${{ matrix.triplet }}-
@@ -289,7 +289,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
       - uses: actions/upload-artifact@v6
         if: failure()
         with:
@@ -330,7 +330,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
           fail-on-cache-miss: true
       - name: Prepare architecture-specific MSVC host
         env:

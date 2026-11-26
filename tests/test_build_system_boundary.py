@@ -19,55 +19,6 @@ from pathlib import Path
 from ffbuild.package import _files
 from ffbuild.port import generate_port
 from ffbuild.versions import ROOT, has_source, versions
-# The original CLI packager deliberately used script-root absolute imports.
-# Provide that same import environment for an apples-to-apples comparison.
-if str(ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(ROOT / "scripts"))
-from scripts import package_release as original_packager
-from scripts.ffport import _generate as original_port_generator
-
-
-class OriginalPortRecipeContract(unittest.TestCase):
-    def test_legacy_and_versioned_build_metadata_agree_for_all_versions(self):
-        with tempfile.TemporaryDirectory() as temp:
-            for version in versions():
-                if not has_source(version):
-                    continue
-                with self.subTest(version=version):
-                    old_root = Path(temp) / "original"
-                    new_root = Path(temp) / "versioned"
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        original_port_generator(version, port_name="ffmpeg", output=str(old_root))
-                    new_port = generate_port(version, destination=new_root)
-                    def fields(path):
-                        source = path.read_text(encoding="utf-8")
-                        result = {}
-                        for field, value in re.findall(
-                                r"(?m)^set\\((FFMPEG_[A-Z0-9_]+)\\s+([^\\r\\n]+)\\)$", source):
-                            result[field] = value.strip().strip('"')
-                        return result
-                    original = fields(old_root / "ffmpeg" / "portfile.cmake")
-                    generated = fields(new_port / "portfile.cmake")
-                    original.pop("FFMPEG_PORT_REVISION", None)
-                    self.assertEqual(original, generated, "FFmpeg build CMake variables changed")
-                    old_manifest = json.loads((old_root / "ffmpeg" / "vcpkg.json").read_text())
-                    new_manifest = json.loads((new_port / "vcpkg.json").read_text())
-                    self.assertEqual(old_manifest["dependencies"], new_manifest["dependencies"])
-                    self.assertEqual(old_manifest["default-features"], new_manifest["default-features"])
-                    for feature, legacy in old_manifest["features"].items():
-                        # Self references remain the stable ffmpeg package.
-                        adapted = json.loads(json.dumps(legacy))
-                        # FFmpeg 3.4 OpenSSL must remain explicitly nonfree;
-                        # its legacy implicit LGPL placement was corrected by
-                        # the user's license gate, not by the CI migration.
-                        if version == "3.4.14" and feature in ("lgpl", "nonfree"):
-                            continue
-                        self.assertEqual(adapted, new_manifest["features"][feature],
-                                         f"Unexpected FFmpeg feature graph drift: {feature}")
-                    shutil.rmtree(old_root)
-                    shutil.rmtree(new_root)
-
-
 class OriginalConsumerContract(unittest.TestCase):
     def test_all_versions_use_original_consumer_unchanged(self):
         source = ROOT / "ports" / "ffmpeg-tester"
@@ -137,16 +88,16 @@ class OriginalArchiveContract(unittest.TestCase):
                                      ("shared", "binary"),
                                      ("shared", "develop")):
                 with self.subTest(linkage=linkage, variant=variant):
-                    legacy = original_packager.collect_files(
-                        package, linkage, variant_type=variant)
-                    original_files = {Path(name).as_posix(): path.read_bytes()
-                                      for path, name in legacy}
-                    # v3 deliberately replaces raw copyright with a combined
-                    # notice and moves native build metadata to the audit ZIP.
-                    removed = {"CONTROL", "BUILD_INFO", "share/ffmpeg/copyright",
-                               "share/ffmpeg/vcpkg_abi_info.txt", "share/ffmpeg/vcpkg.spdx.json"}
-                    expected_payload = {name: data for name, data in original_files.items()
-                                        if name not in removed}
+                    names = {"ffmpeg.exe"} if linkage == "static" else {
+                        "bin/ffmpeg.exe", "bin/avcodec-61.dll", "lib/avcodec.lib",
+                        "include/libavcodec/avcodec.h", "share/ffmpeg/FindFFmpeg.cmake",
+                        "share/ffmpeg/vcpkg-cmake-wrapper.cmake", "share/ffmpeg/usage"}
+                    if variant == "develop":
+                        names |= {"bin/avcodec.pdb", "debug/bin/avcodec-61.dll",
+                                  "debug/bin/avcodec.pdb", "debug/lib/avcodec.lib"}
+                    expected_payload = {name: (package / ("tools/ffmpeg/ffmpeg.exe" if name in
+                                        ("ffmpeg.exe", "bin/ffmpeg.exe") else name)).read_bytes()
+                                        for name in names}
                     actual = _files(package, linkage, develop=variant == "develop",
                                     port=port)
                     self.assertEqual(set(expected_payload), set(actual),

@@ -1,4 +1,4 @@
-"""Tests for scripts/ci/agent_repair.py."""
+"""Tests for ffbuild.autoheal.runner."""
 from __future__ import annotations
 
 import argparse
@@ -10,16 +10,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "ci"))
-import agent_repair  # noqa: E402
+from ffbuild.autoheal import runner as agent_repair
 
 # ── Default argparse namespace ────────────────────────────────────────────────
 _DEFAULT_ARGS = argparse.Namespace(
     action="pr",
     base_sha=None,
     max_retries=3,
-    prompt_file="scripts/ci/agent_prompt.md",
-    feedback_file="scripts/ci/agent_feedback.md",
+    prompt_file="scripts/ffbuild/autoheal/prompts/repair.md",
+    feedback_file="scripts/ffbuild/autoheal/prompts/feedback.md",
 )
 
 
@@ -77,7 +76,7 @@ class TestAgentRepair(unittest.TestCase):
         os.environ["OPENCODE_API_KEY"] = "sk-test"
         os.environ.pop("GIT_AUTHOR_NAME", None)
         os.environ.pop("GIT_AUTHOR_EMAIL", None)
-        self._target_patcher = mock.patch("agent_repair._require_target_yaml", return_value="8.1.1")
+        self._target_patcher = mock.patch("ffbuild.autoheal.runner._require_target_yaml", return_value="8.1.1")
         self._target_patcher.start()
         self.addCleanup(self._target_patcher.stop)
 
@@ -87,7 +86,7 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 1. opencode not in PATH → SystemExit ─────────────────────────────────
 
-    @mock.patch("agent_repair.shutil.which", return_value=None)
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value=None)
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
     def test_1_opencode_not_in_path(self, _parse_args, _which):
         with self.assertRaises(SystemExit) as ctx:
@@ -98,7 +97,7 @@ class TestAgentRepair(unittest.TestCase):
 
     @mock.patch.object(Path, "is_file", return_value=False)
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     def test_2_prompt_file_not_found(self, _which, _parse_args, _is_file):
         with self.assertRaises(SystemExit) as ctx:
             agent_repair.main()
@@ -115,17 +114,17 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 4. Successful single attempt: opencode succeeds, no violations ───────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_4_successful_single_attempt(
         self,
         mock_run,
@@ -150,10 +149,10 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 5. Scope violation with retry: first violates, second succeeds ───────
 
-    @mock.patch("agent_repair.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
     @mock.patch("argparse.ArgumentParser.parse_args")
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_5_scope_violation_with_retry(
         self,
         mock_run,
@@ -227,26 +226,26 @@ class TestAgentRepair(unittest.TestCase):
                 self.assertTrue((tmp / "feedback.txt").exists())
     # ── 6. Max retries all with violations → exit 1 ──────────────────────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch(
         "argparse.ArgumentParser.parse_args",
         return_value=argparse.Namespace(
             action="pr",
             base_sha=None,
             max_retries=3,
-            prompt_file="scripts/ci/agent_prompt.md",
-            feedback_file="scripts/ci/agent_feedback.md",
+            prompt_file="scripts/ffbuild/autoheal/prompts/repair.md",
+            feedback_file="scripts/ffbuild/autoheal/prompts/feedback.md",
         ),
     )
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_6_max_retries_all_violations(
         self,
         mock_run,
@@ -270,17 +269,17 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 7. opencode fails (non-zero exit), retries succeed → exit 0 ──────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_7_opencode_fails_retry_succeeds(
         self,
         mock_run,
@@ -324,14 +323,14 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 8. No changes made → breaks early, exit 0 ────────────────────────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "read_text", return_value="prompt content")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_8_no_changes_breaks_early(
         self,
         mock_run,
@@ -360,17 +359,17 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 9. Multiple commits squashed into one ────────────────────────────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args", return_value=_DEFAULT_ARGS)
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_9_multiple_commits_squashed(
         self,
         mock_run,
@@ -414,17 +413,17 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 11. action=push: start_sha is PR HEAD, not base_sha ───────────────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args")
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_11_action_push_uses_pr_head(
         self,
         mock_run,
@@ -443,8 +442,8 @@ class TestAgentRepair(unittest.TestCase):
             action="push",
             base_sha="base-branch-sha",
             max_retries=3,
-            prompt_file="scripts/ci/agent_prompt.md",
-            feedback_file="scripts/ci/agent_feedback.md",
+            prompt_file="scripts/ffbuild/autoheal/prompts/repair.md",
+            feedback_file="scripts/ffbuild/autoheal/prompts/feedback.md",
         )
         mock_run.side_effect = _make_run_side_effect({
             "git rev-parse": (0, "pr-head-sha\n"),
@@ -480,17 +479,17 @@ class TestAgentRepair(unittest.TestCase):
 
     # ── 12. action=pr: start_sha is base_sha (not git rev-parse HEAD) ─────────
 
-    @mock.patch("agent_repair.signal.signal")
-    @mock.patch("agent_repair.shutil.copy")
+    @mock.patch("ffbuild.autoheal.runner.signal.signal")
+    @mock.patch("ffbuild.autoheal.runner.shutil.copy")
     @mock.patch("argparse.ArgumentParser.parse_args")
-    @mock.patch("agent_repair.shutil.which", return_value="/usr/bin/opencode")
+    @mock.patch("ffbuild.autoheal.runner.shutil.which", return_value="/usr/bin/opencode")
     
     @mock.patch.object(Path, "exists", return_value=False)
     @mock.patch.object(Path, "glob", return_value=[Path("patch-output/0001-fix.patch")])
     @mock.patch.object(Path, "mkdir")
     @mock.patch.object(Path, "read_text", return_value="prompt content")
     @mock.patch.object(Path, "write_text")
-    @mock.patch("agent_repair.subprocess.run")
+    @mock.patch("ffbuild.autoheal.runner.subprocess.run")
     def test_12_action_pr_uses_base_sha(
         self,
         mock_run,
@@ -509,8 +508,8 @@ class TestAgentRepair(unittest.TestCase):
             action="pr",
             base_sha="explicit-base-sha",
             max_retries=3,
-            prompt_file="scripts/ci/agent_prompt.md",
-            feedback_file="scripts/ci/agent_feedback.md",
+            prompt_file="scripts/ffbuild/autoheal/prompts/repair.md",
+            feedback_file="scripts/ffbuild/autoheal/prompts/feedback.md",
         )
         mock_run.side_effect = _make_run_side_effect()
 

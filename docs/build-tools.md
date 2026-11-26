@@ -1,5 +1,11 @@
 # FFmpeg build tools: native vcpkg ABI planning
 
+The repository uses a single Python toolchain under scripts/ffbuild and scripts/ffvcpkg.
+Install it from the repository root: python -m pip install -e .
+Both python -m ffbuild and python -m ffvcpkg remain supported; console scripts are also installed.
+The tools are checkout-bound; generated ports, patches and CMake templates remain in this repository.
+
+
 `ffbuild` generates version-qualified FFmpeg overlay ports, queries the ABI
 computed by **vcpkg itself**, filters already published variants in the local
 `data` branch checkout, and packages/publishes successful builds.
@@ -273,7 +279,7 @@ No independent compliance ZIP, SBOM, checksum or YAML is published as a
 GitHub Release asset.
 
 The compatibility gate uses license-expression (SPDX AND/OR/WITH) and an
-explicit, versioned policy in ffbuild/license_policy.py. The actual FFmpeg
+explicit, versioned policy in scripts/ffbuild/license_policy.py. The actual FFmpeg
 GNU license from copyright determines the permitted GNU profile, without
 silently upgrading it. AND requires every selected branch to be compatible;
 OR records one complete compatible alternative; WITH requires scope-specific

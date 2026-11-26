@@ -61,14 +61,14 @@ jobs:
       - name: Delete expired Master Releases and confirm before changing Data
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: python scripts/ops/retention_policy.py data --apply-remote
+        run: python -m ffbuild.retention data --apply-remote
 
       # Commit and push the updated Release index after retention.
       - name: Commit and push data branch
         run: |
-          python scripts/ci/push_data_branch.py \
+          python -m ffbuild.data_git \
             --message 'retention: cleanup old builds' \
-            --directory data --index-only
+            --directory data
 
   # ── Trigger pages rebuild ─────────────────────────────────────────────────
   trigger-pages:

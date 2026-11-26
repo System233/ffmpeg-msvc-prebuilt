@@ -217,10 +217,13 @@ Delivery performs no GitHub writes. A candidate still requires the same strict
 scope validation and complete 16-variant CI. Existing retry and round limits
 are unchanged.
 
-The legacy scripts/ci auto_heal_decide.py, auto_heal_context.py and
-apply_fix.py are no longer referenced by GitHub workflows; the existing
-agent_repair.py loop remains as a bounded implementation detail behind the
-new target scope validator.
+The legacy standalone repair scripts have been removed. The bounded Agent
+runner is now ffbuild.autoheal.runner, using the same independent scope checks.
+The portable skill at .agents/skills/ffmpeg-autoheal/SKILL.md is tracked with
+the build tools; the repair prompt names it explicitly. No opencode branch is
+fetched. OpenCode remains only an execution adapter; client-specific skill
+auto-discovery is not required. A pre-relocation failed checkout without this
+tool layout must be rebuilt from the new main before automated repair.
 
 ## Public GitHub messages
 

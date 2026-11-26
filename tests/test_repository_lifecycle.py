@@ -23,8 +23,7 @@ from ffbuild.planner import plan_native
 from ffbuild.state import PublishedState
 from ffbuild.release_trigger import BOT
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts/ops"))
-import retention_policy
+from ffbuild import retention as retention_policy
 
 SHA = "a"*40
 SIG = "b"*64
