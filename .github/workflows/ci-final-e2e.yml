@@ -31,11 +31,15 @@ jobs:
     needs: validate
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         include:
-          - {yaml: '7.1.5', shard_index: 1}
-          - {yaml: '9.1', shard_index: 7}
+          - {yaml: '4.4.8', shard_index: 2}
+          - {yaml: '6.1.6', shard_index: 3}
+          - {yaml: '8.1.3', shard_index: 4}
+          - {yaml: 'master', shard_index: 5}
+          - {yaml: '3.4.14', shard_index: 15}
+          - {yaml: '5.1.10', shard_index: 9}
     uses: ./.github/workflows/build-release.yml
     permissions:
       contents: read
@@ -48,3 +52,49 @@ jobs:
       force: true
       shard_count: 16
       shard_index: ${{ matrix.shard_index }}
+
+  report:
+    needs: smoke
+    if: ${{ needs.smoke.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ffbuild-layout-*-a${{ github.run_attempt }}
+          path: layouts
+      - name: Consolidate actual ZIP directory structures
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path('layouts')
+          reports = sorted(root.glob('*/layout.json'))
+          assert len(reports) == 6, reports
+          rows = [json.loads(p.read_text(encoding='utf-8')) for p in reports]
+          assert len({r['variant_id'] for r in rows}) == 6
+          assert sum(len(r['assets']) for r in rows) == 10
+          out = Path('directory-structures')
+          out.mkdir()
+          lines = ['# Verified ZIP directory structures', '',
+                   '| Version | Triplet | Linkage | License | ZIP | Files | Bytes |',
+                   '|---|---|---|---|---|---:|---:|']
+          for row in rows:
+              for a in row['assets']:
+                  lines.append(f"| {row['version']} | {row['triplet']} | {row['linkage']} | {row['license']} | {a['file']} | {a['entries']} | {a['size']:,} |")
+          summary = '\n'.join(lines) + '\n'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+              f.write(summary)
+          content = summary + '\n' + '\n'.join((p.parent/'directory-tree.md').read_text(encoding='utf-8') for p in reports)
+          (out/'directory-structures.md').write_text(content, encoding='utf-8')
+          (out/'directory-structures.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ffbuild-directory-structures-a${{ github.run_attempt }}
+          path: directory-structures/
+          retention-days: 30
+          if-no-files-found: error

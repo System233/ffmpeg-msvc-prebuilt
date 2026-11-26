@@ -173,7 +173,7 @@ def build_gate(payload: dict, environ: dict[str, str]) -> dict:
         check_pr(requested, base, git("rev-parse", "HEAD"), Path.cwd(),
                  allow_new=selected[1] == "new")
     elif not production:
-        samples = {"7.1.5": "1", "9.1": "7"}
+        samples = {"4.4.8": "2", "6.1.6": "3", "8.1.3": "4", "master": "5", "3.4.14": "15", "5.1.10": "9"}
         if not (ref == "refs/heads/ci/e2e-final-20261125" and event_name == "push"
                 and validation and skip and requested in samples and shards == "16"
                 and environ.get("REQUESTED_SHARD_INDEX") == samples[requested]

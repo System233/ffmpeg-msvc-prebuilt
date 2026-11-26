@@ -181,8 +181,12 @@ jobs:
           }) -Force
           if ($env:GITHUB_REF -eq 'refs/heads/ci/e2e-final-20261125') {
             $slots = @{
-              '7.1.5' = 'arm-windows/shared/gpl'
-              '9.1' = 'arm64-windows/shared/lgpl'
+              '4.4.8' = 'arm-windows/static/lgpl'
+              '6.1.6' = 'arm-windows/shared/lgpl'
+              '8.1.3' = 'arm64-windows/static/gpl'
+              'master' = 'arm64-windows/shared/gpl'
+              '3.4.14' = 'x86-windows/shared/lgpl'
+              '5.1.10' = 'x64-windows/shared/gpl'
             }
             if ($plan.jobs.Count -ne 1 -or $plan.reuse.Count -ne 0) { throw 'Exactly one fresh sampled variant required' }
             $job = $plan.jobs[0]
@@ -408,42 +412,17 @@ jobs:
       - name: Validate packaged ZIPs with the publication gate
         if: ${{ !inputs.skip_release }}
         run: python -m ffbuild publish --artifacts-dir Release --dry-run
-      - name: Verify shared SDK pkg-config in actual distribution
+      - name: Audit actual ZIPs and generate complete directory trees
         if: ${{ github.ref == 'refs/heads/ci/e2e-final-20261125' && !inputs.skip_release }}
-        shell: pwsh
-        run: |
-          @'
-          import pathlib, re, zipfile, yaml
-          root = pathlib.Path("Release")
-          metadata = list(root.glob("*.var.yaml"))
-          assert len(metadata) == 1
-          record = yaml.safe_load(metadata[0].read_text(encoding="utf-8"))
-          assert record["linkage"] == "shared"
-          assert set(record["assets"]) == {"binary", "develop"}
-          for kind, asset in record["assets"].items():
-              with zipfile.ZipFile(root / asset["file"]) as archive:
-                  assert archive.testzip() is None
-                  names = set(archive.namelist())
-                  folders = ["lib/pkgconfig/"] + (["debug/lib/pkgconfig/"] if kind == "develop" else [])
-                  for folder in folders:
-                      pcs = sorted(n for n in names if n.startswith(folder) and n.endswith(".pc"))
-                      assert pcs, (kind, folder)
-                      modules = {pathlib.PurePosixPath(n).stem for n in pcs}
-                      for n in pcs:
-                          content = archive.read(n).decode("utf-8")
-                          assert not any(v.strip() for v in re.findall(r"(?m)^Libs[.]private:(.*)$", content)), n
-                          assert re.search(r"(?m)^Libs:.*-l", content), n
-                          assert re.search(r"(?m)^Cflags:", content), n
-                          for lib in re.findall(r"(?m)^Libs:.*$", content):
-                              for token in re.findall(r"-l([^\s]+)", lib):
-                                  assert folder.removesuffix("pkgconfig/") + token + ".lib" in names, (n, token)
-                          for dependency in re.findall(r"(?m)^Requires(?:[.]private)?:(.*)$", content):
-                              for item in dependency.split(","):
-                                  if item.strip():
-                                      assert item.strip().split()[0] in modules, (n, item)
-                      print(kind, folder, len(pcs), "pkg-config files verified")
-          '@ | python -
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: python tests/ci_distribution_audit.py Release layout-report
+      - name: Upload verified directory structures
+        if: ${{ github.ref == 'refs/heads/ci/e2e-final-20261125' && !inputs.skip_release }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ffbuild-layout-${{ matrix.id }}-a${{ github.run_attempt }}
+          path: layout-report/
+          retention-days: 30
+          if-no-files-found: error
       - name: Upload installed license evidence on packaging failure
         if: ${{ failure() && !inputs.skip_release }}
         uses: actions/upload-artifact@v6
