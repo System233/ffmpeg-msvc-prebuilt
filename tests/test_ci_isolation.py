@@ -41,6 +41,18 @@ class IsolatedE2ETests(unittest.TestCase):
             self.assertIn("!inputs.skip_release", uploads[0]["if"])
             self.assertTrue(any("ffvcpkg install" in s.get("run", "") for s in steps))
 
+    def test_public_sdk_smoke_runs_after_archive_gate_before_upload(self):
+        steps = workflow("build-release.yml")["jobs"]["build"]["steps"]
+        idx = next(i for i, step in enumerate(steps)
+                   if step.get("name") == "Validate extracted public SDK and CLI")
+        self.assertEqual("Validate packaged ZIPs with the publication gate", steps[idx-1]["name"])
+        self.assertIn("!inputs.skip_release", steps[idx]["if"])
+        self.assertIn("x64-windows", steps[idx]["if"])
+        self.assertIn("x86-windows", steps[idx]["if"])
+        self.assertIn("ffbuild.ci verify-sdk", steps[idx]["run"])
+        self.assertTrue(any(step.get("name") == "Upload distribution and internal audit evidence"
+                            for step in steps[idx+1:]))
+
     def test_workers_select_only_one_version_port_for_stable_ffmpeg(self):
         ci = workflow("build-release.yml")
         for name in ("build",):

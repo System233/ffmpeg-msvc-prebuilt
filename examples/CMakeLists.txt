@@ -63,7 +63,7 @@ endif()
 
 
 
-if(NOT FFMPEG_LINK_MODE STREQUAL "legacy" AND "$<TARGET_RUNTIME_DLLS:ffmeta>")
+if(WIN32 AND NOT FFMPEG_LINK_MODE STREQUAL "legacy")
 # --- Copy FFmpeg DLLs to build output directory for direct execution ---
 add_custom_command(TARGET ffmeta POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

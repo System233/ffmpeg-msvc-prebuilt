@@ -51,29 +51,29 @@
 ## 理解构建产物
 
 每版本有 **16 个变体**（4 架构 × 2 许可证 × 2 链接方式）。  
-Shared 变体额外包含一个 **develop** 包（含调试符号）。
+Shared 变体额外包含一个 **debug** 扩展包（含调试库及符号，需覆盖解压到对应 Binary）。
 
 ### 文件命名
 
 ```
 ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
 ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
-ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-debug-261125.zip
 ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
 日期采用 UTC 的 YYMMDD，由规划阶段统一确定。公开文件名不含 ABI、Revision 或打包格式编号。Release 按版本及日期分组，例如 `ffmpeg-9.1-261125`（同日发布批次追加 R2、R3 等）。Tag 仅在构建和产物验证成功后创建，不触发构建。完整构建 ABI 与 ZIP SHA-256 保留在 data 分支。增量构建复用已有归档，保留其原始日期和 SHA-256。历史资产不覆盖。
 
-常规完整矩阵仅发布 24 个 ZIP（8 Static、8 Shared、8 Develop）；主许可证保留于 `LICENSE.txt`，合并版权及 SPDX 位于 `share/ffmpeg/copyright` 和 `share/ffmpeg/sbom.spdx.json`；构建溯源和原始依赖证据不进入公开 ZIP。对应源码仍须按许可证义务提供。
+常规完整矩阵仅发布 24 个 ZIP（8 Static、8 Shared、8 Debug）；主许可证保留于 `LICENSE.txt`，合并版权及 SPDX 位于 `share/ffmpeg/copyright` 和 `share/ffmpeg/sbom.spdx.json`；构建溯源和原始依赖证据不进入公开 ZIP。对应源码仍须按许可证义务提供。
 
-### Binary 与 Develop 的区别（仅 shared）
+### Binary 与 Debug Add-on 的区别（仅 shared）
 
-|                                       | Binary | Develop |
+|                                       | Binary | Debug Add-on |
 | ------------------------------------- | ------ | ------- |
-| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅      | ✅       |
-| 头文件 (`.h`)                         | ✅      | ✅       |
-| 导入库 (`.lib`) + DLL                 | ✅      | ✅       |
-| pkg-config (`.pc`) + CMake 模块       | ✅      | ✅       |
+| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅      | ❌ |
+| 头文件 (`.h`)                         | ✅      | ❌ |
+| 导入库 (`.lib`) + DLL                 | ✅      | ❌ |
+| pkg-config (`.pc`) + CMake 模块       | ✅      | ❌ |
 | FFmpeg DLL 调试符号（PDB）            | ❌      | ✅       |
 | 调试库（`debug/lib/`）                | ❌      | ✅       |
 | 压缩包体积                            | 较小   | 较大    |
@@ -84,7 +84,7 @@ ffmpeg-master_x64-windows-static-gpl-261125.zip
 | ---------------------- | ----------------------------------------------- |
 | 运行 FFmpeg 命令行     | **Static Binary**（单文件）或 **Shared Binary** |
 | 开发自己的 FFmpeg 应用 | **Shared Binary**（头文件 + 库）                |
-| 调试 FFmpeg 相关应用   | **Shared Develop**（含 PDB）                    |
+| 调试 FFmpeg 相关应用   | **Shared Binary + Debug Add-on**（含 PDB）                    |
 | 单个 exe，无需 DLL     | **Static Binary**                               |
 
 **Static** 变体仅包含可执行文件及许可证/SPDX 文件，没有头文件和导入库。
@@ -104,9 +104,11 @@ Shared SDK 仅支持使用随包提供的导入库和 DLL 进行动态链接；�
 - `share/` 仅包含 FFmpeg 命名空间，原生 vcpkg 元数据及依赖 SPDX 保存在 ZIP 外的审计证据中。
 - 第三方依赖不单独分发运行时 DLL；仍需要 Windows 系统 DLL。
 
-### Develop（仅 shared，在 Binary 基础上增加）
+### Debug Add-on（仅 shared，依赖 Binary）
 
-- **PDB 符号文件**：FFmpeg Release/Debug DLL 的符号，不提供 CLI EXE 的 PDB。
+v4 格式采用差分打包；历史 Develop 包保持原有独立安装语义。
+
+- **PDB 符号文件**：FFmpeg Release/Debug DLL 的符号，CLI EXE PDB 在现有构建生成且匹配时提供。
 - **调试库**：`debug/lib/` 中的导入库及 `debug/bin/` 中的调试 DLL。
 
 ### Static
@@ -119,7 +121,7 @@ Shared SDK 仅支持使用随包提供的导入库和 DLL 进行动态链接；�
 
 [`examples/`](./examples/) 目录包含 `ffmeta` 命令行媒体元数据查看工具，演示三种链接 FFmpeg 库的方式。
 
-下载 **shared binary** 或 **shared develop** 压缩包，解压后指向其路径即可：
+下载 **Shared Binary**，按需将同一构建的 Debug Add-on 覆盖解压到相同目录，再指向其路径：
 
 ```bash
 # 先解压，再构建

@@ -1,5 +1,7 @@
 """Project published records onto the reusable release index fields."""
 
+from .identity import ASSET_KINDS
+
 # Data is a Release index, not a CI artifact or compliance database.
 # Explicit projection prevents newly added Worker fields leaking into Data.
 _INDEX_FIELDS = frozenset("""
@@ -15,5 +17,5 @@ def release_index(record: dict) -> dict:
         result["assets"] = {kind: {key: value for key, value in asset.items()
                                     if key in ("file", "size", "digest")}
                             for kind, asset in result["assets"].items()
-                            if kind in ("binary", "develop")}
+                            if kind in ASSET_KINDS}
     return result

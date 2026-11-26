@@ -13,8 +13,9 @@ from pathlib import Path
 
 import yaml
 
-from .identity import record_release_tag, archive_name, variant_name, date_suffix, audit_name
+from .identity import record_release_tag, archive_name, variant_name, date_suffix, audit_name, expected_asset_kinds
 from .store import release_index
+from .symbols import verify_symbols, verify_debug_layout
 from . import catalog
 from .license_policy import POLICY_VERSION, scoped_compatibility
 from .compliance import _ffmpeg_license, resolve_port_license, dependency_scopes, declared_root_hosts, manifest_host_edges, verify_system_archive_members, distribution_evidence, PUBLIC_COPYRIGHT, PUBLIC_SPDX, PACKAGE_FORMAT_VERSION
@@ -173,7 +174,7 @@ def _digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, develop: bool = False) -> None:
+def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, kind: str = "binary") -> None:
     """Revalidate original installed evidence and reproduce public license files."""
     summary = record["compliance"]
     if not audit_file.is_file() or _digest(audit_file) != summary.get("audit_sha256"):
@@ -186,7 +187,7 @@ def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, de
         if len({name.casefold() for name in public_names}) != len(public_names):
             raise ValueError("Case-insensitive ZIP member collision")
         static_members = {"ffmpeg.exe", "ffprobe.exe", "ffplay.exe", "LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX}
-        allowed_roots = {"bin", "lib", "include", "share"} | ({"debug"} if develop else set())
+        allowed_roots = {"bin", "lib", "include", "share"} | ({"debug"} if kind == "debug" else set())
         for name in public_names:
             parts = name.lower().split("/")
             if record["linkage"] == "static":
@@ -199,6 +200,16 @@ def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, de
                     (parts[0] == "share" and (len(parts) < 3 or parts[1] != "ffmpeg")) or
                     parts[-1] in ("control", "build_info", "vcpkg_abi_info.txt", "vcpkg.spdx.json")):
                 raise ValueError(f"Unexpected public archive member: {name}")
+        for name in public_names - {"LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX}:
+            lower = name.lower()
+            if kind == "binary" and (lower.endswith(".pdb") or lower.startswith("debug/")):
+                raise ValueError(f"Debug payload in Binary: {name}")
+            if kind == "debug" and not (
+                (lower.startswith("bin/") and lower.endswith(".pdb")) or
+                (lower.startswith("debug/bin/") and lower.endswith((".dll", ".pdb", ".exe"))) or
+                (lower.startswith("debug/lib/") and lower.endswith((".lib", ".def", ".pc")))
+            ):
+                raise ValueError(f"Unexpected Debug add-on payload: {name}")
         for name in ("LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX):
             if name not in public_names:
                 raise ValueError(f"Missing distribution license file {name}: {path.name}")
@@ -325,11 +336,11 @@ def _verify_distribution(record: dict, directory: Path, *, reused: bool = False)
         raise ValueError("Missing required license evidence")
     if record.get("release_date"):
         _validate_dated_record(record)
-    expected = {"binary", "develop"} if record["linkage"] == "shared" else {"binary"}
+    expected = expected_asset_kinds(record["linkage"], PACKAGE_FORMAT_VERSION)
     if set(record["assets"]) != expected:
         raise ValueError("Unexpected distribution asset types")
     for kind, asset in record["assets"].items():
-        if record.get("release_date") and asset["file"] != archive_name(record, develop=kind == "develop"):
+        if record.get("release_date") and asset["file"] != archive_name(record, kind=kind):
             raise ValueError(f"Invalid dated archive name: {asset['file']}")
         if Path(asset["file"]).name != asset["file"]:
             raise ValueError("Invalid asset filename")
@@ -337,7 +348,17 @@ def _verify_distribution(record: dict, directory: Path, *, reused: bool = False)
         if not path.is_file() or path.stat().st_size != asset["size"] or "sha256:" + _digest(path) != asset["digest"]:
             raise ValueError(f"Distribution asset digest or size mismatch: {asset['file']}")
         if not reused:
-            _verify_compliance_archive(path, record, directory / audit_name(record), develop=kind == "develop")
+            _verify_compliance_archive(path, record, directory / audit_name(record), kind=kind)
+
+    if not reused and record["linkage"] == "shared":
+        with zipfile.ZipFile(directory / record["assets"]["binary"]["file"]) as binary, \
+                zipfile.ZipFile(directory / record["assets"]["debug"]["file"]) as debug:
+            shared = {n.casefold() for n in binary.namelist()}.intersection(n.casefold() for n in debug.namelist())
+            evidence = {"LICENSE.txt", PUBLIC_COPYRIGHT, PUBLIC_SPDX}
+            if shared != {n.casefold() for n in evidence} or any(binary.read(n) != debug.read(n) for n in evidence):
+                raise ValueError("Binary/Debug overlap or inconsistent compliance files")
+            verify_debug_layout(binary.namelist(), debug.namelist())
+            verify_symbols(binary.namelist(), debug.namelist(), binary.read, debug.read)
 
 
 def _check_reuse(job: dict, record: dict) -> None:

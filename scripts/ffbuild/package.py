@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+from .symbols import verify_symbols, verify_debug_layout
 from .identity import is_lts, variant_name, archive_name
 from .compliance import PACKAGE_FORMAT_VERSION, compliance_files, PUBLIC_COPYRIGHT, PUBLIC_SPDX, verify_system_archive_members
 
@@ -76,37 +77,47 @@ def _verify_native_package_abi(package: Path, port: str, expected: str) -> None:
         )
 
 
-def _files(package: Path, linkage: str, *, develop: bool,
+def _files(package: Path, linkage: str, *, kind: str = "binary",
            port: str = "ffmpeg") -> dict[str, Path]:
     paths: dict[str, Path] = {}
-    binaries = ["ffmpeg.exe", "ffprobe.exe", "ffplay.exe"]
-    for name in binaries:
-        for folder in (f"tools/{port}", "bin"):
-            path = package / folder / name
-            if path.is_file():
-                paths[f"bin/{name}"] = path
-                break
-    # Preserve the validated public archive distribution contract.
-    # Static variants contain applications only (not a copied static SDK).
-    # Shared variants contain release SDK or full debug SDK respectively.
-    # FFmpeg's original CMake builder ALWAYS installs consumer metadata under
-    # share/ffmpeg, regardless of the version-qualified vcpkg Port identity.
-    if linkage == "shared":
-        folders = ["bin", "lib", "include", "share/ffmpeg"]
-        if develop:
-            folders.append("debug")
-        for folder in folders:
-            root = package / folder
-            if not root.is_dir():
+    if kind not in ("binary", "debug") or (kind == "debug" and linkage != "shared"):
+        raise ValueError("Invalid new distribution asset kind")
+    if kind == "binary":
+        for name in ("ffmpeg.exe", "ffprobe.exe", "ffplay.exe"):
+            for folder in (f"tools/{port}", "bin"):
+                path = package / folder / name
+                if path.is_file():
+                    paths[f"bin/{name}"] = path
+                    break
+        if linkage == "static":
+            return {Path(member).name: source for member, source in paths.items()}
+        folders = ("bin", "lib", "include", "share/ffmpeg")
+    else:
+        folders = ("bin", "debug/bin", "debug/lib")
+        for name in ("ffmpeg", "ffprobe", "ffplay"):
+            source = package / "tools" / port / (name + ".pdb")
+            if source.is_file() and source.with_suffix(".exe").is_file():
+                paths[f"bin/{name}.pdb"] = source
+    excluded = {PUBLIC_COPYRIGHT, PUBLIC_SPDX, "share/ffmpeg/vcpkg.spdx.json",
+                "share/ffmpeg/vcpkg_abi_info.txt"}
+    for folder in folders:
+        for path in sorted((package / folder).rglob("*")):
+            if not path.is_file():
                 continue
-            for path in sorted(root.rglob("*")):
-                if path.is_file() and (develop or path.suffix.lower() != ".pdb"):
-                    member = path.relative_to(package).as_posix()
-                    if member not in (PUBLIC_COPYRIGHT, PUBLIC_SPDX, "share/ffmpeg/vcpkg.spdx.json", "share/ffmpeg/vcpkg_abi_info.txt"):
-                        paths[member] = path
-    if linkage == "static":
-        # The static archive is flat, without a bin/ prefix or SDK contents.
-        return {Path(member).name: source for member, source in paths.items()}
+            member = path.relative_to(package).as_posix()
+            ext = path.suffix.lower()
+            if member in excluded:
+                continue
+            if kind == "binary" and ext == ".pdb":
+                continue
+            if kind == "debug":
+                if folder == "bin" and ext != ".pdb":
+                    continue
+                if folder == "debug/bin" and ext not in (".dll", ".pdb", ".exe"):
+                    continue
+                if folder == "debug/lib" and ext not in (".lib", ".def", ".pc"):
+                    continue
+            paths[member] = path
     return paths
 
 
@@ -167,23 +178,30 @@ def package_job(package: Path, job: dict, output: Path,
     if identifier != job["id"]:
         raise ValueError("Build Plan variant identity mismatch")
     if installed_root is None or source_tree is None:
-        raise ValueError("Package-format v3 requires --installed-root and --source-tree "
+        raise ValueError("Package-format v4 requires --installed-root and --source-tree "
                          "for license and upstream COPYING evidence")
     copyright_file = package / "share" / port / "copyright"
     public, evidence, evidence_summary = compliance_files(
         installed_root, job, ffmpeg_copyright=copyright_file, source_tree=source_tree)
     system_dependency = any(p["scope"] == "system-dependency" for p in evidence_summary["packages"])
-    for develop in ([False, True] if linkage == "shared" else [False]):
-        verify_system_archive_members(_files(package, linkage, develop=develop, port=port),
+    payloads = {kind: _files(package, linkage, kind=kind, port=port)
+                for kind in (("binary", "debug") if linkage == "shared" else ("binary",))}
+    if linkage == "shared":
+        binary, debug = payloads["binary"], payloads["debug"]
+        verify_debug_layout(binary, debug)
+        verify_symbols(binary, debug, lambda name: binary[name].read_bytes(),
+                       lambda name: debug[name].read_bytes())
+    for payload in payloads.values():
+        verify_system_archive_members(payload,
                                       system_dependency=system_dependency)
     output.mkdir(parents=True, exist_ok=True)
     binary_name = archive_name(job)
     assets = {"binary": _archive(output / binary_name,
-                                 _files(package, linkage, develop=False, port=port),
+                                 payloads["binary"],
                                  copyright_file, evidence=public)}
     if linkage == "shared":
-        assets["develop"] = _archive(output / archive_name(job, develop=True),
-                                     _files(package, linkage, develop=True, port=port),
+        assets["debug"] = _archive(output / archive_name(job, kind="debug"),
+                                     payloads["debug"],
                                      copyright_file, evidence=public)
     # Audit evidence is an internal sibling artifact, never a release asset.
     audit = output / f"{identifier}.audit.zip"

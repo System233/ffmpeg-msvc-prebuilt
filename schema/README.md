@@ -33,3 +33,5 @@ validates `releases/<version>.json` and `master/<year>.json`.
 The root contains only shard discovery keys. Each release and its asset records
 exist in one shard only. Legacy v1 YAML remains readable for migration; v2 is
 an explicit format cutover, not an additional index alongside v1.
+
+Package format 4 adds the differential `debug` asset to catalog schema v2. Historical `develop` assets remain unchanged and standalone.

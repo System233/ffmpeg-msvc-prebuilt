@@ -44,11 +44,11 @@ def records(rows, tag=None):
     result = []
     for job in rows:
         r = dict(job, variant_id=job["id"], channel="master" if job["yaml"]=="master" else "release",
-                 package_format=3, package_spec=job["package"], assets={})
+                 package_format=4, package_spec=job["package"], assets={})
         if job.get("source_ref"):
             r["source_commit"] = job["source_ref"]
-        for k in (("binary","develop") if r["linkage"]=="shared" else ("binary",)):
-            name=archive_name(r, develop=k=="develop")
+        for k in (("binary","debug") if r["linkage"]=="shared" else ("binary",)):
+            name=archive_name(r, kind=k)
             r["assets"][k]={"file":name,"size":100,"digest":"sha256:"+hashlib.sha256((name+r["abi_hash"]).encode()).hexdigest()}
         if tag:
             r["publication_tag"]=tag

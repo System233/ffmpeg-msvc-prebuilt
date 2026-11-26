@@ -15,13 +15,13 @@ REPO = "example/ffmpeg"
 class MessageTests(unittest.TestCase):
     def test_release_uses_actual_matrix_and_batch_title(self):
         rows = [{"triplet":a+"-windows","linkage":link,"license":lic,
-                 "assets":{"binary":{}, **({"develop":{}} if link=="shared" else {})}}
+                 "assets":{"binary":{}, **({"debug":{}} if link=="shared" else {})}}
                 for a in ("x86","x64","arm","arm64") for link in ("static","shared")
                 for lic in ("lgpl","gpl")]
         title, body = release_message("ffmpeg-8.1.3-261125R2","8.1.3",records=rows,
                                       repo=REPO,run_id="100",attempt="2")
         self.assertEqual("FFmpeg 8.1.3 (MSVC Prebuilt) — 2026-11-25 R2",title)
-        for text in ("Static","Shared","Develop","x86, x64, ARM, ARM64","LGPL / GPL","SPDX",
+        for text in ("Static","Shared","Debug Add-on","x86, x64, ARM, ARM64","LGPL / GPL","SPDX",
                      "/FFmpeg/FFmpeg/tree/n8.1.3","/actions/runs/100/attempts/2"):
             self.assertIn(text,body)
         self.assertNotIn(".zip",body)
@@ -29,7 +29,7 @@ class MessageTests(unittest.TestCase):
                                       records=[dict(rows[0],source_commit=SHA)])
         self.assertIn("Master",title)
         self.assertIn("/commit/"+SHA,body)
-        self.assertNotIn("| Develop |",body)
+        self.assertNotIn("| Debug Add-on |",body)
         self.assertNotIn("| Shared |",body)
 
     def test_proposal_updates_only_verification_and_never_overstates_ci(self):

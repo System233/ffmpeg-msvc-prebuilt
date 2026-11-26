@@ -8,7 +8,7 @@ using CMake and FindFFmpeg.cmake.
 
 ## Prerequisites
 
-Download a **shared** prebuilt FFmpeg archive (binary or develop) from
+Download a **shared** prebuilt FFmpeg archive (Binary; optionally overlay the matching Debug Add-on) from
 the [releases page](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
 or [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/).
 

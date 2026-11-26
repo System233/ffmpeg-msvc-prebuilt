@@ -19,7 +19,7 @@ from ffbuild.identity import record_release_tag
 def record(version="9.1", when="2026-11-25", arch="x64", channel="release", commit=None):
     row = {"version": version, "release_date": when, "channel": channel,
            "triplet": arch + "-windows", "linkage": "static", "license": "lgpl",
-           "abi_hash": "a" * 64, "package_format": 3, "expected_variants": 1,
+           "abi_hash": "a" * 64, "package_format": 4, "expected_variants": 1,
            "features": ["base"], "dependencies": ["zlib"], "compliance": {"private": True}}
     if commit:
         row["source_commit"] = commit

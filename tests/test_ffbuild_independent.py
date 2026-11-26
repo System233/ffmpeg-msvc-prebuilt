@@ -159,7 +159,12 @@ class PackageRoundTrip(unittest.TestCase):
             (package / "share/zlib").mkdir()
             (package / "share/zlib/copyright").write_bytes(b"unrelated share payload")
             (package / "bin" / "ffmpeg.exe").write_bytes(b"FFMPEG binary")
-            (package / "bin" / "avcodec.dll").write_bytes(b"release dll")
+            from symbol_fixture import pe, pdb
+            (package / "bin" / "avcodec.dll").write_bytes(pe())
+            (package / "bin" / "avcodec.pdb").write_bytes(pdb())
+            (package / "debug/bin").mkdir()
+            (package / "debug/bin/avcodec.dll").write_bytes(pe(guid=b"d"*16))
+            (package / "debug/bin/avcodec.pdb").write_bytes(pdb(guid=b"d"*16))
             (package / "include" / "avcodec.h").write_bytes(b"header")
             (package / "lib" / "avcodec.lib").write_bytes(b"import lib")
             (package / "debug" / "lib" / "avcodec.lib").write_bytes(b"debug lib")
@@ -172,9 +177,9 @@ class PackageRoundTrip(unittest.TestCase):
                 package, job, root / "release",
                 installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
-            self.assertEqual(3, record["package_format"])
+            self.assertEqual(4, record["package_format"])
             self.assertEqual(archive_name(job), record["assets"]["binary"]["file"])
-            self.assertEqual({"binary", "develop"}, set(record["assets"]))
+            self.assertEqual({"binary", "debug"}, set(record["assets"]))
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",
                                           abi_hash=job["abi_hash"]),
                              record["variant_id"])
@@ -190,10 +195,13 @@ class PackageRoundTrip(unittest.TestCase):
                 self.assertNotIn("BUILD_INFO", archive.namelist())
                 self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json", "share/ffmpeg/FindFFmpeg.cmake"},
                                  {name for name in archive.namelist() if name.startswith("share/")})
-            with zipfile.ZipFile(root / "release" / record["assets"]["develop"]["file"]) as archive:
+            with zipfile.ZipFile(root / "release" / record["assets"]["debug"]["file"]) as archive:
                 self.assertIn("debug/lib/avcodec.lib", archive.namelist())
-                self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json", "share/ffmpeg/FindFFmpeg.cmake"},
+                self.assertEqual({"share/ffmpeg/copyright", "share/ffmpeg/sbom.spdx.json"},
                                  {name for name in archive.namelist() if name.startswith("share/")})
+                self.assertNotIn("bin/ffmpeg.exe", archive.namelist())
+            from ffbuild.publication import _verify_distribution
+            _verify_distribution(record, root / "release")
             db = root / "data"
             register_release(db, [record])
             self.assertEqual(1, len(list(db.glob("releases/*.json"))))

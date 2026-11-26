@@ -63,7 +63,7 @@ class TriggerTests(unittest.TestCase):
         from ffbuild.state import PublishedState
         row = {"version":"8.1.3", "channel":"release", "release_date":"2026-11-25",
                "triplet":"x64-windows","linkage":"static","license":"lgpl",
-               "abi_hash":"c"*64,"package_format":3,"expected_variants":1,
+               "abi_hash":"c"*64,"package_format":4,"expected_variants":1,
                "publication_tag":"ffmpeg-8.1.3-261125R2"}
         row["variant_id"] = variant_name(row["version"],0,row["triplet"],row["linkage"],row["license"],abi_hash=row["abi_hash"])
         row["assets"]={"binary":{"file":archive_name(row),"size":123,"digest":"sha256:"+"d"*64}}
