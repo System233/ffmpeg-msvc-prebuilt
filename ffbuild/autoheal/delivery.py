@@ -223,14 +223,24 @@ def deliver(report: dict, yaml: str, output: Path) -> None:
     incident = validate_triage(report, yaml)
     manifest_path = output / "manifest.json"
     patch_path = output / "repair.patch"
-    if not manifest_path.is_file() or not patch_path.is_file():
+    if not manifest_path.is_file():
         raise ValueError("Repair artifact or manifest missing")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    base = report["pr"]["head_sha"] if report.get("pr") else report["source"]["head_sha"]
+    commit_sha(base)
+    if manifest.get("decision") == "no_safe_fix":
+        identity = {"schema": 1, "decision": "no_safe_fix", "yaml": yaml,
+                    "signature": incident.signature, "run_id": report["source"]["run_id"],
+                    "run_attempt": report["source"]["run_attempt"], "base_sha": base}
+        if manifest != identity or patch_path.exists():
+            raise ValueError("Invalid safe-decline artifact")
+        print("No authorized fix proposed; no GitHub mutation.")
+        return
+    if not patch_path.is_file():
+        raise ValueError("Repair artifact or manifest missing")
     patch = patch_path.read_bytes()
     if not patch or b"diff --git " not in patch:
         raise ValueError("Empty repair patch")
-    base = report["pr"]["head_sha"] if report.get("pr") else report["source"]["head_sha"]
-    commit_sha(base)
     expected = {
         "schema": 1, "yaml": yaml, "signature": incident.signature,
         "run_id": report["source"]["run_id"],

@@ -55,6 +55,11 @@ def repair(report: dict, yaml: str, output: Path) -> None:
         "workflow_run_id": source["run_id"], "run_attempt": source["run_attempt"],
         "signature": incident.signature,
         "failed_jobs": [job["job_id"] for job in incident.jobs],
+        "diagnostics": [{"job_id": job["job_id"], "variant_id": job["variant_id"],
+                         "classification": job.get("classification"),
+                         "signature": job.get("signature")}
+                        for job in incident.jobs],
+        "source_snapshot": source.get("request", {}),
         "log_directory": str(logs),
         "constraints": "Modify only target YAML and newly-added target-exclusive source patches.",
     }, indent=2), encoding="utf-8")
@@ -67,6 +72,27 @@ def repair(report: dict, yaml: str, output: Path) -> None:
         env={**os.environ, "FFBUILD_REPAIR_TARGET": incident.yaml, "FFBUILD_REPAIR_BASE": base_sha},
         check=False,
     )
+    if result.returncode == 3:
+        # The Agent can only decline its own candidate; this outcome has no
+        # permission to push or create a PR. Verify that nothing was changed.
+        if (_git("rev-parse", "HEAD").lower() != base_sha.lower() or
+                _git("status", "--porcelain", "--untracked-files=no")):
+            raise ValueError("Declined repair must leave the source unchanged")
+        report_path = Path("fix_report.md")
+        if not report_path.is_file() or report_path.is_symlink() or report_path.stat().st_size > 65536:
+            raise ValueError("Missing safe-decline report")
+        text = report_path.read_text(encoding="utf-8", errors="replace")
+        if not re.search(r"(?m)^Decision: no_safe_fix[ \t]*$", text):
+            raise ValueError("Missing explicit safe-decline decision")
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "manifest.json").write_text(json.dumps({
+            "schema": 1, "decision": "no_safe_fix", "yaml": yaml,
+            "signature": incident.signature, "run_id": source["run_id"],
+            "run_attempt": source["run_attempt"], "base_sha": base_sha,
+        }, indent=2) + "\n", encoding="utf-8")
+        (output / "repair-report.md").write_text(text, encoding="utf-8")
+        print("Diagnosis completed without an authorized repair candidate.")
+        return
     if result.returncode:
         raise RuntimeError("OpenCode did not produce an authorized change")
     paths = check_worktree(incident.yaml, base_sha, Path.cwd())

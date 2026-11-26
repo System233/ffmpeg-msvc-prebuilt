@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -199,12 +200,23 @@ def main() -> None:
         log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
         if not log_result.stdout.strip():
             print(f"No changes on attempt {attempt}")
+            if supervised:
+                report = Path("fix_report.md")
+                if (report.is_file() and not report.is_symlink()
+                        and report.stat().st_size <= 65536
+                        and re.search(r"(?m)^Decision: no_safe_fix[ \t]*$", report.read_text(encoding="utf-8"))
+                        and _git_check("rev-parse", "HEAD") == start_sha
+                        and not _git_check("status", "--porcelain", "--untracked-files=no")):
+                    print("Agent declined: no safe version-scoped repair.")
+                    sys.exit(3)
             if attempt < max_retries:
                 # Agent made no changes — give feedback and retry instead of
                 # silently ending (opencode may exit cleanly without acting).
                 _generate_feedback(
                     attempt,
-                    ["Agent made no changes — you MUST modify files to fix the build failure"],
+                    ["No candidate committed. Diagnose the evidence and either produce an authorized fix "
+                     "or explicitly report Decision: no_safe_fix." if supervised else
+                     "Agent made no changes — you MUST modify files to fix the build failure"],
                     feedback_file,
                 )
                 continue

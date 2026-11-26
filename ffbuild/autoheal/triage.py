@@ -12,7 +12,7 @@ from typing import Any
 from . import github
 from .ledger import branch_name, branch_matches
 from .models import commit_sha, version_name
-from .policy import classify
+from .policy import classify, patch_failure_key
 
 BUILD_WORKFLOWS = {"Build All FFmpeg Versions", "Build FFmpeg Release", "Build FFmpeg Master"}
 
@@ -41,7 +41,10 @@ def _sample_log(run_id: int, artifact: str) -> str:
         remaining = 200_000
         # Read only bounded build evidence; never execute anything in an artifact.
         candidates = sorted((p for p in directory.rglob("*") if p.is_file()),
-                            key=lambda p: ("ffmpeg" not in p.name.lower(), p.as_posix()))
+                            key=lambda p: (
+                                not any(part.lower() in ("ffmpeg", "ffmpeg-tester")
+                                        for part in p.relative_to(directory).parts[:-1]),
+                                p.suffix.lower() != ".err", p.as_posix()))
         for path in candidates:
             if path.suffix.lower() not in (".log", ".err", ".txt"):
                 continue
@@ -59,6 +62,10 @@ def _sample_log(run_id: int, artifact: str) -> str:
 
 
 def _signature(phase: str, classification: str, log: str, step: str) -> str:
+    # Match a failed source patch by its identity, not volatile Hunk offsets.
+    patch_key = patch_failure_key(log) if classification == "source_patch" else None
+    if patch_key:
+        return hashlib.sha256(f"{phase}\0{classification}\0{patch_key}".encode()).hexdigest()
     # Stable across equivalent variants, paths and numerical job identifiers.
     lines = [s.strip()[:250] for s in log.splitlines()
              if re.search(r"\berror\b|\bfatal\b|unresolved|undefined|failed", s, re.I)]
@@ -136,25 +143,25 @@ def analyze(run: dict, attempt: int, jobs: list[dict], artifacts: list[dict],
         by_yaml[plan_row["yaml"]].append(entry)
     groups = []
     for yaml_name, units in sorted(by_yaml.items()):
-        # A single version has only one auto-repair task: mixed / ambiguous
-        # failures must be diagnosed rather than repaired speculatively.
+        # A single version receives one bounded diagnosis task. Different
+        # source diagnostics do not imply a common root cause. The Agent may
+        # propose a single scoped candidate or decline; all variants must pass.
+        # Missing evidence or explicit non-source failures remain fail closed.
         fixable = all(unit["repairable"] for unit in units)
         phases = {unit["phase"] for unit in units}
         reasons = {unit["classification"] for unit in units}
         signatures = {unit["signature"] for unit in units}
-        # A version may fail in several unrelated variants. Do not let one
-        # deterministic branch key accidentally represent different root causes.
+        # The incident key represents the SET of observed diagnostics, not
+        # an assertion that they have one cause. Keep individual signatures.
         signatures_match = len(signatures) == 1
         signature = hashlib.sha256(
             (yaml_name + "\0" + "\0".join(sorted(signatures))).encode()).hexdigest()
         groups.append({
             "yaml": yaml_name,
             "phase": next(iter(phases)) if len(phases) == 1 else "mixed",
-            "classification": ("divergent_source_errors" if not signatures_match and
-                               reasons == {"source_patch"} else
+            "classification": ("multiple_build_diagnostics" if fixable and not signatures_match else
                                next(iter(reasons)) if len(reasons) == 1 else "mixed"),
-            "repairable": (fixable and signatures_match and phases == {"build"}
-                           and reasons == {"source_patch"}),
+            "repairable": fixable and phases == {"build"},
             "signature": signature,
             "jobs": units,
         })

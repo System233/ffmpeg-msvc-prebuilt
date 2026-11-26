@@ -566,5 +566,51 @@ class TestAgentRepair(unittest.TestCase):
             Path(template_path).unlink(missing_ok=True)
 
 
+    def test_supervised_decline_preserves_actual_git_tree(self):
+        """Exercise the real Git/no-op supervisor, using a mocked Agent only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                return subprocess.check_output(
+                    ["git", *args], cwd=root, text=True, stderr=subprocess.PIPE).strip()
+            git("init", "-q")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Test")
+            git("config", "commit.gpgsign", "false")
+            target = root / "ffmpeg" / "master.yaml"
+            target.parent.mkdir()
+            target.write_text("patches: []\n", encoding="utf-8")
+            git("add", "ffmpeg/master.yaml")
+            git("commit", "-qm", "original source")
+            base = git("rev-parse", "HEAD")
+            prompt = root / "template.md"
+            feedback = root / "feedback-template.md"
+            prompt.write_text("diagnose", encoding="utf-8")
+            feedback.write_text("{attempt}: {violations}", encoding="utf-8")
+            args = argparse.Namespace(action="pr", base_sha=base, max_retries=3,
+                                      prompt_file=str(prompt), feedback_file=str(feedback))
+            old = Path.cwd()
+            os.chdir(root)
+            try:
+                def decline(*args, **kwargs):
+                    Path("fix_report.md").write_text(
+                        "Decision: no_safe_fix\nRoot cause: no authorized candidate\n", encoding="utf-8")
+                    return 0
+                with mock.patch.dict(os.environ, {"FFBUILD_REPAIR_TARGET": "master", "FFBUILD_REPAIR_BASE": base}), \
+                     mock.patch.object(agent_repair, "_require_target_yaml", return_value="master"), \
+                     mock.patch.object(agent_repair.shutil, "which", return_value="opencode"), \
+                     mock.patch.object(argparse.ArgumentParser, "parse_args", return_value=args), \
+                     mock.patch.object(agent_repair, "_run_opencode", side_effect=decline) as agent:
+                    with self.assertRaises(SystemExit) as e:
+                        agent_repair.main()
+                    self.assertEqual(3, e.exception.code)
+                    agent.assert_called_once()
+                self.assertEqual(base, git("rev-parse", "HEAD"))
+                self.assertEqual("", git("status", "--porcelain", "--untracked-files=no"))
+                self.assertEqual("patches: []\n", target.read_text(encoding="utf-8"))
+            finally:
+                os.chdir(old)
+
+
 if __name__ == "__main__":
     unittest.main()
