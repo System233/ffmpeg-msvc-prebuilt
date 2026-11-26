@@ -42,3 +42,19 @@ class ToolLayoutTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(ValueError, "legacy YAML is read-only"):
                 stage_index(Path(tmp))
+
+    def test_skill_references_are_generic_and_resolvable(self):
+        import re
+        skill = ROOT / ".agents/skills/ffmpeg-autoheal"
+        text = (skill / "SKILL.md").read_text(encoding="utf-8")
+        self.assertFalse((skill / "references/patches").exists())
+        expected = {"architecture.md", "configuration.md", "source-reconstruction.md",
+                    "diagnostics.md", "dependency-analysis.md", "patch-engineering.md", "validation.md"}
+        self.assertEqual(expected, {p.name for p in (skill / "references").glob("*.md")})
+        links = re.findall(r"\((references/[^)]+)\)", text)
+        # Check every relative link, not just the list of files.
+        self.assertEqual(expected, {Path(link).name for link in links})
+        for link in links:
+            self.assertTrue((skill / link).is_file(), link)
+        for path in skill.rglob("*.md"):
+            self.assertNotRegex(path.read_text(encoding="utf-8"), r"\d{4}-[A-Za-z][^\s/]*\.patch", path.name)

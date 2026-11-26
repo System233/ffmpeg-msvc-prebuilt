@@ -222,7 +222,17 @@ runner is now ffbuild.autoheal.runner, using the same independent scope checks.
 The portable skill at .agents/skills/ffmpeg-autoheal/SKILL.md is tracked with
 the build tools; the repair prompt names it explicitly. No opencode branch is
 fetched. OpenCode remains only an execution adapter; client-specific skill
-auto-discovery is not required. A pre-relocation failed checkout without this
+auto-discovery is not required.
+The skill is a procedural repair guide rather than a historical patch catalog.
+The Agent receives a per-failed-job projection of the matched native Build
+Plan (including feature closure, package, triplet, ABI and source pin), plus
+exact log paths. These fields are diagnostic evidence only; the existing
+trusted-source, scope, round and delivery checks remain authoritative.
+For stable versions resolve the pin from the target YAML; Master uses the
+recorded full upstream commit and SHA512. No native build or install is
+required in the repair job: reconstruct the source and patch sequence,
+compare configuration semantics and submit a candidate for remote MSVC CI.
+ A pre-relocation failed checkout without this
 tool layout must be rebuilt from the new main before automated repair.
 
 ## Public GitHub messages

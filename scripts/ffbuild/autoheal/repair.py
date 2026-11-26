@@ -55,10 +55,14 @@ def repair(report: dict, yaml: str, output: Path) -> None:
         "workflow_run_id": source["run_id"], "run_attempt": source["run_attempt"],
         "signature": incident.signature,
         "failed_jobs": [job["job_id"] for job in incident.jobs],
-        "diagnostics": [{"job_id": job["job_id"], "variant_id": job["variant_id"],
-                         "classification": job.get("classification"),
-                         "signature": job.get("signature")}
-                        for job in incident.jobs],
+        "diagnostics": [{
+            "job_id": job["job_id"], "variant_id": job["variant_id"],
+            "triplet": job.get("triplet"), "abi_hash": job["abi_hash"],
+            "artifact": job["artifact"], "log_directory": (logs / job["artifact"]).as_posix(),
+            "failed_steps": job["failed_steps"], "phase": job.get("phase"),
+            "classification": job.get("classification"), "signature": job.get("signature"),
+            "build_plan": job.get("build_plan", {}),
+        } for job in incident.jobs],
         "source_snapshot": source.get("request", {}),
         "log_directory": str(logs),
         "constraints": "Modify only target YAML and newly-added target-exclusive source patches.",

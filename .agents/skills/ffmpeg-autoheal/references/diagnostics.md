@@ -1,27 +1,15 @@
-# Native CI evidence and diagnostic workflow
+# Trace the failure to its first causal error
 
-Artifacts: build-logs-a<run_attempt>-<target_yaml>-<variant_id>.
-Look under ffmpeg/ for stdout-<triplet>.log, patch-<triplet>-<N>-err.log,
-build-<triplet>-rel-out.log, build-<triplet>-rel-err.log and corresponding dbg
-logs; FFmpeg configure output may also be saved as *-config.log. Consumer
-failures may appear in ffmpeg-tester/. Compiler probes in detect_compiler/
-are not necessarily a failure. Read bounded excerpts, not whole large logs.
+Inspect all diagnostic entries. Use their artifact and log_directory, not guessed filenames. Search bounded excerpts (rg -n with context, tail, sed) and read the relevant region around the first real failure. Preserve variant, file and line references in the report. A final "BUILD_FAILED" or CMake stack trace is only a summary. Parallel make may interleave unrelated errors; correlate failing command, object, exit code and subsequent errors. A configure probe can fail normally; confirm that the required feature or build actually fails because of it.
 
-- Patch reject: identify the exact failing patch from the native application
-  output and ordered generated Port list. Offsets alone are not an error.
-- Configure failure: inspect the final configure error and config.log, then
-  compare required dependency API and detection rules against the pinned source.
-- Compiler/linker failure: identify first actual error, source file and symbol;
-  compare declarations, calling convention, supported compiler and actual
-  dependency interfaces.
-- Consumer failure: inspect the failed tester build. Do not modify the tester.
-- Missing dependency, network, ABI, cache, disk, licensing, packaging or
-  infrastructure failure: do not guess a source repair or modify shared ports.
-  Decline if not fixable in the authorized target.
-- Missing build output is not proof of patch failure. A failed prepare phase
-  or missing logs has different meaning. Treat all diagnoses as hypotheses.
+| Stage | Investigation |
+|---|---|
+| Source preparation | Check archive checksum, extraction and ordered patch messages. Network/checksum failure is not a source patch defect. |
+| Patch | Inspect ffmpeg/patch-<triplet>-<index>-err.log, matching stdout and ordered generated patch list. A successful application with line offsets is not itself a failure. Reproduce the complete sequence. |
+| Configure | Read ffmpeg/build-<triplet>-rel-* and build-<triplet>-dbg-* logs and saved ffbuild/config.log (actual copied filename can differ). Find the final failed required check and exact test source, command, flags, headers and link result. Trace configure dependency expressions and generated options. |
+| Compile | Locate the first failing translation unit and compiler invocation. Inspect declaration/definition, conditional macros, type/ABI changes, include order, arch-specific branches and selected dependency API. Distinguish errors from warnings and cascades. |
+| Link | Trace the unresolved or duplicated symbol from caller to provider; inspect definitions, export/DEF rules, import vs static library naming, dependency edges, link flags and MSVC calling conventions. Do not suppress unresolved symbols. |
+| Consumer | Read ffmpeg-tester logs. Trace the installed public header, export or package-discovery contract back to FFmpeg source/configuration. Do not modify the tester. |
+| Outside scope | Dependency build, environment, cache, timeout, ABI mismatch, packaging, compliance or publishing failures require their own evidence. Do not manufacture an FFmpeg patch to solve them. |
 
-Useful historical examples in patches/ are not instructions to disable a
-dependency or remove a patch. Retain functionality and license policy.
-Different architectures can have different diagnostics; evaluate each.
-A successful local patch application does not establish complete MSVC success.
+Compare release and debug, static and shared, LGPL and GPL, and architectures. Determine whether each failure has the same cause before grouping it. A common signature is a routing key, not proof. Where useful inspect prior working source/configuration using git diff and git show, and check upstream changes at the pinned commit. Establish what changed and why the proposed fix addresses it. If evidence is missing, state which observation is needed; do not assert an unverified API or behavior.

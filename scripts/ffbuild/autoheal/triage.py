@@ -16,6 +16,15 @@ from .policy import classify, patch_failure_key
 
 BUILD_WORKFLOWS = {"Build All FFmpeg Versions", "Build FFmpeg Release", "Build FFmpeg Master"}
 
+# Diagnostic projection of the matched native plan row, not a new trust input.
+# Never copy arbitrary fields or synthesize absent stable source pins.
+DIAGNOSTIC_PLAN_FIELDS = (
+    "yaml", "id", "version", "source_version", "ref", "source_ref", "sha512",
+    "release_date", "port", "tester_port", "triplet", "package", "features",
+    "requested_features", "license", "linkage", "abi_hash", "expected_variants",
+)
+
+
 
 def _artifact_names(artifacts: list[dict]) -> set[str]:
     return {item["name"] for item in artifacts if isinstance(item.get("name"), str)
@@ -134,6 +143,7 @@ def analyze(run: dict, attempt: int, jobs: list[dict], artifacts: list[dict],
         entry = {
             "job_id": job["id"], "variant_id": plan_row["id"],
             "triplet": plan_row["triplet"], "abi_hash": plan_row["abi_hash"],
+            "build_plan": {key: plan_row[key] for key in DIAGNOSTIC_PLAN_FIELDS if key in plan_row},
             "artifact": artifact if artifact in available else "",
             "failed_steps": failed_steps, "phase": phase,
             "classification": reason, "repairable": repairable and artifact in available,

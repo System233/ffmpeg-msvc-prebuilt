@@ -109,6 +109,76 @@ class DiagnosisPolicy(unittest.TestCase):
         self.assertFalse(analyze(rows, dict(logs, **{artifact(rows[1])["name"]: "error: building openssl:arm-windows failed"}))["repairable"])
 
 
+class RepairEvidenceContract(unittest.TestCase):
+    def test_context_contains_exact_matched_native_plan_rows(self):
+        import hashlib
+        from ffbuild.native_abi import build_requests
+        from ffbuild.identity import variant_name
+
+        pin = {"ref": "n9.2-dev-1234-gabcdef0", "commit": "a"*40, "sha512": "b"*128}
+        for target in ("9.1", "master"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                rows, blocked = build_requests(version=target, snapshot=pin if target == "master" else None,
+                                               release_date="2026-11-26")
+                self.assertFalse(blocked)
+                self.assertEqual(16, len(rows))
+                # Use real request expansion and synthetic ABI values; no build or native scan.
+                rows = [rows[0], rows[-1]]
+                for i, row in enumerate(rows):
+                    row["abi_hash"] = hashlib.sha256(str(i).encode()).hexdigest()
+                    row["id"] = variant_name(row["version"], 0, row["triplet"],
+                                             row["linkage"], row["license"], abi_hash=row["abi_hash"])
+                    row["unrelated_field"] = "must not be propagated"
+                jobs = [job(row) for row in rows]
+                for i, entry in enumerate(jobs):
+                    entry["id"] = 1000 + i
+                report = triage.analyze(run_data(), 1, jobs, [artifact(r) for r in rows],
+                                        {"jobs": rows}, logs={artifact(r)["name"]: SOURCE_LOG for r in rows})
+                self.assertTrue(report["groups"][0]["repairable"])
+                if target == "master":
+                    report["source"]["request"] = pin
+                report["trusted_repair_source"] = True
+                expected = {r["id"]: {k: v for k, v in r.items() if k != "unrelated_field"} for r in rows}
+                old = Path.cwd()
+                os.chdir(temporary)
+                try:
+                    Path("fix_report.md").write_text("Decision: no_safe_fix\nRoot cause: test only\n", encoding="utf-8")
+                    def fake_git(*args):
+                        return SHA if args[:2] == ("rev-parse", "HEAD") else ""
+                    def inspect_context(*args, **kwargs):
+                        context = json.loads(Path("agent_context.json").read_text(encoding="utf-8"))
+                        self.assertEqual(target, context["target_yaml"])
+                        self.assertEqual(SHA, context["base_sha"])
+                        self.assertEqual([1000, 1001], context["failed_jobs"])
+                        self.assertEqual(pin if target == "master" else {}, context["source_snapshot"])
+                        self.assertEqual(2, len(context["diagnostics"]))
+                        for d in context["diagnostics"]:
+                            row = expected[d["variant_id"]]
+                            self.assertEqual(row, d["build_plan"])
+                            self.assertEqual(row["triplet"], d["triplet"])
+                            self.assertEqual(row["abi_hash"], d["abi_hash"])
+                            self.assertEqual(artifact(row)["name"], d["artifact"])
+                            self.assertEqual("error_logs/" + d["artifact"], d["log_directory"])
+                            self.assertEqual(["Build and test via native vcpkg"], d["failed_steps"])
+                            self.assertEqual("build", d["phase"])
+                            if target != "master":
+                                self.assertEqual("", d["build_plan"]["source_ref"])
+                                self.assertEqual("", d["build_plan"]["sha512"])
+                        self.assertEqual("master" if target == "master" else "9.1",
+                                         kwargs["env"]["FFBUILD_REPAIR_TARGET"])
+                        return mock.Mock(returncode=3)
+                    with mock.patch.object(repair, "_git", side_effect=fake_git), \
+                         mock.patch.object(repair.github, "download_artifact") as download, \
+                         mock.patch.object(repair.subprocess, "run", side_effect=inspect_context), \
+                         mock.patch.object(repair, "check_worktree") as check:
+                        repair.repair(report, target, Path("out"))
+                        self.assertEqual(2, download.call_count)
+                        check.assert_not_called()
+                        self.assertFalse(Path("out/repair.patch").exists())
+                finally:
+                    os.chdir(old)
+
+
 class DeclineContract(unittest.TestCase):
     def setUp(self):
         row = plan_row("master")
