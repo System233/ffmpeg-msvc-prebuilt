@@ -170,7 +170,7 @@ jobs:
           }) -Force
           $plan | ConvertTo-Json -Depth 100 | Set-Content ffbuild-plan.json -Encoding utf8
           "plan_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
-          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request' -or $env:GITHUB_REF -eq 'refs/heads/ci/debug-addon-e2e-20261126') {
             $plan = Get-Content ffbuild-plan.json -Raw | ConvertFrom-Json
             if ($plan.jobs.Count -ne 16) { throw 'Automatic PR must validate the complete single-version matrix' }
           }
@@ -426,7 +426,7 @@ jobs:
 
   publish:
     needs: [select, plan, build]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.publication_required == 'true' && ((needs.plan.outputs.matrix == '[]' && needs.build.result == 'skipped') || (needs.plan.outputs.matrix != '[]' && needs.build.result == 'success')) && needs.select.outputs.production == 'true' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish }}
+    if: ${{ github.ref == 'refs/heads/main' && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.publication_required == 'true' && ((needs.plan.outputs.matrix == '[]' && needs.build.result == 'skipped') || (needs.plan.outputs.matrix != '[]' && needs.build.result == 'success')) && needs.select.outputs.production == 'true' && !inputs.dry_run && !inputs.force && !inputs.skip_release && !inputs.skip_publish }}
     concurrency:
       group: data-branch
       cancel-in-progress: false

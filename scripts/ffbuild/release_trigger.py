@@ -172,6 +172,14 @@ def build_gate(payload: dict, environ: dict[str, str]) -> dict:
         base = commit_sha(pr["base"]["sha"])
         check_pr(requested, base, git("rev-parse", "HEAD"), Path.cwd(),
                  allow_new=selected[1] == "new")
+    elif (event_name == "push" and ref == "refs/heads/ci/debug-addon-e2e-20261126"
+          and requested == "8.1.3" and validation and skip
+          and environ.get("REQUESTED_FORCE", "").lower() == "true"
+          and environ.get("SKIP_RELEASE", "").lower() != "true"
+          and shards == "1"):
+        # Temporary CI-only branch entry. Never merge this change into main.
+        if payload.get("ref") != ref or commit_sha(git("rev-parse", "HEAD")) != commit_sha(environ.get("GITHUB_SHA")):
+            raise ValueError("E2E checkout differs from push")
     elif not production:
         raise ValueError("Unauthorized native build event")
     version = version_name(requested)
