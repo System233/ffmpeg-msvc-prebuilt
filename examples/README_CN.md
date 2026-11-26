@@ -15,6 +15,7 @@ ffmeta 是一个简单的命令行工具，用于查看媒体文件信息。
 该目录路径即为 **`FFMPEG_ROOT`**。
 
 > **注意**: Static 变体不包含头文件和库，无法用于开发。请使用 shared 变体。
+> Shared SDK 仅支持动态链接，导入库不是静态库；`pkg-config --static` 不提供静态 SDK。
 
 ## 工作原理
 

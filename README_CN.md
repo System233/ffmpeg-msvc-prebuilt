@@ -74,7 +74,7 @@ ffmpeg-master_x64-windows-static-gpl-261125.zip
 | 头文件 (`.h`)                         | ✅      | ✅       |
 | 导入库 (`.lib`) + DLL                 | ✅      | ✅       |
 | pkg-config (`.pc`) + CMake 模块       | ✅      | ✅       |
-| PDB 调试符号                          | ❌      | ✅       |
+| FFmpeg DLL 调试符号（PDB）            | ❌      | ✅       |
 | 调试库（`debug/lib/`）                | ❌      | ✅       |
 | 压缩包体积                            | 较小   | 较大    |
 
@@ -88,6 +88,7 @@ ffmpeg-master_x64-windows-static-gpl-261125.zip
 | 单个 exe，无需 DLL     | **Static Binary**                               |
 
 **Static** 变体仅包含可执行文件及许可证/SPDX 文件，没有头文件和导入库。
+Shared SDK 仅支持使用随包提供的导入库和 DLL 进行动态链接；不分发第三方静态库，`pkg-config --static` 不代表可获得静态 SDK。
 
 ---
 
@@ -105,8 +106,8 @@ ffmpeg-master_x64-windows-static-gpl-261125.zip
 
 ### Develop（仅 shared，在 Binary 基础上增加）
 
-- **PDB 符号文件**（所有 exe 和 DLL）
-- **调试库**（位于 `debug/lib/`）
+- **PDB 符号文件**：FFmpeg Release/Debug DLL 的符号，不提供 CLI EXE 的 PDB。
+- **调试库**：`debug/lib/` 中的导入库及 `debug/bin/` 中的调试 DLL。
 
 ### Static
 

@@ -634,6 +634,27 @@ endif()
 
 vcpkg_fixup_pkgconfig()
 
+# A shared FFmpeg DLL already links its private dependencies. Do not expose
+# their static archives through the public import-library SDK. Keep the
+# module graph (Requires/Requires.private), public Libs and Cflags intact.
+# The native static Port still needs its full private dependency metadata.
+# BEGIN shared pkg-config normalization
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+    file(GLOB shared_pc_files
+        "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/*.pc"
+        "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/*.pc"
+    )
+    foreach(pc_file IN LISTS shared_pc_files)
+        file(READ "${pc_file}" pc_content)
+        # FFmpeg emits Libs.private as one logical line. Fold continuations
+        # before clearing it, so no private flags can survive a wrapped line.
+        string(REPLACE "\\\n" " " pc_content "${pc_content}")
+        string(REGEX REPLACE "(^|\n)Libs[.]private:[^\n]*" "\\1Libs.private:" pc_content "${pc_content}")
+        file(WRITE "${pc_file}" "${pc_content}")
+    endforeach()
+endif()
+# END shared pkg-config normalization
+
 # ========== 23. Handle dependencies via pkgconfig ==========
 #
 # Per-module dependency resolution:

@@ -74,7 +74,7 @@ A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop
 | Headers (`.h`)                        | ✅       | ✅       |
 | Import libraries (`.lib`) + DLLs      | ✅       | ✅       |
 | pkg-config (`.pc`) + CMake module     | ✅       | ✅       |
-| PDB debug symbols                     | ❌       | ✅       |
+| FFmpeg DLL PDB debug symbols          | ❌       | ✅       |
 | Debug libraries (`debug/lib/`)        | ❌       | ✅       |
 | Archive size                          | Smaller | Larger  |
 
@@ -89,6 +89,8 @@ A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop
 
 **Static** variants contain executables and lightweight license/SPDX files,
 but no headers or imported/static libraries.
+The Shared SDK is for dynamic linking with the provided import libraries and DLLs only.
+Private third-party static libraries are not distributed; `pkg-config --static` does not make this a static SDK.
 
 ---
 
@@ -108,8 +110,8 @@ but no headers or imported/static libraries.
 
 ### Develop (shared only, adds to binary)
 
-- **PDB symbol files** for all executables and DLLs
-- **Debug build libraries** under `debug/lib/`
+- **PDB symbol files** for FFmpeg release/debug DLLs; CLI executable PDBs are not provided.
+- **Debug build libraries** under `debug/lib/` and debug DLLs under `debug/bin/`.
 
 ### Static
 
