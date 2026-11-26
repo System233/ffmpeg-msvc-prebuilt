@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 9a5fb8ad3d3d7c81c5fb44a4387abcc7ecad9347
+          ref: a35ee4fb15686e49b0117ebc7637b1834adbd019
           persist-credentials: false
       - uses: ./.github/actions/setup-python
         with:
@@ -29,72 +29,42 @@ jobs:
       - run: python -m unittest discover -s tests
   smoke:
     needs: validate
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        include:
-          - {yaml: '4.4.8', shard_index: 2}
-          - {yaml: '6.1.6', shard_index: 3}
-          - {yaml: '8.1.3', shard_index: 4}
-          - {yaml: 'master', shard_index: 5}
-          - {yaml: '3.4.14', shard_index: 15}
-          - {yaml: '5.1.10', shard_index: 9}
     uses: ./.github/workflows/build-release.yml
     permissions:
       contents: read
       actions: read
     with:
-      yaml: ${{ matrix.yaml }}
+      yaml: master
       dry_run: true
       skip_publish: true
       skip_release: false
       force: true
-      shard_count: 16
-      shard_index: ${{ matrix.shard_index }}
+      shard_count: 1
+      shard_index: 0
 
   report:
-    needs: smoke
-    if: ${{ needs.smoke.result == 'success' }}
+    needs: [validate, smoke]
+    if: ${{ always() && !cancelled() && needs.validate.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@v6
         with:
-          pattern: ffbuild-layout-*-a${{ github.run_attempt }}
-          path: layouts
-      - name: Consolidate actual ZIP directory structures
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path('layouts')
-          reports = sorted(root.glob('*/layout.json'))
-          assert len(reports) == 6, reports
-          rows = [json.loads(p.read_text(encoding='utf-8')) for p in reports]
-          assert len({r['variant_id'] for r in rows}) == 6
-          assert sum(len(r['assets']) for r in rows) == 10
-          out = Path('directory-structures')
-          out.mkdir()
-          lines = ['# Verified ZIP directory structures', '',
-                   '| Version | Triplet | Linkage | License | ZIP | Files | Bytes |',
-                   '|---|---|---|---|---|---:|---:|']
-          for row in rows:
-              for a in row['assets']:
-                  lines.append(f"| {row['version']} | {row['triplet']} | {row['linkage']} | {row['license']} | {a['file']} | {a['entries']} | {a['size']:,} |")
-          summary = '\n'.join(lines) + '\n'
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
-              f.write(summary)
-          content = summary + '\n' + '\n'.join((p.parent/'directory-tree.md').read_text(encoding='utf-8') for p in reports)
-          (out/'directory-structures.md').write_text(content, encoding='utf-8')
-          (out/'directory-structures.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
-          PY
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Analyze actual Master matrix without repair delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATRIX_RESULT: ${{ needs.smoke.result }}
+        run: PYTHONPATH=. python tests/ci_master_behavior.py
       - uses: actions/upload-artifact@v6
+        if: ${{ always() && !cancelled() }}
         with:
-          name: ffbuild-directory-structures-a${{ github.run_attempt }}
-          path: directory-structures/
+          name: ffbuild-master-behavior-a${{ github.run_attempt }}
+          path: master-behavior/
           retention-days: 30
           if-no-files-found: error

@@ -180,19 +180,10 @@ jobs:
             sha512 = '${{ needs.select.outputs.sha512 }}'
           }) -Force
           if ($env:GITHUB_REF -eq 'refs/heads/ci/e2e-final-20261125') {
-            $slots = @{
-              '4.4.8' = 'arm-windows/static/lgpl'
-              '6.1.6' = 'arm-windows/shared/lgpl'
-              '8.1.3' = 'arm64-windows/static/gpl'
-              'master' = 'arm64-windows/shared/gpl'
-              '3.4.14' = 'x86-windows/shared/lgpl'
-              '5.1.10' = 'x64-windows/shared/gpl'
-            }
-            if ($plan.jobs.Count -ne 1 -or $plan.reuse.Count -ne 0) { throw 'Exactly one fresh sampled variant required' }
-            $job = $plan.jobs[0]
-            $slot = "$($job.triplet)/$($job.linkage)/$($job.license)"
-            if ($slot -ne $slots[$job.yaml]) { throw "Unexpected sample: $($job.yaml) $slot" }
-            Write-Host "E2E sample: $($job.yaml) $slot"
+            if ($plan.jobs.Count -ne 16 -or $plan.reuse.Count -ne 0) { throw 'Complete fresh Master matrix required' }
+            if (@($plan.jobs | Where-Object yaml -ne 'master').Count -ne 0) { throw 'Unexpected stable version' }
+            if (@($plan.jobs | ForEach-Object { "$($_.triplet)/$($_.linkage)/$($_.license)" } | Sort-Object -Unique).Count -ne 16) { throw 'Expected 16 distinct Master slots' }
+            Write-Host "E2E: complete 16-variant Master matrix"
           }
           $plan | ConvertTo-Json -Depth 100 | Set-Content ffbuild-plan.json -Encoding utf8
           "plan_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
