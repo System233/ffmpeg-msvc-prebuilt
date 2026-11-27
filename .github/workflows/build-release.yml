@@ -97,9 +97,9 @@ jobs:
         with:
           ref: data
           path: data
-      - name: Require migrated Release catalog for production
+      - name: Validate release catalog for production
         if: ${{ needs.select.outputs.production == 'true' }}
-        run: python -c "from pathlib import Path; from ffbuild.catalog import manifest; p=Path('data'); assert (p/'index.json').is_file(), 'Data catalog migration required'; manifest(p)"
+        run: python -c "from pathlib import Path; from ffbuild.catalog import validate_catalog; validate_catalog(Path('data'))"
       - name: Generate all version-qualified FFmpeg ports once
         shell: pwsh
         env:

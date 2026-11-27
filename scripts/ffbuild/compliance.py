@@ -21,13 +21,13 @@ from .versions import ROOT, GENERATED_PORTS, config
 from .spec import resolve_features
 from .port import ffmpeg_port_name
 from .license_policy import POLICY_VERSION, scoped_compatibility, same_expression
+from .identity import PACKAGE_FORMAT_VERSION
 
 _NAME = re.compile(r"^[a-z0-9][a-z0-9+.-]*$")
 # A publication format identifies both the public layout and the qualification
 # gate that accepted its bytes. Advance the format when the policy changes;
 # Data needs no separate compliance report or policy metadata for reuse.
-_FORMAT = 4
-if POLICY_VERSION != 4:
+if POLICY_VERSION != 1:
     raise RuntimeError("Update the publication format when changing the license policy")
 LICENSE_DECLARATIONS = ROOT / "licenses"
 
@@ -773,9 +773,6 @@ def distribution_evidence(read: Callable[[str], bytes], provenance: dict) -> dic
     spdx["documentNamespace"] = "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/" + _sha256(
         _json({"variant": provenance["variant_id"], "date": provenance["release_date"], "document": spdx}))
     return {PUBLIC_COPYRIGHT: b"".join(sections), PUBLIC_SPDX: _json(spdx)}
-
-
-PACKAGE_FORMAT_VERSION = _FORMAT
 
 
 def find_ffmpeg_source(buildtrees: Path) -> Path:

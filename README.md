@@ -110,7 +110,7 @@ Private third-party static libraries are not distributed; `pkg-config --static` 
 
 ### Debug Add-on (shared only, requires Binary)
 
-New format v4 archives are differential. Historical Develop archives remain standalone.
+New format v2 archives are differential. Historical Develop archives remain standalone.
 
 - **PDB symbol files** for FFmpeg release/debug DLLs; CLI executable PDBs are included only when available and matched.
 - **Debug build libraries** under `debug/lib/` and debug DLLs under `debug/bin/`.

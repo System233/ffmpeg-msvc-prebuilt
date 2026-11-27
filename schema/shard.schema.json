@@ -4,7 +4,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "releases"
+    "releases",
+    "lts"
   ],
   "properties": {
     "version": {
@@ -21,6 +22,10 @@
       "items": {
         "$ref": "#/$defs/release"
       }
+    },
+    "lts": {
+      "type": "boolean",
+      "description": "Explicit long-term-support release-family classification. Not an active support guarantee."
     }
   },
   "oneOf": [
@@ -75,6 +80,9 @@
               "version"
             ]
           }
+        },
+        "lts": {
+          "const": false
         }
       }
     }
@@ -85,7 +93,8 @@
       "required": [
         "file",
         "size",
-        "sha256"
+        "sha256",
+        "url"
       ],
       "additionalProperties": false,
       "properties": {
@@ -100,6 +109,12 @@
         "sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/\\s?#@]+/[^\\s#]+$",
+          "description": "Absolute public download URL for this release asset."
         }
       }
     },
@@ -115,8 +130,7 @@
           "pattern": "^[0-9a-f]{64}$"
         },
         "format": {
-          "type": "integer",
-          "minimum": 2
+          "const": 2
         },
         "date": {
           "type": "string",
@@ -130,6 +144,10 @@
         },
         "debug": {
           "$ref": "#/$defs/asset"
+        },
+        "note": {
+          "const": "legacy-lgpl-licensing",
+          "description": "Historical LGPL licensing notice; localized explanation and update-history link."
         }
       },
       "dependentRequired": {
@@ -160,12 +178,36 @@
           },
           "then": {
             "required": [
+              "abi",
               "format"
-            ],
-            "properties": {
-              "format": {
-                "minimum": 4
-              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "abi"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "develop"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "note"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "abi"
+              ]
             }
           }
         }

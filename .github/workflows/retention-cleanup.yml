@@ -74,4 +74,8 @@ jobs:
   trigger-pages:
     needs: cleanup
     if: success()
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: ./.github/workflows/pages.yml

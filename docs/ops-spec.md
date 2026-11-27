@@ -3,7 +3,7 @@
 Current build and operations contracts are maintained in:
 
 - [Build tools and release operations](build-tools.md): native ABI planning,
-  dependency caches, event gates, packaging, Data migration, publication,
+  dependency caches, event gates, packaging, publication,
   retention and recovery.
 - [Auto-Heal lifecycle](ci-autoheal.md): failure classification, version scope,
   repair limits, PR state and verification.

@@ -178,7 +178,7 @@ def package_job(package: Path, job: dict, output: Path,
     if identifier != job["id"]:
         raise ValueError("Build Plan variant identity mismatch")
     if installed_root is None or source_tree is None:
-        raise ValueError("Package-format v4 requires --installed-root and --source-tree "
+        raise ValueError("Package-format v2 requires --installed-root and --source-tree "
                          "for license and upstream COPYING evidence")
     copyright_file = package / "share" / port / "copyright"
     public, evidence, evidence_summary = compliance_files(

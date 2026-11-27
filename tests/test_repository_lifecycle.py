@@ -44,7 +44,7 @@ def records(rows, tag=None):
     result = []
     for job in rows:
         r = dict(job, variant_id=job["id"], channel="master" if job["yaml"]=="master" else "release",
-                 package_format=4, package_spec=job["package"], assets={})
+                 package_format=2, package_spec=job["package"], assets={})
         if job.get("source_ref"):
             r["source_commit"] = job["source_ref"]
         for k in (("binary","debug") if r["linkage"]=="shared" else ("binary",)):
@@ -69,7 +69,7 @@ class CatalogLifecycle(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
         (self.root/".git").mkdir()
-        catalog.write_json(self.root/"index.json",{"schema":2,"releases":[],"master":[]})
+        catalog.write_json(self.root/"index.json",{"schema":1,"releases":[],"master":[]})
 
     def test_same_day_R10_is_latest_and_no_republication(self):
         first=matrix(salt="1")
@@ -125,7 +125,7 @@ class CatalogLifecycle(unittest.TestCase):
         digest=hashlib.sha256(json.dumps(batch,sort_keys=True,separators=(",",":")).encode()).hexdigest()
         annotation={"repository_commit":SHA,"batch":digest,"release":batch}
         tag="ffmpeg-8.1.3-261125R2"
-        assets={a["file"]:{"size":a["size"],"digest":a["digest"]} for r in rows for a in r["assets"].values()}
+        assets={a["file"]:{"size":a["size"],"digest":a["digest"],"browser_download_url":catalog.github_asset_url(tag,a["file"],repository=REPO)} for r in rows for a in r["assets"].values()}
         def fake_git(*args):
             return json.dumps(annotation) if args[0]=="for-each-ref" else SHA
         with patch.dict(os.environ,{"GITHUB_REF":"refs/heads/main","GITHUB_REPOSITORY":REPO}),patch("ffbuild.release_trigger.git",side_effect=fake_git),patch("ffbuild.publication.subprocess.run"),patch.object(publication,"_release_api",return_value={"id":1,"tag_name":tag,"draft":False,"prerelease":False}),patch.object(publication,"_release_asset_list",return_value=assets),patch.object(publication,"_push_data") as push,patch.object(publication,"_release_assets") as publish:
@@ -136,11 +136,17 @@ class CatalogLifecycle(unittest.TestCase):
                 publication.recover_index(tag,self.root)
             push.assert_not_called()
             assets[key]["digest"]=saved
+            url=assets[key].pop("browser_download_url")
+            with self.assertRaisesRegex(ValueError,"download URL"):
+                publication.recover_index(tag,self.root)
+            push.assert_not_called()
+            assets[key]["browser_download_url"]=url
             publication.recover_index(tag,self.root)
             push.assert_called_once()
             publish.assert_not_called()
         recovered=catalog.load_shard(self.root,"releases","8.1.3")["releases"][0]
-        self.assertEqual(dict(batch,tag=tag),recovered)
+        self.assertEqual(dict(batch,tag=tag),catalog.without_download_urls(recovered))
+        self.assertEqual({a["browser_download_url"] for a in assets.values()}, {a["url"] for a in catalog.release_assets(recovered)})
 
 
 class GateLifecycle(unittest.TestCase):

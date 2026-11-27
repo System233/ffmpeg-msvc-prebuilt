@@ -7,12 +7,14 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from copy import deepcopy
+from urllib.parse import quote, urlsplit
 
-import yaml
 
-from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds
+from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds, is_lts, PACKAGE_FORMAT_VERSION
 
-SCHEMA = 2
+SCHEMA = 1
+LEGACY_LGPL_NOTE = "legacy-lgpl-licensing"
 VERSION = re.compile(r"\d+\.\d+(?:\.\d+)?")
 SLOT = re.compile(r"(x64|x86|arm|arm64)-windows-(static|shared)-(lgpl|gpl|nonfree)")
 HASH = re.compile(r"[0-9a-f]{64}")
@@ -62,7 +64,9 @@ def manifest(root: Path) -> dict:
     path = root / "index.json"
     if not path.is_file():
         if any(root.glob("*.x/*/version.yaml")) or any(root.glob("*.x/*/variants/*.yaml")):
-            raise ValueError("Legacy Data requires explicit catalog migration")
+            raise ValueError("Unsupported catalog layout: expected index.json")
+        if any(root.glob("releases/*.json")) or any(root.glob("master/*.json")):
+            raise ValueError("Missing release catalog index.json with existing shards")
         return {"schema": SCHEMA, "releases": [], "master": []}
     result = read_json(path)
     if (set(result) != {"schema", "releases", "master"} or result["schema"] != SCHEMA
@@ -73,6 +77,33 @@ def manifest(root: Path) -> dict:
             or len(set(result["master"])) != len(result["master"])):
         raise ValueError("Invalid catalog manifest")
     return result
+
+
+def require_manifest(root: Path) -> dict:
+    """A production catalog must already exist; never interpret missing data as empty."""
+    if not (root / "index.json").is_file():
+        raise ValueError("Missing release catalog index.json")
+    return manifest(root)
+
+
+def validate_catalog(root: Path) -> dict:
+    """Validate every indexed shard and globally unique release tag."""
+    m = require_manifest(root)
+    if any(root.glob("*.x/*/version.yaml")) or any(root.glob("*.x/*/variants/*.yaml")):
+        raise ValueError("Unexpected legacy YAML alongside release catalog")
+    tags = set()
+    for kind in ("releases", "master"):
+        for key in m[kind]:
+            if not shard_path(root, kind, key).is_file():
+                raise ValueError("Catalog manifest references missing shard")
+            shard = load_shard(root, kind, key)
+            if not shard["releases"]:
+                raise ValueError("Empty indexed catalog shard")
+            for r in shard["releases"]:
+                if r["tag"] in tags:
+                    raise ValueError("Duplicate catalog release tag")
+                tags.add(r["tag"])
+    return m
 
 
 def shard_path(root: Path, kind: str, key: str | int) -> Path:
@@ -104,6 +135,48 @@ def _asset(value: dict) -> dict:
     return {"file": name, "size": size, "sha256": digest[7:]}
 
 
+def validate_asset_url(url: str) -> None:
+    if (not isinstance(url, str) or not re.fullmatch(r"https://[^/\s?#@]+/[^\s#]+", url)):
+        raise ValueError("Invalid asset download URL")
+    parsed = urlsplit(url)
+    if not parsed.hostname or parsed.username or parsed.password or "\\" in url:
+        raise ValueError("Invalid asset download URL")
+
+
+def github_asset_url(tag: str, file: str, *, repository: str = "System233/ffmpeg-msvc-prebuilt") -> str:
+    """Canonical historical URL, also used for offline catalog generation."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Invalid download repository")
+    return f"https://github.com/{repository}/releases/download/{quote(tag, safe='')}/{quote(file, safe='')}"
+
+
+def release_assets(release: dict):
+    for variant in release["variants"].values():
+        for kind in ASSET_KINDS:
+            if kind in variant:
+                yield variant[kind]
+
+
+def with_download_urls(release: dict, urls: dict[str, str]) -> dict:
+    """Attach verified publication locations without changing build identity."""
+    result = deepcopy(release)
+    assets = list(release_assets(result))
+    if set(urls) != {a["file"] for a in assets}:
+        raise ValueError("Download URL set differs from release assets")
+    for asset in assets:
+        url = urls[asset["file"]]
+        validate_asset_url(url)
+        asset["url"] = url
+    return result
+
+
+def without_download_urls(release: dict) -> dict:
+    result = deepcopy(release)
+    for asset in release_assets(result):
+        asset.pop("url", None)
+    return result
+
+
 def _variant(record: dict, release_date: str, *, native: bool) -> dict:
     result = {}
     if native:
@@ -111,7 +184,7 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         if not isinstance(abi, str) or not HASH.fullmatch(abi):
             raise ValueError("Invalid catalog ABI")
         fmt = record["package_format"]
-        if type(fmt) is not int or fmt < 2:
+        if type(fmt) is not int or fmt != PACKAGE_FORMAT_VERSION:
             raise ValueError("Invalid catalog archive format")
         result.update(abi=abi, format=fmt)
         original = _date(record["release_date"])
@@ -125,8 +198,13 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         result[kind] = _asset(asset)
     if "binary" not in result:
         raise ValueError("Missing binary asset")
-    if native and set(record["assets"]) != expected_asset_kinds(record["linkage"], record["package_format"]):
+    kinds = set(record["assets"])
+    if native and kinds != expected_asset_kinds(record["linkage"], record["package_format"]):
         raise ValueError("Incomplete native asset set")
+    if not native and ("debug" in kinds or (record["linkage"] == "static" and kinds != {"binary"})):
+        raise ValueError("Invalid historical asset set")
+    if not native and record["license"] == "lgpl":
+        result["note"] = LEGACY_LGPL_NOTE
     return result
 
 
@@ -170,10 +248,13 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
     path = shard_path(root, kind, key)
     identity = {"version": key} if kind == "releases" else {"year": key}
     if not path.is_file():
-        return {**identity, "releases": []}
+        return {**identity, "lts": kind == "releases" and is_lts(str(key)), "releases": []}
     result = read_json(path)
-    if set(result) != {*identity, "releases"} or any(result.get(k) != v for k, v in identity.items()):
+    required = {*identity, "releases", "lts"}
+    if set(result) != required or any(result.get(k) != v for k, v in identity.items()):
         raise ValueError("Catalog shard identity differs")
+    if type(result["lts"]) is not bool or (kind == "master" and result["lts"]):
+        raise ValueError("Invalid catalog LTS classification")
     if not isinstance(result["releases"], list):
         raise ValueError("Invalid release list")
     tags = set()
@@ -190,10 +271,10 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
         if "commit" in r and not re.fullmatch(r"[0-9a-f]{40}", r["commit"]):
             raise ValueError("Invalid master commit")
         for slot, v in r["variants"].items():
-            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", *ASSET_KINDS}:
+            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", "note", *ASSET_KINDS}:
                 raise ValueError("Invalid catalog variant")
             if ("abi" in v) != ("format" in v) or ("abi" in v and (
-                    not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] < 2)):
+                    not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] != PACKAGE_FORMAT_VERSION)):
                 raise ValueError("Invalid catalog ABI or format")
             if "abi" in v:
                 expected_tag = "ffmpeg-" + ("master" if kind == "master" else key) + "-" + date_suffix(r["date"])
@@ -201,21 +282,24 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
                     raise ValueError("Invalid native release tag")
                 if kind == "master" and not re.fullmatch(r"[0-9a-f]{40}", r.get("commit", "")):
                     raise ValueError("Native master requires full commit")
-            if "date" in v and _date(v["date"]) > r["date"]:
+            if "date" in v and ("abi" not in v or _date(v["date"]) > r["date"]):
                 raise ValueError("Invalid original asset date")
+            if "note" in v and (v["note"] != LEGACY_LGPL_NOTE or "abi" in v or not slot.endswith("-lgpl")):
+                raise ValueError("Invalid historical LGPL notice")
             if "binary" not in v:
                 raise ValueError("Missing binary asset")
             kinds = set(v).intersection(ASSET_KINDS)
             linkage = slot.split("-")[2]
-            if "debug" in kinds and ("format" not in v or v["format"] < 4):
-                raise ValueError("Debug add-on requires format 4")
+            if "debug" in kinds and "abi" not in v:
+                raise ValueError("Debug add-on requires native package metadata")
             if "abi" in v and kinds != expected_asset_kinds(linkage, v["format"]):
                 raise ValueError("Incomplete native asset set")
             if linkage == "static" and kinds != {"binary"}:
                 raise ValueError("Static variant has unexpected add-on")
             for asset in (v[k] for k in ASSET_KINDS if k in v):
-                if set(asset) != {"file", "size", "sha256"}:
+                if set(asset) != {"file", "size", "sha256", "url"}:
                     raise ValueError("Invalid catalog asset fields")
+                validate_asset_url(asset["url"])
                 _asset({"file": asset["file"], "size": asset["size"], "digest": "sha256:" + asset["sha256"]})
     return result
 
@@ -248,20 +332,26 @@ def expanded(kind: str, key: str | int, release: dict) -> list[dict]:
 def preflight(root: Path, records: list[dict], *, require_complete: bool = True):
     m = manifest(root)
     if any(root.glob("*.x/*/version.yaml")) or any(root.glob("*.x/*/variants/*.yaml")):
-        raise ValueError("Remove legacy YAML in the explicit catalog cutover")
+        raise ValueError("Unexpected legacy YAML alongside release catalog")
     kind, key, release = release_from_records(records, require_complete=require_complete)
     path = shard_path(root, kind, key)
     if key in m[kind] and not path.is_file():
         raise ValueError("Catalog manifest references missing shard")
     shard = load_shard(root, kind, key)
     old = next((r for r in shard["releases"] if r["tag"] == release["tag"]), None)
-    if old is not None and old != release:
+    if old is not None and without_download_urls(old) != release:
         raise ValueError(f"Dated release already contains a different build: {release['tag']}")
     return m, kind, key, shard, release, old
 
 
-def register_release(root: Path, records: list[dict]) -> Path:
+def register_release(root: Path, records: list[dict], *, urls: dict[str, str] | None = None) -> Path:
     m, kind, key, shard, release, old = preflight(root, records)
+    if urls is None:
+        # Offline generation only; verified publication and recovery supply API URLs.
+        urls = {a["file"]: github_asset_url(release["tag"], a["file"]) for a in release_assets(release)}
+    release = with_download_urls(release, urls)
+    if old is not None and old != release:
+        raise ValueError("Published download URLs differ from catalog")
     if old is None:
         shard["releases"].append(release)
         shard["releases"].sort(key=lambda r: release_order(r["date"], r["tag"]), reverse=True)
@@ -274,99 +364,29 @@ def register_release(root: Path, records: list[dict]) -> Path:
     return path
 
 
-def migration_plan(source: Path) -> tuple[dict, dict, list[Path]]:
-    """Read both v1 copies; reject discrepancies instead of losing assets."""
-    if not source.is_dir():
-        raise FileNotFoundError("Legacy Data source does not exist")
-    if (source / "index.json").exists():
-        raise ValueError("Source is already a catalog or contains mixed index formats")
-    shards = {}
-    manifest_data = {"schema": SCHEMA, "releases": [], "master": []}
-    consumed = []
-    tags = set()
-    for path in sorted(source.glob("*.x/*/version.yaml")):
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        tag = data["release_tag"]
-        if not TAG.fullmatch(tag) or tag in tags:
-            raise ValueError("Duplicate/invalid legacy release tag")
-        tags.add(tag)
-        master = data.get("channel") == "master" or bool(re.search(r"-\d+-g[0-9a-f]+$", data.get("ffmpeg_ref", "")))
-        when = data.get("release_date")
-        if not when:
-            when = str(data["created"])[:10]
-        when = _date(str(when))
-        kind, key = ("master", int(when[:4])) if master else ("releases", str(data["version"]))
-        shard_path(source, kind, key)  # validate key
-        release = {"tag": tag, "date": when, "variants": {}}
-        if master:
-            release["version"] = str(data["version"])
-            if data.get("source_commit"):
-                release["commit"] = data["source_commit"]
-        if data.get("ffmpeg_ref") and master and not release.get("commit"):
-            release["ref"] = data["ffmpeg_ref"]
-        files = sorted((path.parent / "variants").glob("*.yaml"))
-        actual = {}
-        for file in files:
-            v = yaml.safe_load(file.read_text(encoding="utf-8"))
-            slot = _slot(v)
-            if slot in actual:
-                raise ValueError("Duplicate legacy variant slot")
-            actual[slot] = v
-        embedded = {}
-        for v in data["variants"]:
-            slot = _slot(v)
-            if slot in embedded:
-                raise ValueError("Duplicate embedded variant slot")
-            embedded[slot] = v
-        if set(actual) != set(embedded) or not actual:
-            raise ValueError(f"Legacy variant sets differ: {tag}")
-        for slot, v in actual.items():
-            def project(row):
-                native = bool(row.get("abi_hash"))
-                if native and not (row.get("release_date") and row.get("package_format")):
-                    raise ValueError("Legacy native record lacks dated archive identity")
-                return _variant(row, when, native=native)
-            value = project(v)
-            if value != project(embedded[slot]):
-                raise ValueError(f"Legacy asset copies differ: {tag}/{slot}")
-            release["variants"][slot] = value
-        identity = (kind, key)
-        if identity not in shards:
-            shards[identity] = {("version" if kind == "releases" else "year"): key, "releases": []}
-            manifest_data[kind].append(key)
-        shards[identity]["releases"].append(release)
-        consumed.extend([path, *files])
-    if not consumed:
-        raise ValueError("No legacy Release index records")
-    if set(source.glob("*.x/*/variants/*.yaml")) != {p for p in consumed if p.parent.name == "variants"}:
-        raise ValueError("Orphan legacy variant records")
-    manifest_data["releases"].sort(key=lambda v: tuple(map(int, v.split("."))), reverse=True)
-    manifest_data["master"].sort(reverse=True)
-    for s in shards.values():
-        s["releases"].sort(key=lambda r: release_order(r["date"], r["tag"]), reverse=True)
-    return manifest_data, shards, consumed
-
-
-def migrate(source: Path, destination: Path) -> tuple[int, int, int]:
-    """Explicit migration; destination must be empty. Source is never modified."""
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError("Migration destination must be empty")
-    if source.resolve() == destination.resolve():
-        raise ValueError("Use a separate destination for migration")
-    m, shards, _ = migration_plan(source)
-    for (kind, key), shard in shards.items():
-        write_json(shard_path(destination, kind, key), shard)
-        load_shard(destination, kind, key)
-    write_json(destination / "index.json", m)
-    releases = [r for s in shards.values() for r in s["releases"]]
-    variants = [v for r in releases for v in r["variants"].values()]
-    return len(releases), len(variants), sum(k in v for v in variants for k in ASSET_KINDS)
+def refresh_lts(root: Path) -> int:
+    """Refresh explicit LTS classifications. Validate all shards before writing."""
+    m = manifest(root)
+    changes = []
+    for kind in ("releases", "master"):
+        for key in m[kind]:
+            path = shard_path(root, kind, key)
+            if not path.is_file():
+                raise ValueError("Catalog manifest references missing shard")
+            shard = load_shard(root, kind, key)
+            lts = kind == "releases" and is_lts(str(key))
+            if shard.get("lts") is not lts:
+                shard["lts"] = lts
+                changes.append((path, shard))
+    for path, shard in changes:
+        write_json(path, shard)
+    return len(changes)
 
 
 def stage_index(root: Path) -> None:
     """Stage only index paths, including tracked deletions and first publication."""
     if not (root / "index.json").is_file():
-        raise ValueError("Migrate Data before staging; legacy YAML is read-only")
+        raise ValueError("Missing release catalog index.json")
     manifest(root)
     pattern = re.compile(r"(?:index\.json|releases/\d+\.\d+(?:\.\d+)?\.json|master/\d{4}\.json)")
     def git_paths(*args):

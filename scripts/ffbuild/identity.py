@@ -42,13 +42,20 @@ def release_tag(version: str, revision: int = 0) -> str:
     return "ffmpeg-" + version_dir(version, revision)
 
 
+# Explicit release-family classification; not an inference from major/minor parity.
+# Upstream LTS discussion: https://ffmpeg.org/pipermail/ffmpeg-devel/2023-January/306025.html
+# 4.4 and 9.1 are included by project catalog policy; this does not assert
+# an upstream commitment to a specific maintenance window.
+LTS_FAMILIES = frozenset({"4.4", "5.1", "7.1", "9.1"})
+
+
 def is_lts(version: str) -> bool:
-    """LTS releases: 4.4 and odd-minor .1 families; snapshots are never LTS."""
-    clean = re.sub(r"-h[0-9a-f]{12,64}$", "", normalize_version(version))
-    if not re.fullmatch(r"\d+\.\d+(?:\.\d+)?", clean):
+    """Classify a tagged release family, never a development snapshot."""
+    if not re.fullmatch(r"n?\d+\.\d+(?:\.\d+)?", version):
         return False
-    major, minor = map(int, clean.split(".")[:2])
-    return (major, minor) == (4, 4) or minor == 1
+    family = ".".join(version.removeprefix("n").split(".")[:2])
+    return family in LTS_FAMILIES
+
 
 def utc_release_date() -> str:
     return datetime.now(timezone.utc).date().isoformat()
@@ -66,15 +73,17 @@ def public_version(record: dict) -> str:
 
 
 ASSET_KINDS = ("binary", "develop", "debug")
-DIFFERENTIAL_FORMAT = 4
+PACKAGE_FORMAT_VERSION = 2
 
 
 def expected_asset_kinds(linkage: str, package_format: int) -> set[str]:
+    if type(package_format) is not int or package_format != PACKAGE_FORMAT_VERSION:
+        raise ValueError("Unsupported native package format")
     if linkage == "static":
         return {"binary"}
     if linkage != "shared":
         raise ValueError("Invalid asset linkage")
-    return {"binary", "debug" if package_format >= DIFFERENTIAL_FORMAT else "develop"}
+    return {"binary", "debug"}
 
 
 def archive_name(record: dict, *, kind: str = "binary") -> str:

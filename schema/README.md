@@ -1,37 +1,18 @@
-# Schema
+# Metadata contracts
 
-This directory contains JSON Schema definitions describing the structure of YAML
-data files used in the build & release pipeline.
-
-## Versioning
-
-Each subdirectory (`v1/`, `v2/`, …) corresponds to a `schema_version` value in
-the release YAML files under `data/`.
-
-| `schema_version` | Directory | Description |
+| Contract | Version | Purpose |
 |---|---|---|
-| 1 | `v1/` | Initial structured schema — `assets.binary` nested format with optional `assets.develop` |
+| Release catalog JSON | 1 | Root discovery index and one authoritative shard per stable version or Master year. |
+| Native package format | 2 | First native ABI-qualified release format: Static CLI, Shared Binary plus differential Debug. |
 
-## Files
+The historical archives are immutable and have no native package format or ABI. No intermediate native package formats were released. A native variant requires the full ABI and format 2; it must contain Binary plus Debug for Shared, Binary only for Static. Legacy Develop is recognized by its asset key, not an invented format number.
 
-| Schema file | Validates | Source / Consumer |
-|---|---|---|
-| `variant.schema.json` | `.var.yaml` | Produced by `package_release.py`, consumed by `import_yaml.py` |
-| `release.schema.json` | `data/**/*.yaml` | Produced by `import_yaml.py`, consumed by `web/scripts/generate-content.ts` |
+The catalog schema changes only for incompatible storage changes. Compatible additions do not require another version. Package format identifies the archive layout and qualification gate; bump only when a deployed format must no longer be reused. The license policy has its own independently tracked revision in internal audit evidence.
 
-## When to bump `schema_version`
+## Release catalog
 
-Increment `schema_version` when making **backward-incompatible** structural
-changes to the release YAML files (adding optional fields does not require a
-bump). Create a new subdirectory `v<N>/` for the new version.
+`index.schema.json` validates root `index.json`; `shard.schema.json` validates `releases/<version>.json` and `master/<year>.json`. Root contains only shard discovery keys. A release and its asset records exist in one shard only. Stable shards contain explicit boolean `lts` (project release-family classification, not a statement of official upstream support duration or current support); snapshot shards use false. The project classifies 4.4, 5.1, 7.1 and 9.1 as LTS families; 4.4 and 9.1 are catalog policy choices, not assertions of a formal upstream designation. Run `python -m ffbuild refresh-lts --data-dir data` to refresh classifications without changing ZIPs, digests, tags or ABIs.
 
+Optional variant `note: "legacy-lgpl-licensing"` identifies the historical LGPL licensing notice. It applies only to historical LGPL variants, never on native ABI-qualified or GPL variants. The website resolves the note to localized text and the corresponding update-history section; it does not affect archive identity, digest or ABI reuse.
 
-## Release catalog v2
-
-`v2/index.schema.json` validates the root `index.json`; `v2/shard.schema.json`
-validates `releases/<version>.json` and `master/<year>.json`.
-The root contains only shard discovery keys. Each release and its asset records
-exist in one shard only. Legacy v1 YAML remains readable for migration; v2 is
-an explicit format cutover, not an additional index alongside v1.
-
-Package format 4 adds the differential `debug` asset to catalog schema v2. Historical `develop` assets remain unchanged and standalone.
+Every asset contains a required absolute HTTPS `url` for direct download. Publication and recovery obtain it from GitHub's public Release asset API (`browser_download_url`) after the final release tag is resolved. URL is delivery metadata, not part of the immutable batch hash or ABI. Consumers use it directly without composing a repository URL or tag.

@@ -52,18 +52,21 @@ class CatalogCompatibilityTests(unittest.TestCase):
             root = Path(tmp)
             row = {"version": "9.1", "triplet": "x64-windows", "linkage": "shared",
                    "license": "lgpl", "channel": "release", "release_date": "2026-11-25",
-                   "abi_hash": "a"*64, "expected_variants": 1, "package_format": 3}
+                   "expected_variants": 1}
             def assets(record, kind):
                 return {k: {"file": archive_name(record, kind=k), "size": 1,
                             "digest": "sha256:" + "b"*64}
                         for k in ("binary", kind)}
             row["assets"] = assets(row, "develop")
-            catalog.register_release(root, [row])
-            old = catalog.load_shard(root, "releases", "9.1")["releases"][0]
+            old = {"tag": "ffmpeg-9.1-r1", "date": "2026-11-25",
+                   "variants": {"x64-windows-shared-lgpl": catalog._variant(row, "2026-11-25", native=False)}}
+            old = catalog.with_download_urls(old, {a["file"]: catalog.github_asset_url(old["tag"], a["file"]) for a in catalog.release_assets(old)})
+            catalog.write_json(root / "index.json", {"schema": 1, "releases": ["9.1"], "master": []})
+            catalog.write_json(root / "releases/9.1.json", {"version": "9.1", "lts": False, "releases": [old]})
             self.assertIn("develop", old["variants"]["x64-windows-shared-lgpl"])
             self.assertIsNone(PublishedState(directory=root).find_abi(
                 "9.1", "x64-windows", "a"*64))
-            fresh = dict(row, package_format=4, release_date="2026-11-26")
+            fresh = dict(row, package_format=2, abi_hash="a"*64, release_date="2026-11-26")
             fresh["assets"] = assets(fresh, "debug")
             catalog.register_release(root, [fresh])
             rows = catalog.load_shard(root, "releases", "9.1")["releases"]

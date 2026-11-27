@@ -106,7 +106,7 @@ Shared SDK 仅支持使用随包提供的导入库和 DLL 进行动态链接；�
 
 ### Debug Add-on（仅 shared，依赖 Binary）
 
-v4 格式采用差分打包；历史 Develop 包保持原有独立安装语义。
+v2 格式采用差分打包；历史 Develop 包保持原有独立安装语义。
 
 - **PDB 符号文件**：FFmpeg Release/Debug DLL 的符号，CLI EXE PDB 在现有构建生成且匹配时提供。
 - **调试库**：`debug/lib/` 中的导入库及 `debug/bin/` 中的调试 DLL。

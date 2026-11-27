@@ -1,77 +1,75 @@
-# ---------------------------------------------------------------------------
-# pages.yml — Deploy the Vitepress SSG site to GitHub Pages
-#
-# Triggered on pushes to the web or data branches, or via workflow_dispatch.
-# Checks out both branches, builds the Vitepress site with Node 20, and
-# publishes to GitHub Pages.
-# ---------------------------------------------------------------------------
-
 name: Deploy GitHub Pages
 
 on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches:
-      - web
-      - data
+    branches: [web, data]
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: web
+          path: web
+      - uses: actions/checkout@v6
+        with:
+          ref: data
+          path: web/data
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          sparse-checkout: schema
+          path: contract
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+          package_json_file: web/package.json
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Build and test release catalog
+        working-directory: web
+        env:
+          BASE_URL: /${{ github.event.repository.name }}/
+          VITE_GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          SCHEMA_DIR: ../contract/schema
+        run: |
+          pnpm prepareData
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec tsx scripts/test-catalog.ts
+          CATALOG_DIR=.generated/fixture-data CATALOG_FIXTURE=1 pnpm build
+          CATALOG_FIXTURE=1 pnpm exec playwright test tests/e2e/native.spec.ts
+          pnpm build
+          pnpm typecheck
+          pnpm test
+          pnpm test:e2e
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/build/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: web
-          path: web
-
-      - uses: actions/checkout@v6
-        with:
-          ref: data
-          path: web/data
-        continue-on-error: true
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - name: Install dependencies
-        working-directory: web
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Vitepress site
-        working-directory: web
-        env:
-            BASE_URL: /${{ github.event.repository.name }}/
-            VITE_GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-        run: pnpm run build
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web/.vitepress/dist
-
-      - name: Deploy to GitHub Pages
+      - uses: actions/configure-pages@v6
+      - uses: actions/deploy-pages@v5
         id: deployment
-        continue-on-error: true
-        uses: actions/deploy-pages@v5

@@ -292,7 +292,7 @@ class ImmutableComplianceUpgradeTests(unittest.TestCase):
                                    installed_root=installed,
                                    source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text())
-            self.assertEqual(4, record["package_format"])
+            self.assertEqual(2, record["package_format"])
             self.assertEqual("ffmpeg-9.1_arm64-windows-static-lgpl-261125.zip", record["assets"]["binary"]["file"])
             self.assertEqual(2, record["compliance"]["package_count"])
             self.assertEqual(2, len(record["compliance"]["packages"]))
@@ -318,14 +318,14 @@ class ImmutableComplianceUpgradeTests(unittest.TestCase):
                 publish(artifacts_dir=artifacts, data_dir=root / "unused",
                         dry_run=True)
 
-    def test_package_format_does_not_bypass_immutable_abi_identity(self):
+    def test_metadata_cannot_bypass_immutable_abi_identity(self):
         from test_catalog import record
         base = record()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             register_release(root, [base])
             before = (root / "releases/9.1.json").read_bytes()
-            upgraded = dict(base, package_format=2, assets={
+            upgraded = dict(base, assets={
                 "binary": dict(base["assets"]["binary"], digest="sha256:" + "f"*64)})
             with self.assertRaisesRegex(ValueError, "different|immutable|conflict"):
                 register_release(root, [upgraded])

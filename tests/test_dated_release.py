@@ -68,7 +68,7 @@ class DatedPublication(unittest.TestCase):
             data = root / "data"
             data.mkdir()
             (data / ".git").mkdir()
-            catalog.write_json(data / "index.json", {"schema":2,"releases":[],"master":[]})
+            catalog.write_json(data / "index.json", {"schema":1,"releases":[],"master":[]})
             out = root / "out"
             out.mkdir()
             rows, blocked = build_requests(version="9.1", release_date=day)
@@ -77,7 +77,7 @@ class DatedPublication(unittest.TestCase):
             for i,row in enumerate(rows):
                 row["abi_hash"] = hashlib.sha256(str(i).encode()).hexdigest()
                 row["id"] = variant_name("9.1",0,row["triplet"],row["linkage"],row["license"],abi_hash=row["abi_hash"])
-                record = dict(row, variant_id=row["id"], channel="release", package_format=4,
+                record = dict(row, variant_id=row["id"], channel="release", package_format=2,
                               package_spec=row["package"])
                 record["assets"] = {}
                 for kind in (("binary","debug") if row["linkage"]=="shared" else ("binary",)):
@@ -106,6 +106,7 @@ class DatedPublication(unittest.TestCase):
                 self.assertEqual("tag",actions[-1])
                 self.assertEqual(24,len(args[1]))
                 actions.append("release")
+                return {f.name: catalog.github_asset_url(args[0], f.name, repository="test/repo") for f in args[1]}
             with (patch.dict(os.environ,env),
                   patch("ffbuild.publication._verify_distribution",side_effect=verified),
                   patch.object(release_trigger,"git",return_value=commit),
@@ -130,6 +131,7 @@ class DatedPublication(unittest.TestCase):
                 shard = catalog.load_shard(data,"releases","9.1")
                 self.assertEqual("ffmpeg-9.1-261125R2",shard["releases"][0]["tag"])
                 self.assertEqual(16,len(shard["releases"][0]["variants"]))
+                self.assertTrue(all("/ffmpeg-9.1-261125R2/" in a["url"] for a in catalog.release_assets(shard["releases"][0])))
 
     def test_public_naming_and_master(self):
         row = {"version": "9.1", "triplet": "arm64-windows", "linkage": "shared",
@@ -174,6 +176,7 @@ class DatedPublication(unittest.TestCase):
             def upload(tag, files, **kwargs):
                 self.assertTrue(kwargs["strict_batch"])
                 uploads.append((tag, {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in files}))
+                return {f.name: catalog.github_asset_url(tag, f.name, repository="test/repo") for f in files}
             with patch.dict(os.environ, {"GH_TOKEN": "mock", "GITHUB_REPOSITORY": "test/repo"}), \
                  patch("ffbuild.publication._fetch_reused", side_effect=fetch), \
                  patch("ffbuild.publication._release_assets", side_effect=upload), \
@@ -193,6 +196,7 @@ class DatedPublication(unittest.TestCase):
             self.assertEqual("2026-11-24", stored["release_date"])
             self.assertEqual("2026-11-25", stored["publication_date"])
             self.assertEqual(2, len(rows))
+            self.assertTrue(all("/ffmpeg-9.1-261125/" in a["url"] for a in catalog.release_assets(shard["releases"][0])))
             self.assertEqual("ffmpeg-9.1-261125", shard["releases"][0]["tag"])
             self.assertNotIn("revision", shard["releases"][0])
             self.assertEqual([], plan_native({"schema": 3, "jobs": [unchanged, new[0]]},
@@ -219,20 +223,21 @@ class DatedPublication(unittest.TestCase):
             file = Path(tmp) / "artifact.zip"
             file.write_bytes(b"payload")
             remote = {}
-            state = {"created": False}
+            state = {"created": False, "draft": True}
             def run(*args, **kwargs):
                 if args[:3] == ("gh", "release", "create"):
                     self.assertIn("--draft", args)
                     state["created"] = True
                 elif args[:3] == ("gh", "release", "upload"):
-                    remote[file.name] = {"size": file.stat().st_size, "digest": "sha256:" + hashlib.sha256(file.read_bytes()).hexdigest()}
+                    remote[file.name] = {"size": file.stat().st_size, "digest": "sha256:" + hashlib.sha256(file.read_bytes()).hexdigest(), "browser_download_url": "https://example.com/artifact.zip"}
                 elif args[:3] == ("gh", "release", "edit"):
                     self.assertIn("--draft=false", args)
                     self.assertEqual({file.name}, set(remote))
+                    state["draft"] = False
             with patch("ffbuild.publication._run", side_effect=run) as call, \
-                 patch("ffbuild.publication._release_api", side_effect=lambda _: {"id": 1, "draft": True} if state["created"] else None), \
+                 patch("ffbuild.publication._release_api", side_effect=lambda tag: {"id": 1, "draft": state["draft"], "tag_name": tag} if state["created"] else None), \
                  patch("ffbuild.publication._release_asset_list", side_effect=lambda _: dict(remote)):
-                _release_assets("ffmpeg-9.1-261125", [file], upstream_version="9.1", strict_batch=True)
+                self.assertEqual({file.name: "https://example.com/artifact.zip"}, _release_assets("ffmpeg-9.1-261125", [file], upstream_version="9.1", strict_batch=True))
                 self.assertEqual(3, call.call_count)
 
     def test_complete_standard_matrix_has_24_unique_zip_names(self):
@@ -328,9 +333,10 @@ class DatedPublication(unittest.TestCase):
             public.write_bytes(b"tampered")
             with self.assertRaisesRegex(ValueError, "digest or size mismatch"):
                 _verify_distribution(stored, output, reused=True)
-            shard["releases"][0]["variants"]["x64-windows-static-lgpl"]["format"] = 2
+            shard["releases"][0]["variants"]["x64-windows-static-lgpl"]["format"] = 99
             catalog.write_json(location, shard)
-            self.assertEqual(1, len(plan_native(scan, state=PublishedState(directory=data))["jobs"]))
+            with self.assertRaisesRegex(ValueError, "Invalid catalog ABI or format"):
+                plan_native(scan, state=PublishedState(directory=data))
 
     def test_public_copyright_reproduced_from_original_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -405,7 +411,7 @@ class DatedPublication(unittest.TestCase):
                     shutil.copyfile(source_dir / asset["file"], directory / asset["file"])
             with patch.dict(os.environ, {"GH_TOKEN": "mock", "GITHUB_REPOSITORY": "test/repo"}), \
                  patch("ffbuild.publication._fetch_reused", side_effect=fetch), \
-                 patch("ffbuild.publication._release_assets") as upload, \
+                 patch("ffbuild.publication._release_assets", side_effect=lambda tag, files, **kw: {f.name: catalog.github_asset_url(tag, f.name, repository="test/repo") for f in files}) as upload, \
                  patch("ffbuild.publication._push_data"):
                 self.assertEqual(["ffmpeg-9.1-261125"], publish(
                     artifacts_dir=root / "absent", data_dir=data, expected_plan=plan))
