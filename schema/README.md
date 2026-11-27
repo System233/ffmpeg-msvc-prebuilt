@@ -12,7 +12,7 @@ The catalog schema changes only for incompatible storage changes. Adding fields 
 
 ## Catalog v2
 
-`v2/index.schema.json` validates root `index.json`; `v2/shard.schema.json` validates `releases/<version>.json` and `master/<year>.json`. Root contains only shard discovery keys. A release and its asset records exist in one shard only. Stable shards contain explicit boolean `lts` (release-family classification, not a current support guarantee); snapshot shards use false. Migration writes this metadata directly. Run `python -m ffbuild refresh-lts --data-dir data` to refresh classifications without changing ZIPs, digests, tags or ABIs.
+`v2/index.schema.json` validates root `index.json`; `v2/shard.schema.json` validates `releases/<version>.json` and `master/<year>.json`. Root contains only shard discovery keys. A release and its asset records exist in one shard only. Stable shards contain explicit boolean `lts` (project release-family classification, not a statement of official upstream support duration or current support); snapshot shards use false. Migration writes this metadata directly. The project classifies 4.4, 5.1, 7.1 and 9.1 as LTS families; 4.4 and 9.1 are catalog policy choices, not assertions of a formal upstream designation. Run `python -m ffbuild refresh-lts --data-dir data` to refresh classifications without changing ZIPs, digests, tags or ABIs.
 
 Legacy v1 YAML schemas are retained for historical interpretation. The legacy and current indexes must not coexist after cutover.
 

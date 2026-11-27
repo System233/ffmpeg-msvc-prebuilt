@@ -34,7 +34,7 @@ class CatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for version, expected in (("5.1.10", True), ("7.1.5", True), ("8.1.3", False),
-                                      ("9.1", False), ("4.4.8", False), ("6.1.6", False)):
+                                      ("9.1", True), ("9.1.1", True), ("4.4.8", True), ("4.4.7", True), ("6.1.6", False), ("9.0.2", False), ("9.2", False), ("4.3.2", False)):
                 path = catalog.register_release(root, [record(version)])
                 shard = catalog.read_json(path)
                 self.assertIs(shard["lts"], expected)
@@ -180,7 +180,7 @@ class CatalogTests(unittest.TestCase):
                 "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
             before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
             self.assertEqual((1, 1, 1), catalog.migrate(source, dest))
-            self.assertIs(catalog.load_shard(dest, "releases", "9.1")["lts"], False)
+            self.assertIs(catalog.load_shard(dest, "releases", "9.1")["lts"], True)
             self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
             self.assertEqual(row["assets"], PublishedState(directory=dest).find_abi(
                 "9.1", row["triplet"], row["abi_hash"])["assets"])

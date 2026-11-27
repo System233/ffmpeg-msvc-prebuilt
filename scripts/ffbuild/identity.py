@@ -44,8 +44,9 @@ def release_tag(version: str, revision: int = 0) -> str:
 
 # Explicit release-family classification; not an inference from major/minor parity.
 # Upstream LTS discussion: https://ffmpeg.org/pipermail/ffmpeg-devel/2023-January/306025.html
-# 9.1 is not marked until its LTS status has been confirmed.
-LTS_FAMILIES = frozenset({"5.1", "7.1"})
+# 4.4 and 9.1 are included by project catalog policy; this does not assert
+# an upstream commitment to a specific maintenance window.
+LTS_FAMILIES = frozenset({"4.4", "5.1", "7.1", "9.1"})
 
 
 def is_lts(version: str) -> bool:
