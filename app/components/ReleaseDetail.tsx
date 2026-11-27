@@ -2,7 +2,7 @@ import { VersionWarning, LtsBadge } from "./VersionWarning";
 import { VariantNotice } from "./VariantNotice";
 import { PackageNoteText } from "./PackageNoteText";
 import { describeAssets } from "../domain/assets";
-import { assetLabel, packageNote } from "../lib/asset-copy";
+import { assetLabel, packageNotes } from "../lib/asset-copy";
 import { useHydrated } from "../lib/hydration";
 import { Link, useSearchParams } from "react-router";
 import { AssetLink, AssetInspector, Segments } from "./ui";
@@ -11,12 +11,12 @@ import {
   linkages,
   licenses,
   parseVariant,
-  localized,
   variantKey,
   type Entry,
   type Variant,
 } from "../domain/catalog";
-import { linkageLabel, t, type Language } from "../lib/i18n";
+import { localized } from "../i18n/routing";
+import { linkageLabel, t, countLabel, type Language } from "../i18n";
 import { optionMeaning } from "../lib/option-copy";
 export function ReleaseDetail({
   entry,
@@ -28,7 +28,7 @@ export function ReleaseDetail({
   lang: Language;
 }) {
   const keys = Object.keys(entry.variants);
-  const note = packageNote(
+  const note = packageNotes(
     Object.entries(entry.variants).flatMap(([k, v]) =>
       describeAssets(v, parseVariant(k).linkage),
     ),
@@ -52,7 +52,7 @@ export function ReleaseDetail({
   const hydrated = useHydrated();
   const requested = hydrated ? params.get("arch") : null;
   const arch = rows.find((a) => a === requested) ?? rows[0];
-  const mobileNote = packageNote(
+  const mobileNote = packageNotes(
     Object.entries(entry.variants)
       .filter(([k]) => parseVariant(k).arch === arch)
       .flatMap(([k, v]) => describeAssets(v, parseVariant(k).linkage)),
@@ -97,7 +97,7 @@ export function ReleaseDetail({
     ) : (
       <span
         className="unavailable"
-        aria-label={t(lang, "Not available", "不可用")}
+        aria-label={t(lang, "releaseDetail.notAvailable")}
       >
         —
       </span>
@@ -106,9 +106,9 @@ export function ReleaseDetail({
     <section className="build-section">
       <div className="section-head">
         <div>
-          <h2>{t(lang, "Build variants", "构建变体")}</h2>
+          <h2>{t(lang, "releaseDetail.buildVariants")}</h2>
           <p className="muted">
-            {keys.length} {t(lang, "variants", "种变体")}
+            {countLabel(lang, "common.variantCount", keys.length)}
           </p>
         </div>
         <a
@@ -124,7 +124,7 @@ export function ReleaseDetail({
       />
       <div className="mobile-architecture">
         <Segments
-          label={t(lang, "Architecture", "架构")}
+          label={t(lang, "common.architecture")}
           value={arch}
           options={rows.map((a) => ({
             value: a,

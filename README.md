@@ -19,7 +19,7 @@ pnpm exec tsx scripts/measure.ts
 
 Set BASE_URL to /ffmpeg-msvc-prebuilt/ for the GitHub Pages project subpath. Set VITE_SITE_URL and VITE_GITHUB_REPO_URL for a different deployment or repository. The build validates the complete snapshot, generates schema types, emits pages to build/client, and publishes the original data shards alongside HTML. The home page embeds only the initial release and compact variant choices; other versions are loaded from the deployed JSON shards on demand. LTS is read directly from the authoritative metadata, never inferred from version numbers. Use BUILD_DIR, PREVIEW_ROOT and PORT to isolate local build and test outputs.
 
-The historic /en/ and /zh/ paths remain public. English pages without a language prefix are canonical; legacy VitePress .html redirects are generated only from genuine migrated tags and refs.
+English pages without a language prefix and Chinese pages under /zh/ are prerendered. Historic /en/ URLs redirect to canonical English pages while preserving queries and fragments when JavaScript is enabled; legacy VitePress .html redirects are generated only from genuine migrated tags and refs.
 
 ## Native-format regression
 
@@ -40,4 +40,4 @@ The same Pages workflow is maintained on main, web and data. It validates the re
 
 ## UI
 
-The searchable version picker uses Base UI Combobox with compact inline filter tags and adaptive popup positioning. The download area distinguishes legacy Develop archives from differential Debug add-ons. Detail pages use a responsive download matrix and return controls that follow confirmed in-site history, otherwise linking to the parent page. Documentation and FAQ are available in English and Chinese, with syntax highlighting at build time. The shared UI includes responsive navigation, system/light/dark themes, accessible download links and feedback for clipboard failures. Automated accessibility checks cover the homepage, release list, release detail and guide.
+The searchable version picker uses Base UI Combobox with compact inline filter tags and adaptive popup positioning. The download area distinguishes legacy Develop archives from differential Debug add-ons. Detail pages use a responsive download matrix and return controls that follow confirmed in-site history, otherwise linking to the parent page. UI messages are maintained in app/i18n/messages with matching typed keys and interpolation parameters. Documentation and FAQ are maintained in docs/en and docs/zh as Markdown, with syntax highlighting at build time. The shared UI includes responsive navigation, system/light/dark themes, accessible download links and feedback for clipboard failures. Automated accessibility checks cover the homepage, release list, release detail and guide.

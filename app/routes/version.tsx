@@ -10,7 +10,7 @@ import {
 } from "../domain/catalog.server";
 import { ReleaseDetail, EntryLinks } from "../components/ReleaseDetail";
 import { majorVersion, hasWarning } from "../domain/catalog";
-import { language, t } from "../lib/i18n";
+import { language, t } from "../i18n";
 
 export function loader({ params }: LoaderFunctionArgs) {
   const version = params.version ?? "";
@@ -35,9 +35,19 @@ export function loader({ params }: LoaderFunctionArgs) {
     }));
   return { entry, versions, builds, repo };
 }
-export const meta = ({ data }: any) => [
+export const meta = ({
+  data,
+  params,
+}: {
+  data?: ReturnType<typeof loader>;
+  params: Record<string, string | undefined>;
+}) => [
   {
-    title: "FFmpeg " + (data?.entry.upstream ?? "Release") + " | MSVC Prebuilt",
+    title:
+      "FFmpeg " +
+      (data?.entry.upstream ??
+        t(language(params.lang), "seo.releaseFallback")) +
+      " | MSVC Prebuilt",
   },
 ];
 
@@ -73,7 +83,7 @@ export default function Version() {
         <HistoryBack
           lang={lang}
           parent="/releases/"
-          parentLabel={t(lang, "Back to all versions", "返回全部版本")}
+          parentLabel={t(lang, "version.backToAllVersions")}
         />
         <h1>FFmpeg {entry.upstream}</h1>
         <div className="meta-line">
@@ -82,12 +92,12 @@ export default function Version() {
           <span className="mono">{entry.tag}</span>
           {versions.length > 0 && (
             <SectionJump id="history">
-              {t(lang, "Other versions", "其他版本")}
+              {t(lang, "version.otherVersions")}
             </SectionJump>
           )}
           {builds.length > 0 && (
             <SectionJump id="builds">
-              {t(lang, "Other builds", "其他构建")}
+              {t(lang, "version.otherBuilds")}
             </SectionJump>
           )}
         </div>
@@ -95,13 +105,13 @@ export default function Version() {
       <ReleaseDetail key={entry.tag} entry={entry} repo={repo} lang={lang} />
       {versions.length > 0 && (
         <section className="history" id="history">
-          <h2>{t(lang, "Other versions", "其他版本")}</h2>
+          <h2>{t(lang, "version.otherVersions")}</h2>
           <EntryLinks entries={versions} lang={lang} kind="version" />
         </section>
       )}
       {builds.length > 0 && (
         <section className="history" id="builds">
-          <h2>{t(lang, "Other builds", "其他构建")}</h2>
+          <h2>{t(lang, "version.otherBuilds")}</h2>
           <EntryLinks entries={builds} lang={lang} />
         </section>
       )}

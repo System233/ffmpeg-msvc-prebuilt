@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { allEntries } from "../../app/domain/catalog.server";
 const entry = allEntries().find((e) => e.channel === "release")!;
-const detail = "./en/build/" + entry.tag + "/";
+const detail = "./build/" + entry.tag + "/";
 for (const width of [1440, 1024, 820, 390, 320]) {
   test("stable matrix and no overflow at " + width, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -56,7 +56,7 @@ test("mobile architecture selection and URL restoration", async ({ page }) => {
 test("home config is shareable and language switch preserves it", async ({
   page,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   await page
     .getByRole("group", { name: "Architecture" })
     .getByRole("button", { name: "ARM64", exact: true })
@@ -82,7 +82,7 @@ test("home config is shareable and language switch preserves it", async ({
 test("release index only searches versions and preserves search", async ({
   page,
 }) => {
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await page.getByRole("searchbox").fill(entry.upstream);
   await expect(page).toHaveURL(/q=/);
@@ -110,7 +110,7 @@ test("theme selection persists and inspector is accessible in dark mode", async 
   ).toEqual([]);
 });
 test("documentation navigation and anchors", async ({ page }) => {
-  await page.goto("./en/guide/");
+  await page.goto("./guide/");
   const toc = page.getByRole("navigation", { name: "On this page" });
   const link = toc.getByRole("link").first();
   const href = await link.getAttribute("href");
@@ -128,7 +128,7 @@ test("home hero precedes download area and anchors correctly", async ({
 }) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("./en/");
+    await page.goto("./");
     const hero = page.getByRole("region", { name: "FFmpeg MSVC Prebuilt" });
     const download = page.getByRole("region", { name: "Download FFmpeg" });
     const h = await hero.boundingBox(),

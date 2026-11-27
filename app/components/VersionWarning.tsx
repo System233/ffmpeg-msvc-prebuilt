@@ -1,6 +1,6 @@
 import { CircleAlert } from "lucide-react";
 import { useEffect } from "react";
-import { t, type Language } from "../lib/i18n";
+import { t, type Language } from "../i18n";
 import { LicensingNoticeContent, licensingNoticeText } from "./VariantNotice";
 
 type NoticeKind = "warning" | "lts";
@@ -13,11 +13,7 @@ function activePopup() {
   return activeKind ? document.getElementById(noticeIds[activeKind]) : null;
 }
 function ltsText(lang: Language) {
-  return t(
-    lang,
-    "Long-term support (LTS) release series; use the latest available patch in this series.",
-    "长期支持（LTS）版本系列，建议使用该系列最新的可用补丁版本。",
-  );
+  return t(lang, "warning.ltsDescription");
 }
 let activeAnchor: HTMLElement | null = null;
 let leaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -169,8 +165,8 @@ export function VersionWarningNotice({ lang }: { lang: Language }) {
           role="region"
           aria-label={
             kind === "warning"
-              ? t(lang, "Build warning", "构建警告")
-              : t(lang, "Long-term support", "长期支持")
+              ? t(lang, "versionWarning.buildWarning")
+              : t(lang, "versionWarning.longtermSupport")
           }
           onPointerEnter={(e) => {
             if (e.pointerType === "mouse") cancelDismiss();
@@ -213,8 +209,8 @@ function NoticeTrigger({
 }) {
   const warning = kind === "warning";
   const label = warning
-    ? t(lang, "View warning", "查看警告")
-    : t(lang, "LTS: long-term support", "LTS：长期支持");
+    ? t(lang, "versionWarning.viewWarning")
+    : t(lang, "versionWarning.ltsLongtermSupport");
   const content = warning ? (
     <CircleAlert size={16} aria-hidden="true" />
   ) : (

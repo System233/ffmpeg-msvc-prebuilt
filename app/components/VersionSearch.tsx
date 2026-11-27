@@ -3,7 +3,7 @@ import { OptionTooltip } from "./OptionTooltip";
 import { optionMeaning } from "../lib/option-copy";
 import type { ReactNode } from "react";
 import type { VersionFilter } from "../domain/catalog";
-import { t, type Language } from "../lib/i18n";
+import { t, type Language } from "../i18n";
 
 export function VersionSearch({
   lang,
@@ -19,10 +19,15 @@ export function VersionSearch({
   children: ReactNode;
 }) {
   const choices: { key: VersionFilter; label: string }[] = [
-    { key: "all", label: t(lang, "All", "全部") },
+    { key: "all", label: t(lang, "versionSearch.all") },
     { key: "lts", label: "LTS" },
     ...(snapshots
-      ? [{ key: "snapshot" as const, label: t(lang, "Snapshots", "快照版") }]
+      ? [
+          {
+            key: "snapshot" as const,
+            label: t(lang, "versionSearch.snapshots"),
+          },
+        ]
       : []),
   ];
   return (
@@ -32,7 +37,7 @@ export function VersionSearch({
       <div
         className="version-filter-tags"
         role="group"
-        aria-label={t(lang, "Version filter", "版本筛选")}
+        aria-label={t(lang, "versionSearch.versionFilter")}
       >
         {choices.map(({ key, label }) => (
           <OptionTooltip key={key} text={optionMeaning(lang, key)}>

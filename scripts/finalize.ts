@@ -8,6 +8,9 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 import { base, siteUrl } from "./site-config";
+import { enumerateRoutes, enumerateLocalizedPages } from "./static-routes";
+import { localized } from "../app/i18n/routing";
+import { t } from "../app/i18n";
 import { errorPage } from "./error-page";
 import {
   legacyId,
@@ -26,27 +29,8 @@ if (base !== "/") {
 const { index, shards } = JSON.parse(
   readFileSync(".generated/catalog.json", "utf8"),
 ) as { index: Index; shards: Record<string, Shard> };
-const paths = [
-  "/",
-  "/releases/",
-  "/master/",
-  "/guide/",
-  "/integration/",
-  "/packages/",
-  "/licenses/",
-  "/reference/",
-  "/self-build/",
-  "/history/",
-  ...index.releases.map((v) => "/releases/" + v + "/"),
-  ...index.master.map((y) => "/master/" + y + "/"),
-  ...Object.values(shards).flatMap((s) =>
-    s.releases.map((r) => "/build/" + r.tag + "/"),
-  ),
-];
-const all = [
-  ...paths,
-  ...["en", "zh"].flatMap((l) => paths.map((p) => "/" + l + p)),
-];
+const paths = enumerateRoutes(index, shards);
+const all = enumerateLocalizedPages(paths);
 for (const p of all) {
   if (!existsSync(resolve(dir, "." + p, "index.html")))
     throw Error("Missing prerendered page " + p);
@@ -56,7 +40,7 @@ for (const p of all) {
 rmSync(resolve(dir, "__spa-fallback.html"), { force: true });
 writeFileSync(resolve(dir, ".nojekyll"), "");
 const stylesheets = [
-  ...readFileSync(resolve(dir, "en/index.html"), "utf8").matchAll(
+  ...readFileSync(resolve(dir, "index.html"), "utf8").matchAll(
     /<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g,
   ),
 ].map((m) => m[1]);
@@ -74,10 +58,7 @@ writeFileSync(resolve(dir, "404.html"), errorPage(stylesheets));
 writeFileSync(
   resolve(dir, "sitemap.xml"),
   '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
-    all
-      .filter((p) => !p.startsWith("/en/"))
-      .map((p) => "<url><loc>" + siteUrl + p + "</loc></url>")
-      .join("") +
+    all.map((p) => "<url><loc>" + siteUrl + p + "</loc></url>").join("") +
     "</urlset>",
 );
 writeFileSync(
@@ -95,7 +76,10 @@ function redirect(oldPath: string, newPath: string, script = "") {
   writeFileSync(
     path,
     '<!doctype html><html><meta charset="utf-8">' +
-      script +
+      (script ||
+        "<script>location.replace(" +
+          JSON.stringify(base + newPath.slice(1)).replace(/</g, "\\u003c") +
+          "+location.search+location.hash)</script>") +
       '<meta http-equiv="refresh" content="0;url=' +
       base +
       newPath.slice(1) +
@@ -105,12 +89,15 @@ function redirect(oldPath: string, newPath: string, script = "") {
       '"><a href="' +
       base +
       newPath.slice(1) +
-      '">Continue</a></html>',
+      '">' +
+      t(newPath.startsWith("/zh/") ? "zh" : "en", "common.continue") +
+      "</a></html>",
   );
 }
+for (const p of paths) redirect("/en" + p + "index.html", p);
 for (const l of ["en", "zh"]) {
   for (const p of paths.filter((p) => p !== "/" && !p.startsWith("/build/")))
-    redirect("/" + l + p.slice(0, -1) + ".html", "/" + l + p);
+    redirect("/" + l + p.slice(0, -1) + ".html", localized(l, p));
   for (const [key, s] of Object.entries(shards)) {
     for (const entry of toEntries(
       s,
@@ -120,7 +107,7 @@ for (const l of ["en", "zh"]) {
       if (id)
         redirect(
           "/" + l + "/releases/" + id + ".html",
-          "/" + l + "/build/" + entry.tag + "/",
+          localized(l, "/build/" + entry.tag + "/"),
         );
     }
   }
@@ -131,12 +118,13 @@ for (const major of new Set(index.releases.map(majorVersion))) {
     .filter((v) => majorVersion(v) === major)
     .sort(compareVersions);
   for (const lang of ["", "/en", "/zh"]) {
-    const target = lang + "/releases/" + versions[0] + "/";
+    const prefix = lang === "/zh" ? "/zh" : "";
+    const target = prefix + "/releases/" + versions[0] + "/";
     const byTag = Object.fromEntries(
       versions.flatMap((v) =>
         toEntries(shards["releases/" + v], "release").map((entry, i) => [
           entry.tag,
-          lang +
+          prefix +
             (i === 0 ? "/releases/" + v + "/" : "/build/" + entry.tag + "/"),
         ]),
       ),
@@ -147,7 +135,7 @@ for (const major of new Set(index.releases.map(majorVersion))) {
       ";let path=" +
       JSON.stringify(target) +
       ";if(tag){if(Object.hasOwn(targets,tag))path=targets[tag];else{path=" +
-      JSON.stringify(lang + "/releases/") +
+      JSON.stringify(prefix + "/releases/") +
       ";p.set('q',tag)}}location.replace(" +
       JSON.stringify(base) +
       "+path.slice(1)+(p.size?'?'+p.toString():'')+location.hash)})()</script>";

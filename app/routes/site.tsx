@@ -4,8 +4,10 @@ import { SiteHistory } from "../lib/site-history";
 import { Outlet, NavLink, useParams, useLocation, Link } from "react-router";
 import { Github, Menu, Monitor, Sun, Moon, Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { language, t } from "../lib/i18n";
-import { localized } from "../domain/catalog";
+import { stripLanguage } from "../i18n/routing";
+import { alternateLanguage } from "../i18n";
+import { language, t } from "../i18n";
+import { localized } from "../i18n/routing";
 type Theme = "system" | "light" | "dark";
 export default function Site() {
   const lang = language(useParams().lang),
@@ -57,7 +59,7 @@ export default function Site() {
       menu.current.querySelector("summary")?.focus();
     }
   }
-  const route = pathname.replace(/^\/(en|zh)(?=\/|$)/, "") || "/";
+  const route = stripLanguage(pathname);
   const isMaster =
     route.startsWith("/master") ||
     (route.startsWith("/build/") &&
@@ -68,27 +70,27 @@ export default function Site() {
     /^\/(guide|integration|packages|licenses|reference|self-build|history)(?:\/|$)/.test(
       route,
     );
-  const alternate = lang === "zh" ? "en" : "zh";
+  const alternate = alternateLanguage(lang);
   const nav = [
-    ["/", t(lang, "Download", "下载"), route === "/"],
-    ["/releases/", t(lang, "All versions", "全部版本"), isRelease],
-    ["/master/", t(lang, "Snapshots", "快照版本"), isMaster],
-    ["/guide/", t(lang, "Docs", "文档"), isDocs],
+    ["/", t(lang, "common.download"), route === "/"],
+    ["/releases/", t(lang, "nav.releases"), isRelease],
+    ["/master/", t(lang, "nav.snapshots"), isMaster],
+    ["/guide/", t(lang, "nav.docs"), isDocs],
   ] as const;
   const themes = [
     {
       value: "system" as const,
-      label: t(lang, "System", "跟随系统"),
+      label: t(lang, "theme.system"),
       Icon: Monitor,
     },
-    { value: "light" as const, label: t(lang, "Light", "浅色"), Icon: Sun },
-    { value: "dark" as const, label: t(lang, "Dark", "深色"), Icon: Moon },
+    { value: "light" as const, label: t(lang, "theme.light"), Icon: Sun },
+    { value: "dark" as const, label: t(lang, "theme.dark"), Icon: Moon },
   ];
   const ThemeIcon = themes.find((x) => x.value === theme)!.Icon;
   return (
     <>
       <a className="skip-link" href="#main-content">
-        {t(lang, "Skip to content", "跳到主要内容")}
+        {t(lang, "nav.skipToContent")}
       </a>
       <header className="site-header">
         <div className="container nav">
@@ -97,7 +99,7 @@ export default function Site() {
           </Link>
           <button
             className="icon-button mobile-menu"
-            aria-label={t(lang, "Menu", "菜单")}
+            aria-label={t(lang, "nav.menu")}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
           >
@@ -105,7 +107,7 @@ export default function Site() {
           </button>
           <nav
             className={open ? "nav-links open" : "nav-links"}
-            aria-label={t(lang, "Main navigation", "主导航")}
+            aria-label={t(lang, "nav.main")}
           >
             {nav.map(([path, label, active]) => (
               <Link
@@ -123,13 +125,13 @@ export default function Site() {
               to={localized(alternate, route) + search + hash}
               className="small-link"
             >
-              {lang === "zh" ? "EN" : "中文"}
+              {t(lang, "nav.languageSwitch")}
             </Link>
             <details ref={menu} className="theme-menu">
               <summary
                 className="icon-button"
-                aria-label={t(lang, "Theme", "主题")}
-                title={t(lang, "Theme", "主题")}
+                aria-label={t(lang, "theme.label")}
+                title={t(lang, "theme.label")}
               >
                 <ThemeIcon size={18} />
               </summary>
@@ -170,7 +172,9 @@ export default function Site() {
       </main>
       <footer className="container footer">
         <span>FFmpeg MSVC Prebuilt</span>
-        <a href={import.meta.env.BASE_URL + "data/index.json"}>Release Catalog JSON</a>
+        <a href={import.meta.env.BASE_URL + "data/index.json"}>
+          {t(lang, "site.catalogJson")}
+        </a>
         <a href={import.meta.env.VITE_GITHUB_REPO_URL}>GitHub</a>
       </footer>
     </>

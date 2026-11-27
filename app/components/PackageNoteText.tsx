@@ -1,21 +1,17 @@
-import type { Language } from "../lib/i18n";
+import { t, type Language } from "../i18n";
+import { assetLabel, type packageNotes } from "../lib/asset-copy";
 export function PackageNoteText({
   note,
   lang,
 }: {
-  note?: string;
+  note?: ReturnType<typeof packageNotes>;
   lang: Language;
 }) {
-  const separator = lang === "zh" ? "；" : "; ";
-  const parts = note?.split(separator) ?? [];
-  return parts.map((part, index) => {
-    const space = part.indexOf(" ");
-    return (
-      <span className="package-note-item" key={part}>
-        <strong className="package-note-name">{part.slice(0, space)}</strong>
-        {part.slice(space)}
-        {index < parts.length - 1 && separator}
-      </span>
-    );
-  });
+  return note?.map(({ kind, description }, index) => (
+    <span className="package-note-item" key={kind}>
+      <strong className="package-note-name">{assetLabel(kind, lang)}</strong>{" "}
+      {description}
+      {index < note.length - 1 && t(lang, "common.noteSeparator")}
+    </span>
+  ));
 }

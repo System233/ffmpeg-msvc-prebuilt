@@ -67,7 +67,7 @@ test("native metadata inspector and legacy links", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "FFmpeg 8.1.3" }),
   ).toBeVisible();
-  await page.goto("./en/build/ffmpeg-9.1-261125R10/");
+  await page.goto("./build/ffmpeg-9.1-261125R10/");
   await page
     .getByRole("button", {
       name: "Asset information: X64 · shared · LGPL",
@@ -140,7 +140,7 @@ test("new debug add-on and legacy standalone package preserve their distinct sem
 });
 
 test("full native matrix and historical Develop package", async ({ page }) => {
-  await page.goto("./en/build/ffmpeg-9.0.2-261125/");
+  await page.goto("./build/ffmpeg-9.0.2-261125/");
   await expect(page.locator(".matrix-actions a.download-link")).toHaveCount(24);
   await expect(page.locator(".matrix-actions .primary")).toHaveCount(0);
   await expect(page.locator(".matrix-actions .secondary")).toHaveCount(0);
@@ -176,7 +176,7 @@ test("full native matrix and historical Develop package", async ({ page }) => {
     /ffmpeg-9\.0\.2-261125\/ffmpeg-9\.0\.2_x64-windows-shared-lgpl-261125\.zip$/,
   );
   await d.getByRole("button", { name: "Close" }).click();
-  await page.goto("./en/build/ffmpeg-8.1.3-r1/");
+  await page.goto("./build/ffmpeg-8.1.3-r1/");
   const oldLinks = page
     .locator(".matrix-actions a.download-link")
     .filter({ hasText: /Debug|Develop/ });
@@ -197,7 +197,7 @@ test("Binary and optional Debug share one row with clear default hierarchy", asy
     await page.emulateMedia({ colorScheme });
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("./en/");
+      await page.goto("./");
       const links = page.locator(".package-downloads > a.download-link");
       await expect(links).toHaveCount(2);
       const metrics = await links.evaluateAll((items) =>
@@ -248,7 +248,7 @@ test("Binary and optional Debug share one row with clear default hierarchy", asy
       );
     }
   }
-  await page.goto("./en/build/ffmpeg-9.0.2-261125/");
+  await page.goto("./build/ffmpeg-9.0.2-261125/");
   const styles = await page
     .locator(".matrix-cell:visible")
     .first()
@@ -288,7 +288,9 @@ test("visible packages always have one concise localized note", async ({
       : "Binary includes standalone executables";
     for (const width of [1440, 1024, 820, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("./" + lang + "/build/ffmpeg-9.0.2-261125/");
+      await page.goto(
+        "./" + (lang === "zh" ? "zh/" : "") + "build/ffmpeg-9.0.2-261125/",
+      );
       await expect(
         page.locator(".matrix-actions .primary,.matrix-actions .secondary"),
       ).toHaveCount(0);
@@ -302,22 +304,28 @@ test("visible packages always have one concise localized note", async ({
         await page.evaluate(() => document.documentElement.clientWidth),
       );
     }
-    await page.goto("./" + lang + "/build/ffmpeg-8.1.3-r1/");
+    await page.goto(
+      "./" + (lang === "zh" ? "zh/" : "") + "build/ffmpeg-8.1.3-r1/",
+    );
     await expect(page.locator(".matrix-note > span:visible")).toHaveText(
       legacy,
     );
-    await page.goto("./" + lang + "/build/ffmpeg-9.1-261125R10/?arch=arm64");
+    await page.goto(
+      "./" +
+        (lang === "zh" ? "zh/" : "") +
+        "build/ffmpeg-9.1-261125R10/?arch=arm64",
+    );
     await expect(page.locator(".matrix-note > span:visible")).toHaveText(cli);
     await page.goto(
       "./" +
-        lang +
-        "/?version=ffmpeg-9.1-261125R10&arch=arm64&linkage=static&license=gpl",
+        (lang === "zh" ? "zh/" : "") +
+        "?version=ffmpeg-9.1-261125R10&arch=arm64&linkage=static&license=gpl",
     );
     await expect(
       page.locator(".package-downloads a.download-link"),
     ).toHaveCount(1);
     await expect(page.locator(".package-note")).toHaveText(cli);
-    await page.goto("./" + lang + "/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
     await expect(page.locator(".package-note")).toHaveText(shared);
     const items = page.locator(".package-note .package-note-item");
     await expect(items).toHaveCount(2);
@@ -328,13 +336,15 @@ test("visible packages always have one concise localized note", async ({
       ),
     ).toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("./" + lang + "/build/ffmpeg-9.0.2-261125/");
+    await page.goto(
+      "./" + (lang === "zh" ? "zh/" : "") + "build/ffmpeg-9.0.2-261125/",
+    );
     const dots = await page
       .locator(".matrix-note > span:visible .package-note-name")
       .evaluateAll((nodes) => nodes.map((n) => n.getBoundingClientRect().top));
     expect(dots).toHaveLength(2);
     expect(dots[1]).toBe(dots[0]);
-    await page.goto("./" + lang + "/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
     await expect(page.locator(".package-note strong")).toHaveText(
       zh ? ["二进制", "调试库"] : ["Binary", "Debug"],
     );
@@ -344,7 +354,7 @@ test("visible packages always have one concise localized note", async ({
 test("LTS display and filter follow explicit catalog metadata", async ({
   page,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   await expect(page.locator(".version-trigger .version-badge")).toHaveCount(0);
   await page.locator(".version-trigger").click();
   const popup = page.locator(".version-popup");
@@ -357,7 +367,7 @@ test("LTS display and filter follow explicit catalog metadata", async ({
   await expect(page.locator(".version-trigger .version-badge")).toHaveText(
     "LTS",
   );
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   await page.locator('.version-filter-tag[data-filter="lts"]').click();
   await expect(page.locator(".release-row")).toHaveCount(1);
   await expect(page.locator(".release-row").first()).toContainText("9.0.2");
@@ -367,7 +377,7 @@ test("major catalog keeps Latest and an independent LTS and exact historical tag
   page,
   baseURL,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   await page.locator(".version-trigger").click();
   const popup = page.locator(".version-popup"),
     search = popup.getByRole("combobox");
@@ -391,13 +401,13 @@ test("major catalog keeps Latest and an independent LTS and exact historical tag
     "href",
     /ffmpeg-9\.1-261125R2\//,
   );
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   await expect(page.locator(".release-row")).toHaveCount(2);
   const major = page.locator(".release-row").filter({ hasText: "FFmpeg 9.x" });
   await expect(major).toContainText("9.1");
   await expect(major).toContainText("9.0.2");
   await major.click();
-  await expect(page).toHaveURL(baseURL + "en/releases/9.1/");
+  await expect(page).toHaveURL(baseURL + "releases/9.1/");
   await expect(page.locator("a.download-link").first()).toHaveAttribute(
     "href",
     /ffmpeg-9\.1-261125R10\//,
@@ -412,7 +422,7 @@ test("major catalog keeps Latest and an independent LTS and exact historical tag
     .locator("#history .release-row")
     .filter({ hasText: "9.0.2" })
     .click();
-  await expect(page).toHaveURL(baseURL + "en/releases/9.0.2/");
+  await expect(page).toHaveURL(baseURL + "releases/9.0.2/");
   await expect(page.locator("a.download-link").first()).toHaveAttribute(
     "href",
     /ffmpeg-9\.0\.2-261125\//,
@@ -422,19 +432,19 @@ test("major catalog keeps Latest and an independent LTS and exact historical tag
     "href",
     /ffmpeg-9\.0\.2-261125\//,
   );
-  await page.goto("./en/releases/?lts=1");
+  await page.goto("./releases/?lts=1");
   await page.locator(".release-row").first().click();
   await expect(page.locator("a.download-link").first()).toHaveAttribute(
     "href",
     /ffmpeg-9\.0\.2-261125\//,
   );
-  await expect(page).toHaveURL(baseURL + "en/releases/9.0.2/");
+  await expect(page).toHaveURL(baseURL + "releases/9.0.2/");
   await page.goto("./en/releases/9.x/?version=ffmpeg-9.1-261125R2");
-  await expect(page).toHaveURL(baseURL + "en/build/ffmpeg-9.1-261125R2/");
-  await page.goto("./en/releases/?q=ffmpeg-9.1-261125R2");
+  await expect(page).toHaveURL(baseURL + "build/ffmpeg-9.1-261125R2/");
+  await page.goto("./releases/?q=ffmpeg-9.1-261125R2");
   await page.locator(".release-row").first().click();
-  await expect(page).toHaveURL(baseURL + "en/build/ffmpeg-9.1-261125R2/");
-  await page.goto("./en/?version=missing-tag");
+  await expect(page).toHaveURL(baseURL + "build/ffmpeg-9.1-261125R2/");
+  await page.goto("./?version=missing-tag");
   await expect(page.locator("a.download-link")).toHaveCount(0);
   await page.getByRole("button", { name: "Select latest" }).click();
   await expect(page.locator("a.download-link").first()).toHaveAttribute(
@@ -447,7 +457,7 @@ test("catalog search reveals older batches and the picker displays batch dates",
   page,
   baseURL,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   await page.locator(".version-trigger").click();
   const popup = page.locator(".version-popup");
   await expect(
@@ -457,7 +467,7 @@ test("catalog search reveals older batches and the picker displays batch dates",
   await expect(
     popup.locator('[data-tag="ffmpeg-9.1-261125R2"] time'),
   ).toHaveText("2026-11-25");
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   const search = page.getByRole("searchbox"),
     rows = page.locator(".release-row");
   await search.fill("9.x");
@@ -471,5 +481,5 @@ test("catalog search reveals older batches and the picker displays batch dates",
   await search.fill("ffmpeg-9.1-261125r");
   await expect(rows).toHaveCount(2);
   await rows.locator('a[href$="/build/ffmpeg-9.1-261125R2/"]').click();
-  await expect(page).toHaveURL(baseURL + "en/build/ffmpeg-9.1-261125R2/");
+  await expect(page).toHaveURL(baseURL + "build/ffmpeg-9.1-261125R2/");
 });

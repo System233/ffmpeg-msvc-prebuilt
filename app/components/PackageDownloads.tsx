@@ -2,9 +2,9 @@ import { VariantNotice } from "./VariantNotice";
 import { PackageNoteText } from "./PackageNoteText";
 import { describeAssets } from "../domain/assets";
 import type { Variant } from "../domain/catalog";
-import { type Language } from "../lib/i18n";
+import { type Language } from "../i18n";
 import { AssetLink, AssetInspector } from "./ui";
-import { assetLabel, packageNote } from "../lib/asset-copy";
+import { assetLabel, packageNotes } from "../lib/asset-copy";
 import { optionMeaning } from "../lib/option-copy";
 
 type Props = {
@@ -27,7 +27,7 @@ export function PackageDownloads({
   date,
 }: Props) {
   const assets = describeAssets(variant, linkage);
-  const note = packageNote(assets, lang);
+  const note = packageNotes(assets, lang);
   return (
     <>
       <div className="package-downloads">

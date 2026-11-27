@@ -4,14 +4,24 @@ import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { findBuild, repo } from "../domain/catalog.server";
 import { ReleaseDetail } from "../components/ReleaseDetail";
-import { language, t } from "../lib/i18n";
+import { language, t } from "../i18n";
 export function loader({ params }: LoaderFunctionArgs) {
   const entry = findBuild(params.tag ?? "");
   if (!entry) throw new Response("Not found", { status: 404 });
   return { entry, repo };
 }
-export const meta = ({ data }: any) => [
-  { title: (data?.entry.tag ?? "Build") + " | FFmpeg MSVC Prebuilt" },
+export const meta = ({
+  data,
+  params,
+}: {
+  data?: ReturnType<typeof loader>;
+  params: Record<string, string | undefined>;
+}) => [
+  {
+    title:
+      (data?.entry.tag ?? t(language(params.lang), "seo.buildFallback")) +
+      " | FFmpeg MSVC Prebuilt",
+  },
 ];
 export default function Build() {
   const { entry, repo } = useLoaderData<typeof loader>(),
@@ -28,16 +38,8 @@ export default function Build() {
           }
           parentLabel={
             entry.channel === "master"
-              ? t(
-                  lang,
-                  "Back to " + entry.date.slice(0, 4) + " snapshots",
-                  "返回 " + entry.date.slice(0, 4) + " 年快照",
-                )
-              : t(
-                  lang,
-                  "Back to FFmpeg " + entry.upstream,
-                  "返回 FFmpeg " + entry.upstream,
-                )
+              ? t(lang, "build.backToYear", { year: entry.date.slice(0, 4) })
+              : t(lang, "build.backToVersion", { version: entry.upstream })
           }
         />
         <h1>FFmpeg {entry.upstream}</h1>

@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ErrorPage } from "../app/components/ErrorPage";
+import { t } from "../app/i18n";
 import { base, repo } from "./site-config";
 
 // Render the same recovery UI as the React error boundary, without a router
@@ -30,7 +31,7 @@ export function errorPage(stylesheets: string[]) {
     }
     function setLanguage(lang){
       document.documentElement.lang=lang==="zh"?"zh-CN":"en";
-      document.title=(lang==="zh"?"页面不存在":"Page not found")+" | FFmpeg MSVC";
+      document.title=__TITLES__[lang]+" | FFmpeg MSVC";
       document.querySelectorAll("[data-error-language]").forEach(n=>n.hidden=n.dataset.errorLanguage!==lang);
     }
     let theme="system";
@@ -51,14 +52,24 @@ export function errorPage(stylesheets: string[]) {
       setTheme(theme);
       try{localStorage.setItem("theme",theme)}catch{}
     });
-  })()`.replace("__BASE__", JSON.stringify(base).replace(/</g, "\\u003c"));
+  })()`
+    .replace("__BASE__", JSON.stringify(base).replace(/</g, "\\u003c"))
+    .replace(
+      "__TITLES__",
+      JSON.stringify({
+        en: t("en", "errorPage.pageNotFound"),
+        zh: t("zh", "errorPage.pageNotFound"),
+      }).replace(/</g, "\\u003c"),
+    );
   const links = stylesheets
     .map((href) =>
       renderToStaticMarkup(createElement("link", { rel: "stylesheet", href })),
     )
     .join("");
   return (
-    '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Page not found | FFmpeg MSVC</title>' +
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>' +
+    t("en", "errorPage.pageNotFound") +
+    " | FFmpeg MSVC</title>" +
     renderToStaticMarkup(
       createElement("link", { rel: "icon", href: base + "favicon.svg" }),
     ) +

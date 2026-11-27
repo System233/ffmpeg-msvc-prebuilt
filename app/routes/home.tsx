@@ -1,3 +1,5 @@
+import { loadFAQ } from "../content/markdown.server";
+import type { LoaderFunctionArgs } from "react-router";
 import { VersionPicker } from "../components/VersionPicker";
 import { HomeFAQ } from "../components/HomeFAQ";
 import { useHydrated } from "../lib/hydration";
@@ -10,29 +12,34 @@ import {
   linkages,
   licenses,
   getVariant,
-  localized,
   parseVariant,
   toEntries,
   variantKey,
   type Entry,
   type Shard,
 } from "../domain/catalog";
+import { localized } from "../i18n/routing";
 import { Segments } from "../components/ui";
 import { PackageDownloads } from "../components/PackageDownloads";
-import { language, linkageLabel, t } from "../lib/i18n";
+import { language, linkageLabel, t } from "../i18n";
 import { optionMeaning } from "../lib/option-copy";
-export function loader() {
-  return latest();
+export function loader({ params }: LoaderFunctionArgs) {
+  return { ...latest(), faq: loadFAQ(language(params.lang)) };
 }
-export const meta = () => [
-  { title: "FFmpeg MSVC Prebuilt – Windows downloads" },
+export const meta = ({
+  params,
+}: {
+  params: Record<string, string | undefined>;
+}) => [
+  { title: t(language(params.lang), "seo.homeTitle") },
   {
     name: "description",
-    content: "Native Windows FFmpeg builds compiled with MSVC.",
+    content: t(language(params.lang), "seo.homeDescription"),
   },
 ];
 export default function Home() {
-  const { options, search, initial, repo } = useLoaderData<typeof loader>(),
+  const { options, search, initial, repo, faq } =
+      useLoaderData<typeof loader>(),
     lang = language(useParams().lang);
   const [urlParams, setParams] = useSearchParams();
   const hydrated = useHydrated();
@@ -122,24 +129,18 @@ export default function Home() {
         <h1 id="hero-title">
           FFmpeg <span>MSVC Prebuilt</span>
         </h1>
-        <p>
-          {t(
-            lang,
-            "Native FFmpeg builds for Windows, compiled with Microsoft Visual C++. Ready-to-use binaries and native SDKs.",
-            "使用 Microsoft Visual C++ 编译的 Windows 原生 FFmpeg 构建，提供可直接使用的二进制包与原生 SDK。",
-          )}
-        </p>
+        <p>{t(lang, "home.intro")}</p>
         <div className="hero-actions">
           <a className="hero-primary" href="#download">
-            {t(lang, "Get FFmpeg", "获取 FFmpeg")} <ArrowDown size={16} />
+            {t(lang, "home.getFfmpeg")} <ArrowDown size={16} />
           </a>
           <Link className="hero-secondary" to={localized(lang, "/guide/")}>
-            {t(lang, "Documentation", "使用文档")} <ArrowUpRight size={16} />
+            {t(lang, "nav.documentation")} <ArrowUpRight size={16} />
           </Link>
         </div>
         {initial?.channel === "release" && (
           <p className="hero-release">
-            <span>{t(lang, "Latest stable", "最新发行版")}</span>{" "}
+            <span>{t(lang, "home.latestStable")}</span>{" "}
             <Link to={localized(lang, "/releases/" + initial.upstream + "/")}>
               FFmpeg {initial.upstream}
             </Link>
@@ -149,11 +150,9 @@ export default function Home() {
       </section>
       <section className="quick" id="download" aria-labelledby="download-title">
         <div className="section-head">
-          <h2 id="download-title">
-            {t(lang, "Download FFmpeg", "下载 FFmpeg")}
-          </h2>
+          <h2 id="download-title">{t(lang, "home.downloadFfmpeg")}</h2>
           <Link to={localized(lang, "/releases/")}>
-            {t(lang, "All releases", "全部版本")} <ArrowUpRight size={14} />
+            {t(lang, "home.allReleases")} <ArrowUpRight size={14} />
           </Link>
         </div>
         {option ? (
@@ -166,19 +165,19 @@ export default function Home() {
                 onChange={(v) => change("version", v)}
               />
               <Segments
-                label={t(lang, "Architecture", "架构")}
+                label={t(lang, "common.architecture")}
                 value={selection.arch}
                 options={opts("arch", architectures)}
                 onChange={(v) => change("arch", v)}
               />
               <Segments
-                label={t(lang, "Linkage", "链接方式")}
+                label={t(lang, "home.linkage")}
                 value={selection.linkage}
                 options={opts("linkage", linkages)}
                 onChange={(v) => change("linkage", v)}
               />
               <Segments
-                label={t(lang, "License", "许可证")}
+                label={t(lang, "home.license")}
                 value={selection.license}
                 options={opts("license", licenses)}
                 onChange={(v) => change("license", v)}
@@ -188,18 +187,10 @@ export default function Home() {
               {!available ? (
                 <div className="unavailable-box">
                   <strong>
-                    {t(
-                      lang,
-                      "This configuration is unavailable",
-                      "当前构建组合不可用",
-                    )}
+                    {t(lang, "home.thisConfigurationIsUnavailable")}
                   </strong>
                   <p className="muted">
-                    {t(
-                      lang,
-                      "Select an available combination explicitly. Your license selection will not change automatically.",
-                      "请明确选择可用组合，许可证不会自动切换。",
-                    )}
+                    {t(lang, "home.selectAvailableConfiguration")}
                   </p>
                   <div className="available-options">
                     {validChoices.map((v) => (
@@ -249,34 +240,32 @@ export default function Home() {
                 </>
               ) : error ? (
                 <div role="alert">
-                  {t(lang, "Unable to load this build.", "无法加载构建详情。")}{" "}
+                  {t(lang, "home.unableToLoadThisBuild")}{" "}
                   <button
                     className="text-button"
                     onClick={() => setAttempt((n) => n + 1)}
                   >
-                    {t(lang, "Retry", "重试")}
+                    {t(lang, "home.retry")}
                   </button>
                 </div>
               ) : (
-                <p className="muted">
-                  {t(lang, "Loading build details…", "正在加载构建详情…")}
-                </p>
+                <p className="muted">{t(lang, "home.loadingBuildDetails")}</p>
               )}
             </div>
             <div className="quick-bottom">
               <Link to={localized(lang, "/build/" + tag + "/")}>
-                {t(lang, "View all variants", "查看全部变体")} →
+                {t(lang, "home.viewAllVariants")} →
               </Link>
               <Link to={localized(lang, "/guide/")}>
-                {t(lang, "Which package should I choose?", "如何选择构建包？")}
+                {t(lang, "home.whichPackageShouldIChoose")}
               </Link>
             </div>
           </>
         ) : (
           <p>
             {requested
-              ? t(lang, "This build is unavailable.", "指定的构建不可用。")
-              : t(lang, "No versions available.", "暂无可用版本。")}{" "}
+              ? t(lang, "home.thisBuildIsUnavailable")
+              : t(lang, "home.noVersionsAvailable")}{" "}
             {requested && (
               <button
                 className="text-button"
@@ -286,7 +275,7 @@ export default function Home() {
                   setParams(p, { replace: true });
                 }}
               >
-                {t(lang, "Select latest", "选择最新版本")}
+                {t(lang, "home.selectLatest")}
               </button>
             )}
           </p>
@@ -294,21 +283,19 @@ export default function Home() {
       </section>
       <div className="home-links">
         <Link to={localized(lang, "/releases/")}>
-          <strong>{t(lang, "All versions", "全部版本")}</strong>
-          <span className="muted">
-            {t(lang, "Browse stable releases", "浏览稳定版本")}
-          </span>
+          <strong>{t(lang, "nav.releases")}</strong>
+          <span className="muted">{t(lang, "home.browseStableReleases")}</span>
           <ArrowUpRight size={18} />
         </Link>
         <Link to={localized(lang, "/master/")}>
-          <strong>{t(lang, "Snapshots", "快照版本")}</strong>
+          <strong>{t(lang, "nav.snapshots")}</strong>
           <span className="muted">
-            {t(lang, "Upstream development snapshots", "上游最新构建快照")}
+            {t(lang, "home.upstreamDevelopmentSnapshots")}
           </span>
           <ArrowUpRight size={18} />
         </Link>
       </div>
-      <HomeFAQ lang={lang} />
+      <HomeFAQ lang={lang} questions={faq} />
     </div>
   );
 }

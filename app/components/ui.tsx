@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useId } from "react";
 import type { ReactNode } from "react";
 import type { Asset, Variant } from "../domain/catalog";
 import { assetUrl, formatSize } from "../domain/catalog";
-import { t, type Language } from "../lib/i18n";
+import { t, type Language } from "../i18n";
 import { describeAssets, type AssetKind } from "../domain/assets";
 import {
   assetLabel,
@@ -93,14 +93,14 @@ export function CopyButton({
       </button>
       <span role="status" className="sr-only">
         {status === "done"
-          ? t(lang, "Copied", "已复制")
+          ? t(lang, "ui.copied")
           : status === "error"
-            ? t(lang, "Copy failed", "复制失败")
+            ? t(lang, "ui.copyFailed")
             : ""}
       </span>
       {status === "error" && (
         <span className="copy-feedback" aria-hidden="true">
-          {t(lang, "Copy failed", "复制失败")}
+          {t(lang, "ui.copyFailed")}
         </span>
       )}
     </span>
@@ -136,7 +136,7 @@ export function AssetLink({
         title={tooltip ? undefined : asset.file}
       >
         <Download size={15} aria-hidden="true" />
-        <span>{children ?? t(lang, "Download", "下载")}</span>
+        <span>{children ?? t(lang, "common.download")}</span>
         <span className="asset-size">{formatSize(asset.size)}</span>
         <span className="sr-only"> {asset.file}</span>
       </a>
@@ -184,7 +184,7 @@ export function AssetInspector({
         {copy && (
           <CopyButton
             value={content}
-            label={t(lang, "Copy ", "复制 ") + name}
+            label={t(lang, "ui.copyValue", { name })}
             lang={lang}
           />
         )}
@@ -199,14 +199,14 @@ export function AssetInspector({
         type="button"
         className="icon-button info-trigger"
         onClick={open}
-        aria-label={
-          t(lang, "Asset information: ", "产物信息：") +
-          label +
-          (initialKind === "binary"
-            ? ""
-            : " · " + assetLabel(initialKind, lang))
-        }
-        title={t(lang, "Checksums & build info", "校验和与构建信息")}
+        aria-label={t(lang, "ui.assetInformationFor", {
+          label:
+            label +
+            (initialKind === "binary"
+              ? ""
+              : " · " + assetLabel(initialKind, lang)),
+        })}
+        title={t(lang, "ui.checksumsBuildInfo")}
       >
         <Info size={17} />
       </button>
@@ -222,13 +222,13 @@ export function AssetInspector({
         <section className="inspector">
           <header className="inspector-head">
             <div>
-              <h2 id={heading}>{t(lang, "Asset information", "产物信息")}</h2>
+              <h2 id={heading}>{t(lang, "ui.assetInformation")}</h2>
               <p className="muted">{label}</p>
             </div>
             <button
               type="button"
               className="icon-button"
-              aria-label={t(lang, "Close", "关闭")}
+              aria-label={t(lang, "ui.close")}
               onClick={close}
               autoFocus
             >
@@ -237,7 +237,7 @@ export function AssetInspector({
           </header>
           {assets.length > 1 && (
             <Segments
-              label={t(lang, "Package", "产物类型")}
+              label={t(lang, "ui.package")}
               value={selected.kind}
               options={assets.map((d) => ({
                 value: d.kind,
@@ -258,27 +258,20 @@ export function AssetInspector({
                 href={assetUrl(repo, tag, variant.binary)}
               >
                 <Download size={15} aria-hidden="true" />
-                {t(lang, "Matching Binary", "对应二进制")}
+                {t(lang, "ui.matchingBinary")}
               </a>
             )}
           </div>
           <VariantNotice note={variant.note} lang={lang} />
           <div className="info-body">
-            {value(t(lang, "Filename", "文件名"), asset.file, true)}
-            {value(t(lang, "Size", "大小"), formatSize(asset.size))}
+            {value(t(lang, "ui.filename"), asset.file, true)}
+            {value(t(lang, "ui.size"), formatSize(asset.size))}
             {value("SHA-256", asset.sha256, true)}
-            {value(
-              t(lang, "Download URL", "下载地址"),
-              assetUrl(repo, tag, asset),
-              true,
-            )}
+            {value(t(lang, "ui.downloadUrl"), assetUrl(repo, tag, asset), true)}
             {variant.abi && value("ABI", variant.abi, true)}
             {variant.format !== undefined &&
-              value(
-                t(lang, "Package format", "打包格式"),
-                String(variant.format),
-              )}
-            {value(t(lang, "Asset date", "资产日期"), variant.date ?? date)}
+              value(t(lang, "ui.packageFormat"), String(variant.format))}
+            {value(t(lang, "ui.assetDate"), variant.date ?? date)}
           </div>
         </section>
       </dialog>

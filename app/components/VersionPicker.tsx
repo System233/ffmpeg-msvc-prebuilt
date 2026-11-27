@@ -12,7 +12,7 @@ import {
   type VersionOption,
   type VersionFilter,
 } from "../domain/catalog";
-import { t, type Language } from "../lib/i18n";
+import { t, type Language } from "../i18n";
 
 export function VersionPicker({
   options,
@@ -29,17 +29,17 @@ export function VersionPicker({
   const [filter, setFilter] = useState<VersionFilter>("all");
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.tag === value);
-  const label = t(lang, "Version", "版本");
+  const label = t(lang, "versionPicker.version");
   const groups = [
-    { channel: "release", label: t(lang, "Stable versions", "稳定版本") },
-    { channel: "master", label: t(lang, "Snapshots", "快照版本") },
+    { channel: "release", label: t(lang, "versionPicker.stableVersions") },
+    { channel: "master", label: t(lang, "nav.snapshots") },
   ] as const;
   const filtered = filterVersionOptions(options, filter, query);
   const latestTag = defaultVersionOptions(options)[0]?.tag;
   const currentTags = new Set(versionHeads(options).map((o) => o.tag));
   const display = (o: VersionOption) =>
     (o.channel === "master"
-      ? t(lang, "Snapshot ", "快照版本 ") + o.upstream
+      ? t(lang, "versionPicker.snapshot", { version: o.upstream })
       : "FFmpeg " + o.upstream) +
     (!currentTags.has(o.tag) ? " · " + o.tag : "");
   const tags = options.map((o) => o.tag);
@@ -113,17 +113,13 @@ export function VersionPicker({
                 snapshots
               >
                 <Combobox.Input
-                  aria-label={t(lang, "Search versions", "搜索版本")}
-                  placeholder={t(
-                    lang,
-                    "Search version or tag…",
-                    "搜索版本号或 Tag…",
-                  )}
+                  aria-label={t(lang, "versionPicker.searchVersions")}
+                  placeholder={t(lang, "versionPicker.searchVersionOrTag")}
                 />
               </VersionSearch>
               <div className="version-results">
                 <Combobox.Empty className="version-empty">
-                  {t(lang, "No matching versions.", "没有匹配的版本。")}
+                  {t(lang, "versionPicker.noMatchingVersions")}
                 </Combobox.Empty>
                 <Combobox.List className="version-list">
                   {groups.map((g) => {
@@ -150,7 +146,7 @@ export function VersionPicker({
                               <time
                                 className="version-option-date"
                                 dateTime={o.date}
-                                title={t(lang, "Build date", "构建日期")}
+                                title={t(lang, "versionPicker.buildDate")}
                               >
                                 {o.date}
                               </time>
@@ -163,7 +159,7 @@ export function VersionPicker({
                             />
                             {o.tag === latestTag && o.channel === "release" && (
                               <span className="version-latest">
-                                {t(lang, "Latest", "最新")}
+                                {t(lang, "versionPicker.latest")}
                               </span>
                             )}
                             <Combobox.ItemIndicator className="version-check">

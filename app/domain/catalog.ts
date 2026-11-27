@@ -84,13 +84,7 @@ export function toEntries(shard: Shard, channel: Entry["channel"]): Entry[] {
     }))
     .sort(compareEntries);
 }
-export function localized(lang: string, path: string) {
-  return (
-    "/" +
-    (lang === "zh" ? "zh" : "en") +
-    (path.startsWith("/") ? path : "/" + path)
-  );
-}
+export { localized } from "../i18n/routing";
 export function selectVariant(
   keys: readonly string[],
   preferences: { arch: string; linkage: string; license: string },

@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router";
-import { t, type Language } from "../lib/i18n";
-import { localized } from "../domain/catalog";
+import { t, type Language } from "../i18n";
+import { localized } from "../i18n/routing";
 import { useSiteHistory } from "../lib/site-history";
 
 export function HistoryBack({
@@ -33,7 +33,7 @@ export function HistoryBack({
       }}
     >
       <ArrowLeft size={14} aria-hidden="true" />
-      {t(lang, "Back", "返回")}
+      {t(lang, "historyBack.back")}
     </button>
   );
 }

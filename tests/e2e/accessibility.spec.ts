@@ -4,13 +4,13 @@ import { allEntries } from "../../app/domain/catalog.server";
 const entry = allEntries()[0];
 for (const [name, path] of [
   ["home", ""],
-  ["list", "en/releases/"],
-  ["detail", "en/build/" + entry.tag + "/"],
+  ["list", "releases/"],
+  ["detail", "build/" + entry.tag + "/"],
   ["guide", "zh/guide/"],
   ["integration", "zh/integration/"],
   ["packages", "zh/packages/"],
   ["licenses", "zh/licenses/"],
-  ["404 English", "en/not-a-valid-page/"],
+  ["404 English", "not-a-valid-page/"],
   ["404 Chinese", "zh/not-a-valid-page/"],
 ]) {
   test("WCAG A/AA: " + name, async ({ page }) => {

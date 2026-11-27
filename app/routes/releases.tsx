@@ -10,11 +10,20 @@ import {
   majorVersion,
   versionHeads,
 } from "../domain/catalog";
-import { language, t } from "../lib/i18n";
+import { language, t, countLabel } from "../i18n";
 export function loader() {
   return searchOptions().filter((o) => o.channel === "release");
 }
-export const meta = () => [{ title: "All versions | FFmpeg MSVC Prebuilt" }];
+export const meta = ({
+  params,
+}: {
+  params: Record<string, string | undefined>;
+}) => [
+  {
+    title:
+      t(language(params.lang), "seo.releasesTitle") + " | FFmpeg MSVC Prebuilt",
+  },
+];
 export default function Releases() {
   const data = useLoaderData<typeof loader>(),
     lang = language(useParams().lang);
@@ -40,21 +49,16 @@ export default function Releases() {
   return (
     <>
       <div className="page-head">
-        <h1>{t(lang, "All versions", "全部版本")}</h1>
+        <h1>{t(lang, "nav.releases")}</h1>
         <p>
-          {grouped ? families.length : filtered.length}{" "}
           {grouped
-            ? t(
-                lang,
-                families.length === 1 ? "major version" : "major versions",
-                "个主版本",
-              )
-            : t(lang, filtered.length === 1 ? "result" : "results", "条结果")}
+            ? countLabel(lang, "releases.majorCount", families.length)
+            : countLabel(lang, "releases.resultCount", filtered.length)}
         </p>
       </div>
       <div className="release-search">
         <span className="field-label">
-          {t(lang, "Search versions", "搜索版本")}
+          {t(lang, "versionPicker.searchVersions")}
         </span>
         <VersionSearch
           lang={lang}
@@ -68,8 +72,8 @@ export default function Releases() {
         >
           <input
             type="search"
-            aria-label={t(lang, "Search versions", "搜索版本")}
-            placeholder="9.1, 8.1, tag…"
+            aria-label={t(lang, "versionPicker.searchVersions")}
+            placeholder={t(lang, "releases.searchPlaceholder")}
             value={query}
             onChange={(e) => {
               const p = new URLSearchParams(params);
@@ -99,7 +103,7 @@ export default function Releases() {
                         {v.upstream}
                         {v.tag === latestTag && (
                           <span className="latest-label">
-                            {t(lang, "Latest", "最新")}
+                            {t(lang, "versionPicker.latest")}
                           </span>
                         )}
                         {v.lts && <LtsBadge lang={lang} />}
@@ -108,13 +112,15 @@ export default function Releases() {
                   </span>
                 </div>
                 <span className="release-count">
-                  {rows[0].keys.length} {t(lang, "variants", "种变体")}
+                  {countLabel(lang, "common.variantCount", rows[0].keys.length)}
                   {data.filter((v) => majorVersion(v.upstream) === f).length > 1
                     ? " · " +
-                      data.filter((v) => majorVersion(v.upstream) === f)
-                        .length +
-                      " " +
-                      t(lang, "builds", "批构建")
+                      countLabel(
+                        lang,
+                        "common.buildCount",
+                        data.filter((v) => majorVersion(v.upstream) === f)
+                          .length,
+                      )
                     : ""}
                 </span>
                 <time>{rows[0].date}</time>
@@ -140,7 +146,7 @@ export default function Releases() {
                       </Link>
                       {v.tag === latestTag && (
                         <span className="latest-label">
-                          {t(lang, "Latest", "最新")}
+                          {t(lang, "versionPicker.latest")}
                         </span>
                       )}
                       {!headTags.has(v.tag) && (
@@ -150,12 +156,15 @@ export default function Releases() {
                       <VersionWarning warning={v.warning} lang={lang} />
                     </div>
                     <span className="release-count">
-                      {v.keys.length} {t(lang, "variants", "种变体")}
+                      {countLabel(lang, "common.variantCount", v.keys.length)}
                       {data.filter((o) => o.upstream === v.upstream).length > 1
                         ? " · " +
-                          data.filter((o) => o.upstream === v.upstream).length +
-                          " " +
-                          t(lang, "builds", "批构建")
+                          countLabel(
+                            lang,
+                            "common.buildCount",
+                            data.filter((o) => o.upstream === v.upstream)
+                              .length,
+                          )
                         : ""}
                     </span>
                     <time>{v.date}</time>
@@ -168,9 +177,7 @@ export default function Releases() {
         );
       })}
       {!filtered.length && (
-        <p className="empty">
-          {t(lang, "No matching versions.", "没有匹配的版本。")}
-        </p>
+        <p className="empty">{t(lang, "versionPicker.noMatchingVersions")}</p>
       )}
     </>
   );

@@ -4,7 +4,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { hasWarning } from "../domain/catalog";
 import { entries } from "../domain/catalog.server";
 import { EntryLinks } from "../components/ReleaseDetail";
-import { language, t } from "../lib/i18n";
+import { language, t, countLabel } from "../i18n";
 export function loader({ params }: LoaderFunctionArgs) {
   const data = entries("master/" + params.year);
   if (!data.length) throw new Response("Not found", { status: 404 });
@@ -18,8 +18,18 @@ export function loader({ params }: LoaderFunctionArgs) {
     })),
   };
 }
-export const meta = ({ data }: any) => [
-  { title: "Snapshots " + (data?.year ?? "") + " | FFmpeg MSVC Prebuilt" },
+export const meta = ({
+  data,
+  params,
+}: {
+  data?: ReturnType<typeof loader>;
+  params: Record<string, string | undefined>;
+}) => [
+  {
+    title:
+      t(language(params.lang), "seo.yearTitle", { year: data?.year ?? "" }) +
+      " | FFmpeg MSVC Prebuilt",
+  },
 ];
 export default function Year() {
   const { year, records } = useLoaderData<typeof loader>(),
@@ -30,14 +40,10 @@ export default function Year() {
         <HistoryBack
           lang={lang}
           parent="/master/"
-          parentLabel={t(lang, "Back to snapshots", "返回快照版本")}
+          parentLabel={t(lang, "year.backToSnapshots")}
         />
-        <h1>
-          {t(lang, "Snapshots", "快照版本")} {year}
-        </h1>
-        <p>
-          {records.length} {t(lang, "snapshots", "个快照版本")}
-        </p>
+        <h1>{t(lang, "seo.yearTitle", { year: year ?? "" })}</h1>
+        <p>{countLabel(lang, "common.snapshotCount", records.length)}</p>
       </div>
       <EntryLinks entries={records} lang={lang} />
     </>

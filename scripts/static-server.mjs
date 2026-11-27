@@ -14,6 +14,10 @@ const mime = {
 };
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (base !== "/" && url.pathname === base.slice(0, -1)) {
+    res.writeHead(301, { Location: base + url.search }).end();
+    return;
+  }
   if (!url.pathname.startsWith(base)) {
     res.writeHead(404).end();
     return;

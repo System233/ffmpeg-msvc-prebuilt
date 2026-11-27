@@ -39,7 +39,7 @@ test("deep links and client-side navigation work under the deployment base", asy
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("./en/releases/" + stable.upstream + "/");
+  await page.goto("./releases/" + stable.upstream + "/");
   await expect(
     page.getByRole("heading", {
       name: "FFmpeg " + stable.upstream,
@@ -61,7 +61,7 @@ test("all assets have direct download hrefs in both languages' static HTML", asy
   for (const lang of ["en", "zh"])
     for (const e of entries) {
       const response = await request.get(
-        baseURL + lang + "/build/" + e.tag + "/",
+        baseURL + (lang === "zh" ? "zh/" : "") + "build/" + e.tag + "/",
       );
       expect(response.ok()).toBeTruthy();
       const html = await response.text();
@@ -106,7 +106,7 @@ test("documentation puts verification and runnable integration first, with separ
 }) => {
   for (const lang of ["en", "zh"]) {
     const zh = lang === "zh";
-    const prefix = lang + "/";
+    const prefix = (lang === "zh" ? "zh/" : "") + "";
     await page.goto("./" + prefix + "guide/");
     const article = page.locator(".prose");
     const guideText = await article.innerText();
@@ -195,7 +195,7 @@ test("download options have concise adaptive hover and keyboard tooltips", async
   for (const lang of ["zh", "en"]) {
     const zh = lang === "zh";
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("./" + lang + "/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
     const architecture = page.getByRole("group", {
       name: zh ? "架构" : "Architecture",
       exact: true,
@@ -264,7 +264,7 @@ test("Chinese linkage labels and static SDK distribution rationale", async ({
   ).toBeVisible();
   await page.goto("./zh/packages/");
   await expect(page.locator(".prose")).toContainText("体积过大");
-  await page.goto("./en/packages/");
+  await page.goto("./packages/");
   await expect(page.locator(".prose")).toContainText("too large to distribute");
   await page.goto("./zh/history/");
   await expect(page.locator(".prose")).not.toContainText(
@@ -275,7 +275,7 @@ test("Chinese linkage labels and static SDK distribution rationale", async ({
 
 test("mobile navigation, release filters and legacy URLs", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("./en/");
+  await page.goto("./");
   await page.getByRole("button", { name: "Menu", exact: true }).click();
   await page.getByRole("link", { name: "All versions", exact: true }).click();
   await page.getByRole("searchbox").fill(stable.upstream);
@@ -283,7 +283,7 @@ test("mobile navigation, release filters and legacy URLs", async ({ page }) => {
     page.getByRole("link", { name: new RegExp("FFmpeg " + stable.upstream) }),
   ).toBeVisible();
   if (legacy) await page.goto("./en/releases/" + legacyId(legacy) + ".html");
-  else await page.goto("./en/releases/" + stable.upstream + "/");
+  else await page.goto("./releases/" + stable.upstream + "/");
   await expect(
     page.getByRole("heading", {
       name: "FFmpeg " + (legacy?.upstream ?? stable.upstream),
@@ -302,7 +302,7 @@ test("download information is usable with JavaScript disabled", async ({
 }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
-  await page.goto(baseURL + "en/build/" + stable.tag + "/");
+  await page.goto(baseURL + "build/" + stable.tag + "/");
   await expect(page.locator("a.download-link").first()).toBeVisible();
   await context.close();
 });
@@ -310,7 +310,7 @@ test("download information is usable with JavaScript disabled", async ({
 test("searchable version picker filters LTS and snapshots without changing selection", async ({
   page,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   const trigger = page.locator(".version-trigger");
   const original = await trigger.locator(".version-trigger-label").innerText();
   await trigger.click();
@@ -393,7 +393,7 @@ test("inline filter tags and stable search geometry", async ({ page }) => {
       [320, 568],
     ]) {
       await page.setViewportSize({ width, height });
-      await page.goto("./" + lang + "/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
       const trigger = page.locator(".version-trigger");
       await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
@@ -467,7 +467,7 @@ test("inline filter tags and stable search geometry", async ({ page }) => {
         }),
       ).toBe(true);
       await search.press("Escape");
-      await page.goto("./" + lang + "/releases/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "releases/");
       const input = page.getByRole("searchbox");
       const before = await input.boundingBox();
       const controls = page.locator(".release-search .version-filter-tag");
@@ -493,7 +493,7 @@ test("inline filter tags and stable search geometry", async ({ page }) => {
 test("inline filter tags support keyboard selection without closing the combobox", async ({
   page,
 }) => {
-  await page.goto("./en/");
+  await page.goto("./");
   await page.locator(".version-trigger").click();
   const popup = page.locator(".version-popup");
   const tags = popup.locator(".version-filter-tag");
@@ -511,7 +511,7 @@ test("inline filter tags support keyboard selection without closing the combobox
   await expect(popup).toBeVisible();
   await popup.getByRole("combobox").press("Escape");
   await expect(popup).not.toBeVisible();
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   const lts = page.locator(
     '.release-search .version-filter-tag[data-filter="lts"]',
   );
@@ -525,7 +525,7 @@ test("version popup adapts to page scrolling without resetting the filter", asyn
   page,
 }) => {
   await page.setViewportSize({ width: 1024, height: 600 });
-  await page.goto("./en/");
+  await page.goto("./");
   const trigger = page.locator(".version-trigger");
   await page.evaluate(() => window.scrollTo(0, 0));
   const original = (await trigger.boundingBox())!;
@@ -574,7 +574,7 @@ test("FAQ provides actionable answers and valid localized documentation anchors"
 }) => {
   for (const lang of ["en", "zh"]) {
     await page.setViewportSize({ width: 320, height: 700 });
-    await page.goto("./" + lang + "/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
     const faq = page.locator(".home-faq");
     const items = faq.locator("details.faq-item");
     await expect(items).toHaveCount(7);
@@ -646,7 +646,7 @@ test("FAQ provides actionable answers and valid localized documentation anchors"
     expect(links.length).toBeGreaterThanOrEqual(10);
     for (const href of new Set(links)) {
       const url = new URL(href);
-      expect(url.pathname).toContain("/" + lang + "/");
+      expect(url.pathname).toContain("/" + (lang === "zh" ? "zh/" : ""));
       expect(url.hash).not.toBe("");
       const response = await page.request.get(href.split("#")[0]);
       expect(response.ok()).toBe(true);
@@ -666,7 +666,7 @@ test("FAQ provides actionable answers and valid localized documentation anchors"
     await firstLink.click();
     await expect(page).toHaveURL(
       (url) =>
-        url.pathname.endsWith("/" + lang + "/guide/") &&
+        url.pathname.endsWith("/" + (lang === "zh" ? "zh/" : "") + "guide/") &&
         decodeURIComponent(url.hash) ===
           decodeURIComponent(href!.slice(href!.indexOf("#"))),
     );
@@ -703,7 +703,7 @@ test("self-build documentation is available in both languages with styled links"
   page,
 }) => {
   for (const lang of ["en", "zh"]) {
-    await page.goto("./" + lang + "/guide/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "guide/");
     const nav = page.locator(".doc-nav");
     const build = nav.getByRole("link", {
       name: lang === "zh" ? "自行构建" : "Build from source",
@@ -711,7 +711,9 @@ test("self-build documentation is available in both languages with styled links"
     });
     await expect(build).toBeVisible();
     await build.click();
-    await expect(page).toHaveURL(new RegExp("/" + lang + "/self-build/"));
+    await expect(page).toHaveURL(
+      new RegExp("/" + (lang === "zh" ? "zh/" : "") + "self-build/"),
+    );
     await expect(page.locator("main h1")).toHaveText(
       lang === "zh" ? "自行构建" : "Build from source",
     );
@@ -734,7 +736,7 @@ test("self-build documentation is available in both languages with styled links"
     });
     expect(color).toBe("rgb(29, 78, 216)");
     expect(dark).toBe("rgb(147, 197, 253)");
-    await page.goto("./" + lang + "/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
     const faq = page.locator(".faq-item");
     await expect(faq.locator(".faq-answer > p:first-child")).toHaveCount(7);
     await faq.first().locator("summary").click();
@@ -756,7 +758,7 @@ test("self-build documentation is available in both languages with styled links"
 test("detail back buttons follow browser history, not parent routes", async ({
   page,
 }) => {
-  await page.goto("./en/?arch=arm64#download");
+  await page.goto("./?arch=arm64#download");
   const home = page.url();
   await page.getByRole("link", { name: "View all variants" }).click();
   await expect(page).toHaveURL(/\/build\//);
@@ -780,7 +782,7 @@ test("detail back buttons follow browser history, not parent routes", async ({
   await page.goto("./zh/build/" + snapshot.tag + "/");
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(page).toHaveURL(docs);
-  await page.goto("./en/releases/?q=" + stable.upstream + "&lts=0");
+  await page.goto("./releases/?q=" + stable.upstream + "&lts=0");
   const filtered = page.url();
   await page.locator(".release-row").first().click();
   await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -791,9 +793,9 @@ test("back control changes label and uses the parent for external or absent hist
   page,
   baseURL,
 }) => {
-  const detail = new URL("en/build/" + stable.tag + "/", baseURL).href;
-  const parent = new URL("en/releases/" + stable.upstream + "/", baseURL).href;
-  const list = new URL("en/releases/", baseURL).href;
+  const detail = new URL("build/" + stable.tag + "/", baseURL).href;
+  const parent = new URL("releases/" + stable.upstream + "/", baseURL).href;
+  const list = new URL("releases/", baseURL).href;
   const back = page.locator(".history-back");
   await page.goto(detail);
   await expect(back).toHaveText("Back to FFmpeg " + stable.upstream);
@@ -827,7 +829,7 @@ test("back control changes label and uses the parent for external or absent hist
     await back.click();
     await expect(page).toHaveURL(list);
     await page.getByRole("link", { name: "Download", exact: true }).click();
-    await expect(page).toHaveURL(/\/en\/$/);
+    await expect(page).toHaveURL(baseURL!);
     const home = page.url();
     await page.getByRole("link", { name: "View all variants" }).click();
     await expect(
@@ -854,11 +856,11 @@ test("older browsers use parent links when in-app history cannot be proven", asy
       configurable: true,
     }),
   );
-  await page.goto("./en/build/" + stable.tag + "/");
+  await page.goto("./build/" + stable.tag + "/");
   const back = page.locator(".history-back");
   await expect(back).toHaveText("Back to FFmpeg " + stable.upstream);
   await page.getByRole("link", { name: "Download", exact: true }).click();
-  await expect(page).toHaveURL(/\/en\/$/);
+  await expect(page).toHaveURL(baseURL!);
   const home = page.url();
   await page.getByRole("link", { name: "View all variants" }).click();
   await expect(back).toHaveText("Back");
@@ -871,9 +873,7 @@ test("older browsers use parent links when in-app history cannot be proven", asy
   await page.reload();
   await expect(back).toHaveText("Back to FFmpeg " + selected.upstream);
   await back.click();
-  await expect(page).toHaveURL(
-    baseURL + "en/releases/" + selected.upstream + "/",
-  );
+  await expect(page).toHaveURL(baseURL + "releases/" + selected.upstream + "/");
 });
 
 test("localized parent labels and links work without JavaScript", async ({
@@ -933,13 +933,15 @@ test("historical LGPL notice is scoped to the selected variant and links to loca
     const label = lang === "zh" ? "查看详情" : "View details";
     const docTitle = lang === "zh" ? "更新历史" : "Update history";
     const anchor = lang === "zh" ? "历史-lgpl-构建" : "legacy-lgpl-builds";
-    const target = lang + "/history/";
+    const target = (lang === "zh" ? "zh/" : "") + "history/";
     const response = await request.get(
-      baseURL + lang + "/build/" + old.tag + "/",
+      baseURL + (lang === "zh" ? "zh/" : "") + "build/" + old.tag + "/",
     );
     expect(response.ok()).toBe(true);
     expect(await response.text()).toContain("variant-notice");
-    await page.goto("./" + lang + "/build/" + old.tag + "/");
+    await page.goto(
+      "./" + (lang === "zh" ? "zh/" : "") + "build/" + old.tag + "/",
+    );
     const notice = page.locator(".build-section > .variant-notice");
     await expect(notice).toBeVisible();
     await expect(notice.locator(".notice-icon")).toBeVisible();
@@ -1009,8 +1011,8 @@ test("historical LGPL notice is scoped to the selected variant and links to loca
     await expect(page.locator(".prose a[href*='/issues/']")).toHaveCount(0);
     await page.goto(
       "./" +
-        lang +
-        "/?version=" +
+        (lang === "zh" ? "zh/" : "") +
+        "?version=" +
         old.tag +
         "&arch=" +
         arch +
@@ -1023,8 +1025,8 @@ test("historical LGPL notice is scoped to the selected variant and links to loca
     ).toBeVisible();
     await page.goto(
       "./" +
-        lang +
-        "/?version=" +
+        (lang === "zh" ? "zh/" : "") +
+        "?version=" +
         old.tag +
         "&arch=" +
         gplArch +
@@ -1040,7 +1042,7 @@ test("historical LGPL notice is scoped to the selected variant and links to loca
     Object.values(e.variants).some((v) => v.abi),
   );
   if (native) {
-    await page.goto("./en/build/" + native.tag + "/");
+    await page.goto("./build/" + native.tag + "/");
     await expect(page.locator(".build-section > .variant-notice")).toHaveCount(
       0,
     );
@@ -1066,8 +1068,8 @@ test("warning icons display one local explanation without changing selection", a
       await page.setViewportSize({ width, height: 844 });
       await page.goto(
         "./" +
-          lang +
-          "/?version=" +
+          (lang === "zh" ? "zh/" : "") +
+          "?version=" +
           old.tag +
           "&arch=x64&linkage=shared&license=lgpl",
       );
@@ -1126,13 +1128,18 @@ test("warning icons display one local explanation without changing selection", a
       await page.keyboard.press("Escape");
       await expect(pop).not.toBeVisible();
       await page.goto(
-        "./" + lang + "/releases/?q=" + encodeURIComponent(old.tag),
+        "./" +
+          (lang === "zh" ? "zh/" : "") +
+          "releases/?q=" +
+          encodeURIComponent(old.tag),
       );
       const listUrl = page.url();
       await page.locator(".release-row .version-warning").click();
       await assertNotice(listUrl);
       await page.keyboard.press("Escape");
-      await page.goto("./" + lang + "/releases/" + old.upstream + "/");
+      await page.goto(
+        "./" + (lang === "zh" ? "zh/" : "") + "releases/" + old.upstream + "/",
+      );
       const majorUrl = page.url();
       await expect(page.locator(".meta-line .version-warning")).toHaveCount(0);
       await expect(
@@ -1153,7 +1160,7 @@ test("major catalog exposes only current representatives by default and finds fo
   const stable = entries.filter((e) => e.channel === "release");
   const majors = new Set(stable.map((e) => e.upstream.split(".")[0]));
   const visible = defaultVersionOptions(searchOptions());
-  await page.goto("./en/");
+  await page.goto("./");
   await page.locator(".version-trigger").click();
   const popup = page.locator(".version-popup");
   await expect(popup.getByRole("option")).toHaveCount(visible.length);
@@ -1162,7 +1169,7 @@ test("major catalog exposes only current representatives by default and finds fo
       .getByRole("option")
       .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("data-tag"))),
   ).toEqual(visible.map((o) => o.tag));
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   await expect(page.locator(".release-row")).toHaveCount(majors.size);
   await expect(page.locator(".release-row .version-warning")).toHaveCount(0);
   const old =
@@ -1203,7 +1210,8 @@ test("other versions jump does not consume the page back action", async ({
 }) => {
   const major = stable.upstream.split(".")[0] + ".x";
   for (const lang of ["en", "zh"]) {
-    const original = "./" + lang + "/releases/?q=" + major;
+    const original =
+      "./" + (lang === "zh" ? "zh/" : "") + "releases/?q=" + major;
     await page.goto(original);
     const list = page.url();
     await page.locator(".release-row-target").first().click();
@@ -1296,14 +1304,16 @@ test("major entries lead directly to concrete version pages with related version
   request,
 }) => {
   for (const lang of ["en", "zh"]) {
-    await page.goto("./" + lang + "/releases/");
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "releases/");
     const row = page.locator(".release-row").filter({ hasText: "FFmpeg 9.x" });
     await expect(row.locator(".release-row-target")).toHaveAttribute(
       "href",
-      new URL(lang + "/releases/9.1/", baseURL).pathname,
+      new URL((lang === "zh" ? "zh/" : "") + "releases/9.1/", baseURL).pathname,
     );
     await row.click();
-    await expect(page).toHaveURL(baseURL + lang + "/releases/9.1/");
+    await expect(page).toHaveURL(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.1/",
+    );
     await expect(page.locator("h1")).toHaveText("FFmpeg 9.1");
     await expect(
       page.locator(".major-version-choices,.page-head .version-warning"),
@@ -1315,23 +1325,38 @@ test("major entries lead directly to concrete version pages with related version
       related.locator(".release-row-target").first(),
     ).toHaveAttribute(
       "href",
-      new URL(lang + "/releases/9.0.2/", baseURL).pathname,
+      new URL((lang === "zh" ? "zh/" : "") + "releases/9.0.2/", baseURL)
+        .pathname,
     );
     await related.first().click();
-    await expect(page).toHaveURL(baseURL + lang + "/releases/9.0.2/");
+    await expect(page).toHaveURL(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.0.2/",
+    );
     await expect(page.locator("h1")).toHaveText("FFmpeg 9.0.2");
     await expect(
       page.locator("#history .release-row").filter({ hasText: "9.1" }),
     ).toHaveCount(1);
     await page.locator(".history-back").click();
-    await expect(page).toHaveURL(baseURL + lang + "/releases/9.1/");
-    const redirect = await request.get(baseURL + lang + "/releases/9.x/");
+    await expect(page).toHaveURL(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.1/",
+    );
+    const redirect = await request.get(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.x/",
+    );
     expect(await redirect.text()).toContain('http-equiv="refresh"');
     expect(await redirect.text()).not.toContain("build-matrix");
-    await page.goto("./" + lang + "/releases/9.x/?version=ffmpeg-9.0.2");
-    await expect(page).toHaveURL(baseURL + lang + "/releases/9.0.2/");
-    await page.goto("./" + lang + "/releases/9.x/");
-    await expect(page).toHaveURL(baseURL + lang + "/releases/9.1/");
+    await page.goto(
+      "./" +
+        (lang === "zh" ? "zh/" : "") +
+        "releases/9.x/?version=ffmpeg-9.0.2",
+    );
+    await expect(page).toHaveURL(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.0.2/",
+    );
+    await page.goto("./" + (lang === "zh" ? "zh/" : "") + "releases/9.x/");
+    await expect(page).toHaveURL(
+      baseURL + (lang === "zh" ? "zh/" : "") + "releases/9.1/",
+    );
   }
   const sitemap = await request.get(baseURL + "sitemap.xml");
   expect(await sitemap.text()).not.toContain("/releases/9.x/");
@@ -1343,7 +1368,7 @@ test("version badges share adaptive positioning and do not change selection", as
   for (const lang of ["en", "zh"]) {
     for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 640 });
-      await page.goto("./" + lang + "/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
       const url = page.url();
       const badge = page.locator(".version-trigger-wrap > .version-badge");
       const tip = page.locator(".version-lts-popover");
@@ -1376,7 +1401,7 @@ test("version badges share adaptive positioning and do not change selection", as
       await expect(tip).not.toBeVisible();
       await page.keyboard.press("Escape");
       await expect(popup).not.toBeVisible();
-      await page.goto("./" + lang + "/releases/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "releases/");
       const rowBadge = page.locator(".release-row .version-badge").first();
       const listUrl = page.url();
       await rowBadge.click();
@@ -1394,7 +1419,7 @@ test("theme dropdown aligns trigger edge and all option columns", async ({
   for (const lang of ["en", "zh"]) {
     for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 640 });
-      await page.goto("./" + lang + "/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
       const trigger = page.locator(".theme-menu summary");
       await trigger.click();
       const menu = page.locator(".theme-options");
@@ -1451,7 +1476,7 @@ test("version picker shows exact build dates for default, filtered and historica
   for (const lang of ["en", "zh"]) {
     for (const width of [320, 1280]) {
       await page.setViewportSize({ width, height: 800 });
-      await page.goto("./" + lang + "/");
+      await page.goto("./" + (lang === "zh" ? "zh/" : "") + "");
       await page.locator(".version-trigger").click();
       const popup = page.locator(".version-popup");
       const rows = popup.getByRole("option");
@@ -1485,7 +1510,7 @@ test("catalog search exposes every stable release instead of folded representati
   baseURL,
 }) => {
   const stable = entries.filter((e) => e.channel === "release");
-  await page.goto("./en/releases/");
+  await page.goto("./releases/");
   const search = page.getByRole("searchbox"),
     rows = page.locator(".release-row");
   for (const major of new Set(stable.map((e) => e.upstream.split(".")[0]))) {
@@ -1502,7 +1527,7 @@ test("catalog search exposes every stable release instead of folded representati
           }),
         ).toHaveAttribute(
           "href",
-          new URL("en/releases/" + entry.upstream + "/", baseURL).pathname,
+          new URL("releases/" + entry.upstream + "/", baseURL).pathname,
         );
       }
     }
@@ -1514,7 +1539,7 @@ test("catalog search exposes every stable release instead of folded representati
     await expect(rows).toHaveCount(1);
     await expect(rows.locator(".release-row-target")).toHaveAttribute(
       "href",
-      new URL("en/build/" + entry.tag + "/", baseURL).pathname,
+      new URL("build/" + entry.tag + "/", baseURL).pathname,
     );
   }
   await search.fill("9.x");
@@ -1544,7 +1569,7 @@ test("static 404 has localized recovery navigation, themes and no missing assets
       await page.setViewportSize({ width, height: 720 });
       await page.addInitScript(() => localStorage.setItem("theme", "dark"));
       const response = await page.goto(
-        "./" + lang + "/build/nonexistent-build/",
+        "./" + (lang === "zh" ? "zh/" : "") + "build/nonexistent-build/",
       );
       expect(response!.status()).toBe(404);
       await expect(page.locator("html")).toHaveAttribute(
@@ -1597,7 +1622,7 @@ test("static 404 has localized recovery navigation, themes and no missing assets
         })
         .click();
       await expect(page).toHaveURL(
-        baseURL + (lang === "zh" ? "en" : "zh") + "/releases/",
+        baseURL + (lang === "zh" ? "" : "zh/") + "releases/",
       );
     }
   }
@@ -1616,7 +1641,7 @@ test("404 recovery works without JavaScript", async ({ browser, baseURL }) => {
   });
   try {
     const page = await ctx.newPage();
-    const response = await page.goto("./en/missing/");
+    const response = await page.goto("./missing/");
     expect(response!.status()).toBe(404);
     await expect(
       page.getByRole("heading", { name: "Page not found" }),
@@ -1629,7 +1654,7 @@ test("404 recovery works without JavaScript", async ({ browser, baseURL }) => {
     await page
       .getByRole("link", { name: "Back to download", exact: true })
       .click();
-    await expect(page).toHaveURL(baseURL + "en/");
+    await expect(page).toHaveURL(baseURL + "");
     await page.goto("./missing/");
     await page.getByRole("link", { name: "中文", exact: true }).click();
     await expect(page).toHaveURL(baseURL + "zh/");
