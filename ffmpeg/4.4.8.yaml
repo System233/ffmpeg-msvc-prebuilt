@@ -1,4 +1,11 @@
 extends: '4.4'
+features:
+  zmq:
+    flag: ''
+    depends: []
+  tesseract:
+    flag: ''
+    depends: []
 patches:
 - 4.x/0001-create-lib-libraries.patch
 - 4.x/0003-fix-windowsinclude.patch
