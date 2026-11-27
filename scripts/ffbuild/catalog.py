@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order
+from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds
 
 SCHEMA = 2
 VERSION = re.compile(r"\d+\.\d+(?:\.\d+)?")
@@ -120,12 +120,12 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         if original != release_date:
             result["date"] = original
     for kind, asset in record["assets"].items():
-        if kind not in ("binary", "develop"):
+        if kind not in ASSET_KINDS:
             raise ValueError("Unexpected asset kind")
         result[kind] = _asset(asset)
     if "binary" not in result:
         raise ValueError("Missing binary asset")
-    if native and set(record["assets"]) != ({"binary", "develop"} if record["linkage"] == "shared" else {"binary"}):
+    if native and set(record["assets"]) != expected_asset_kinds(record["linkage"], record["package_format"]):
         raise ValueError("Incomplete native asset set")
     return result
 
@@ -159,8 +159,8 @@ def release_from_records(records: list[dict], *, require_complete: bool = True) 
         if slot in release["variants"]:
             raise ValueError("Duplicate release slot")
         variant = _variant(row, when, native=True)
-        for k in ("binary", "develop"):
-            if k in variant and variant[k]["file"] != archive_name(row, develop=k == "develop"):
+        for k in ASSET_KINDS:
+            if k in variant and variant[k]["file"] != archive_name(row, kind=k):
                 raise ValueError("Noncanonical dated archive")
         release["variants"][slot] = variant
     return kind, key, release
@@ -190,7 +190,7 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
         if "commit" in r and not re.fullmatch(r"[0-9a-f]{40}", r["commit"]):
             raise ValueError("Invalid master commit")
         for slot, v in r["variants"].items():
-            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", "binary", "develop"}:
+            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", *ASSET_KINDS}:
                 raise ValueError("Invalid catalog variant")
             if ("abi" in v) != ("format" in v) or ("abi" in v and (
                     not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] < 2)):
@@ -205,7 +205,15 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
                 raise ValueError("Invalid original asset date")
             if "binary" not in v:
                 raise ValueError("Missing binary asset")
-            for asset in (v[k] for k in ("binary", "develop") if k in v):
+            kinds = set(v).intersection(ASSET_KINDS)
+            linkage = slot.split("-")[2]
+            if "debug" in kinds and ("format" not in v or v["format"] < 4):
+                raise ValueError("Debug add-on requires format 4")
+            if "abi" in v and kinds != expected_asset_kinds(linkage, v["format"]):
+                raise ValueError("Incomplete native asset set")
+            if linkage == "static" and kinds != {"binary"}:
+                raise ValueError("Static variant has unexpected add-on")
+            for asset in (v[k] for k in ASSET_KINDS if k in v):
                 if set(asset) != {"file", "size", "sha256"}:
                     raise ValueError("Invalid catalog asset fields")
                 _asset({"file": asset["file"], "size": asset["size"], "digest": "sha256:" + asset["sha256"]})
@@ -220,7 +228,7 @@ def expanded(kind: str, key: str | int, release: dict) -> list[dict]:
         arch, _, linkage, license_ = slot.split("-")
         triplet = arch + "-windows"
         assets = {k: {"file": a["file"], "size": a["size"], "digest": "sha256:" + a["sha256"]}
-                  for k in ("binary", "develop") if (a := v.get(k))}
+                  for k in ASSET_KINDS if (a := v.get(k))}
         row = {"version": version, "triplet": triplet, "arch": arch, "linkage": linkage,
                "license": license_, "channel": "master" if kind == "master" else "release",
                "release_date": v.get("date", release["date"]), "assets": assets,
@@ -352,7 +360,7 @@ def migrate(source: Path, destination: Path) -> tuple[int, int, int]:
     write_json(destination / "index.json", m)
     releases = [r for s in shards.values() for r in s["releases"]]
     variants = [v for r in releases for v in r["variants"].values()]
-    return len(releases), len(variants), sum(k in v for v in variants for k in ("binary", "develop"))
+    return len(releases), len(variants), sum(k in v for v in variants for k in ASSET_KINDS)
 
 
 def stage_index(root: Path) -> None:

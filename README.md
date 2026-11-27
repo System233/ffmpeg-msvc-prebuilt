@@ -51,29 +51,29 @@ If unsure, pick a **stable shared GPL** variant — it covers most use cases.
 ## Understanding the Artifacts
 
 Each version produces **16 variants** (4 arch × 2 license × 2 linkage).  
-Shared variants also include a **develop** archive with debug symbols.
+Shared variants also include a **debug** add-on archive with debug libraries and symbols; extract it over the matching Binary.
 
 ### File naming
 
 ```
 ffmpeg-9.1_x64-windows-static-lgpl-261125.zip
 ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip
-ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip
+ffmpeg-9.1_arm64-windows-shared-gpl-debug-261125.zip
 ffmpeg-master_x64-windows-static-gpl-261125.zip
 ```
 
 Dates use UTC YYMMDD, fixed once by the plan. No ABI, Revision, or packaging format suffix appears in public filenames. Release tags use version and date, e.g. `ffmpeg-9.1-261125` (same-day batches use R2, R3, etc.). Tags are created after verification, not as build triggers. Full native ABI and archive SHA-256 remain in the data branch. Incremental publication reuses unchanged ZIPs with their original filename/date and digest; history is immutable.
 
-A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop). All license evidence for redistribution is collected in `share/ffmpeg/copyright` and `share/ffmpeg/sbom.spdx.json`, with the primary license in `LICENSE.txt`. Build provenance and original dependency evidence remain outside the public ZIP. Corresponding source obligations remain separate.
+A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Debug). All license evidence for redistribution is collected in `share/ffmpeg/copyright` and `share/ffmpeg/sbom.spdx.json`, with the primary license in `LICENSE.txt`. Build provenance and original dependency evidence remain outside the public ZIP. Corresponding source obligations remain separate.
 
-### Binary vs Develop (shared only)
+### Binary vs Debug Add-on (shared only)
 
-|                                       | Binary  | Develop |
+|                                       | Binary  | Debug Add-on |
 | ------------------------------------- | ------- | ------- |
-| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅       | ✅       |
-| Headers (`.h`)                        | ✅       | ✅       |
-| Import libraries (`.lib`) + DLLs      | ✅       | ✅       |
-| pkg-config (`.pc`) + CMake module     | ✅       | ✅       |
+| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅       | ❌ |
+| Headers (`.h`)                        | ✅       | ❌ |
+| Import libraries (`.lib`) + DLLs      | ✅       | ❌ |
+| pkg-config (`.pc`) + CMake module     | ✅       | ❌ |
 | FFmpeg DLL PDB debug symbols          | ❌       | ✅       |
 | Debug libraries (`debug/lib/`)        | ❌       | ✅       |
 | Archive size                          | Smaller | Larger  |
@@ -84,7 +84,7 @@ A complete standard matrix publishes only 24 ZIPs (8 Static, 8 Shared, 8 Develop
 | -------------------------------- | --------------------------------------------------- |
 | Run FFmpeg commands              | **Static Binary** (single exe) or **Shared Binary** |
 | Build my own app with FFmpeg     | **Shared Binary** (headers + libs)                  |
-| Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB)                   |
+| Debug my app with FFmpeg symbols | **Shared Binary + Debug Add-on** (includes PDB)                   |
 | Carry one exe, no DLLs           | **Static Binary**                                   |
 
 **Static** variants contain executables and lightweight license/SPDX files,
@@ -108,9 +108,11 @@ Private third-party static libraries are not distributed; `pkg-config --static` 
 - No extra third-party runtime DLL deployment is intended; normal Windows
   operating-system DLLs are still required.
 
-### Develop (shared only, adds to binary)
+### Debug Add-on (shared only, requires Binary)
 
-- **PDB symbol files** for FFmpeg release/debug DLLs; CLI executable PDBs are not provided.
+New format v4 archives are differential. Historical Develop archives remain standalone.
+
+- **PDB symbol files** for FFmpeg release/debug DLLs; CLI executable PDBs are included only when available and matched.
 - **Debug build libraries** under `debug/lib/` and debug DLLs under `debug/bin/`.
 
 ### Static
@@ -130,7 +132,7 @@ obligations must still be evaluated before downstream redistribution.
 
 The [`examples/`](./examples/) directory contains `ffmeta`, a command-line media metadata viewer built with FFmpeg. It demonstrates three ways to link against a **shared** prebuilt distribution.
 
-Extract a shared binary or develop archive, then point your build system to the extracted prefix:
+Extract a shared Binary archive (optionally overlay its matching Debug Add-on), then point your build system to the extracted prefix:
 
 ```bash
 # Extract first, then build

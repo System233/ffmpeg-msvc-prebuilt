@@ -35,6 +35,8 @@ def release_message(tag: str, version: str, *, snapshot: bool = False,
             lines.append("| Static | Standalone FFmpeg executables |")
         if "shared" in linkages:
             lines.append("| Shared | Executables, DLLs and release SDK |")
+        if any("debug" in r.get("assets", {}) for r in records):
+            lines.append("| Debug Add-on | Debug libraries and Release/Debug PDBs; extract over matching Shared Binary |")
         if any("develop" in r.get("assets", {}) for r in records):
             lines.append("| Develop | Release SDK, debug libraries and symbols |")
         lines += ["", "**Architectures:** " + ", ".join(a for a in ("x86", "x64", "arm", "arm64") if a in arch).replace("arm64", "ARM64").replace("arm", "ARM"),

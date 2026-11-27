@@ -7,7 +7,7 @@ ffmeta 是一个简单的命令行工具，用于查看媒体文件信息。
 
 ## 前置条件
 
-下载 **shared** 类型的预构建 FFmpeg 压缩包（binary 或 develop 均可），
+下载 **shared** 类型的预构建 FFmpeg 压缩包（Binary；可按需覆盖解压对应 Debug Add-on），
 可从 [Releases](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
 或 [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/) 获取。
 

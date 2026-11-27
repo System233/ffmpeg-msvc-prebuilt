@@ -77,11 +77,11 @@ class DatedPublication(unittest.TestCase):
             for i,row in enumerate(rows):
                 row["abi_hash"] = hashlib.sha256(str(i).encode()).hexdigest()
                 row["id"] = variant_name("9.1",0,row["triplet"],row["linkage"],row["license"],abi_hash=row["abi_hash"])
-                record = dict(row, variant_id=row["id"], channel="release", package_format=3,
+                record = dict(row, variant_id=row["id"], channel="release", package_format=4,
                               package_spec=row["package"])
                 record["assets"] = {}
-                for kind in (("binary","develop") if row["linkage"]=="shared" else ("binary",)):
-                    name = archive_name(record,develop=kind=="develop")
+                for kind in (("binary","debug") if row["linkage"]=="shared" else ("binary",)):
+                    name = archive_name(record,kind=kind)
                     payload = (name+" fixture").encode()
                     (out/name).write_bytes(payload)
                     record["assets"][kind] = {"file":name,"size":len(payload),"digest":"sha256:"+hashlib.sha256(payload).hexdigest()}
@@ -135,10 +135,10 @@ class DatedPublication(unittest.TestCase):
         row = {"version": "9.1", "triplet": "arm64-windows", "linkage": "shared",
                "license": "gpl", "release_date": "2026-11-25"}
         self.assertEqual("ffmpeg-9.1_arm64-windows-shared-gpl-261125.zip", archive_name(row))
-        self.assertEqual("ffmpeg-9.1_arm64-windows-shared-gpl-develop-261125.zip", archive_name(row, develop=True))
+        self.assertEqual("ffmpeg-9.1_arm64-windows-shared-gpl-debug-261125.zip", archive_name(row, kind="debug"))
         self.assertEqual("ffmpeg-9.1-261125", record_release_tag(row))
         row.update(channel="master", version="9.2-123-gabc")
-        self.assertEqual("ffmpeg-master_arm64-windows-shared-gpl-develop-261125.zip", archive_name(row, develop=True))
+        self.assertEqual("ffmpeg-master_arm64-windows-shared-gpl-debug-261125.zip", archive_name(row, kind="debug"))
         self.assertEqual("ffmpeg-master-261125", record_release_tag(row))
         row["release_date"] = "2026-02-30"
         with self.assertRaises(ValueError):
@@ -245,7 +245,7 @@ class DatedPublication(unittest.TestCase):
                               "release_date": "2026-11-25"}
                     files.add(archive_name(record))
                     if linkage == "shared":
-                        files.add(archive_name(record, develop=True))
+                        files.add(archive_name(record, kind="debug"))
         self.assertEqual(24, len(files))
         self.assertTrue(all(name.endswith("-261125.zip") for name in files))
 

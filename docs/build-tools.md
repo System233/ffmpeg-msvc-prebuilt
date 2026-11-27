@@ -236,13 +236,12 @@ after building `ffmpeg` from the selected version-directory Port. The
 packager checks the actual installed Feature selection, upstream source
 version, Triplet, linkage and licensing policy. The **Static Binary ZIP
 contains executables only**, plus build metadata and the license; it does NOT
-copy libraries or headers. Shared Binary/Develop SDK archives preserve the
-original layout. Crucially, the packager verifies the **actual packaged
+copy libraries or headers. Shared Binary provides the Release SDK; Debug is a differential add-on containing Release PDBs and Debug libraries/symbols. Crucially, the packager verifies the **actual packaged
 vcpkg ABI input file** at `share/ffmpeg/vcpkg_abi_info.txt` and refuses to publish if its SHA256 differs
 from the proposed pre-build ABI. The dry-run ABI is only the proposal, not
 independent evidence that the package was built with those inputs.
 
-Package-format v3 also requires the Worker-installed vcpkg root and unpacked
+Package-format v4 also requires the Worker-installed vcpkg root and unpacked
 FFmpeg source (`--installed-root`, `--buildtrees` or `--source-tree`).
 It enumerates dependency packages actually installed and reachable from
 FFmpeg's status records, copies reachable Port copyright and original SPDX,
@@ -265,7 +264,15 @@ FFmpeg primary license. Verified build-only and external system notices are
 not included in the combined copyright; their roles remain in SPDX and the
 internal audit. No `LICENSES/`, `metadata/`, `CONTROL`, `BUILD_INFO`,
 `vcpkg.spdx.json` or `vcpkg_abi_info.txt` is distributed. Static retains its
-executable-only binary payload; Shared and Develop retain consumer metadata.
+executable-only binary payload; Shared Binary retains consumer metadata; Debug contains only the differential debug payload.
+Before upload, Windows x64/x86 Workers extract the actual public ZIPs, run
+the CLI, and compile/link/run three CMake consumer modes (full, demand and
+legacy) in both configurations. Shared Binary is verified alone and then
+with the matching Debug overlay in the same build tree; DLL deployment,
+configuration-specific import paths and pkg-config roots are checked.
+ARM/ARM64 remain covered by native cross-compilation, archive layout and
+PDB identity checks; x64-host execution is not claimed for these targets.
+
 One internal `<variant>.audit.zip` accompanies the CI artifact (not a public
 Release asset). It holds the original per-Port notices/SPDX, upstream COPYING,
 ABI inputs and provenance bound to the exact public archive digests. The

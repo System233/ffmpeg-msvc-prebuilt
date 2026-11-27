@@ -26,7 +26,7 @@ _NAME = re.compile(r"^[a-z0-9][a-z0-9+.-]*$")
 # A publication format identifies both the public layout and the qualification
 # gate that accepted its bytes. Advance the format when the policy changes;
 # Data needs no separate compliance report or policy metadata for reuse.
-_FORMAT = 3
+_FORMAT = 4
 if POLICY_VERSION != 4:
     raise RuntimeError("Update the publication format when changing the license policy")
 LICENSE_DECLARATIONS = ROOT / "licenses"

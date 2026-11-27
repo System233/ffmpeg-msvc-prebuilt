@@ -86,19 +86,19 @@ class OriginalArchiveContract(unittest.TestCase):
             package = self._fixture(Path(temporary), port)
             for linkage, variant in (("static", "binary"),
                                      ("shared", "binary"),
-                                     ("shared", "develop")):
+                                     ("shared", "debug")):
                 with self.subTest(linkage=linkage, variant=variant):
                     names = {"ffmpeg.exe"} if linkage == "static" else {
                         "bin/ffmpeg.exe", "bin/avcodec-61.dll", "lib/avcodec.lib",
                         "include/libavcodec/avcodec.h", "share/ffmpeg/FindFFmpeg.cmake",
                         "share/ffmpeg/vcpkg-cmake-wrapper.cmake", "share/ffmpeg/usage"}
-                    if variant == "develop":
-                        names |= {"bin/avcodec.pdb", "debug/bin/avcodec-61.dll",
+                    if variant == "debug":
+                        names = {"bin/avcodec.pdb", "debug/bin/avcodec-61.dll",
                                   "debug/bin/avcodec.pdb", "debug/lib/avcodec.lib"}
                     expected_payload = {name: (package / ("tools/ffmpeg/ffmpeg.exe" if name in
                                         ("ffmpeg.exe", "bin/ffmpeg.exe") else name)).read_bytes()
                                         for name in names}
-                    actual = _files(package, linkage, develop=variant == "develop",
+                    actual = _files(package, linkage, kind=variant,
                                     port=port)
                     self.assertEqual(set(expected_payload), set(actual),
                                      f"{linkage}/{variant} must preserve executable/SDK layout")
@@ -109,9 +109,9 @@ class OriginalArchiveContract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             port = "ffmpeg"
             package = self._fixture(Path(temporary), port)
-            static = _files(package, "static", develop=False, port=port)
+            static = _files(package, "static", kind="binary", port=port)
             self.assertEqual({"ffmpeg.exe"}, set(static))
-            shared = _files(package, "shared", develop=False, port=port)
+            shared = _files(package, "shared", kind="binary", port=port)
             self.assertIn("share/ffmpeg/FindFFmpeg.cmake", shared)
             self.assertIn("share/ffmpeg/vcpkg-cmake-wrapper.cmake", shared)
             self.assertNotIn("share/ffmpeg/vcpkg_abi_info.txt", shared)

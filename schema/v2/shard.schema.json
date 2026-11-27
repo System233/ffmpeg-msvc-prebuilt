@@ -127,6 +127,9 @@
         },
         "develop": {
           "$ref": "#/$defs/asset"
+        },
+        "debug": {
+          "$ref": "#/$defs/asset"
         }
       },
       "dependentRequired": {
@@ -139,7 +142,34 @@
         "date": [
           "abi"
         ]
-      }
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "develop",
+              "debug"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "debug"
+            ]
+          },
+          "then": {
+            "required": [
+              "format"
+            ],
+            "properties": {
+              "format": {
+                "minimum": 4
+              }
+            }
+          }
+        }
+      ]
     },
     "release": {
       "type": "object",

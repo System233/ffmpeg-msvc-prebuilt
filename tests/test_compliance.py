@@ -292,7 +292,7 @@ class ImmutableComplianceUpgradeTests(unittest.TestCase):
                                    installed_root=installed,
                                    source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text())
-            self.assertEqual(3, record["package_format"])
+            self.assertEqual(4, record["package_format"])
             self.assertEqual("ffmpeg-9.1_arm64-windows-static-lgpl-261125.zip", record["assets"]["binary"]["file"])
             self.assertEqual(2, record["compliance"]["package_count"])
             self.assertEqual(2, len(record["compliance"]["packages"]))

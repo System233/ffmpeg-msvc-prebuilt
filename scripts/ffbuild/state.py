@@ -9,7 +9,7 @@ import yaml
 
 from .compliance import PACKAGE_FORMAT_VERSION
 from . import catalog
-from .identity import record_release_tag, release_order, family_dir, public_version, date_suffix, archive_name
+from .identity import record_release_tag, release_order, family_dir, public_version, date_suffix, archive_name, expected_asset_kinds
 from .versions import ROOT
 
 
@@ -72,9 +72,9 @@ class PublishedState:
                     if row.get("package_format") != PACKAGE_FORMAT_VERSION:
                         continue
                     try:
-                        kinds = {"binary", "develop"} if row["linkage"] == "shared" else {"binary"}
+                        kinds = expected_asset_kinds(row["linkage"], PACKAGE_FORMAT_VERSION)
                         if set(row["assets"]) != kinds or any(
-                            asset["file"] != archive_name(row, develop=k == "develop")
+                            asset["file"] != archive_name(row, kind=k)
                             for k, asset in row["assets"].items()):
                             continue
                     except (KeyError, ValueError):
@@ -122,10 +122,10 @@ class PublishedState:
                 try:
                     date_suffix(record["release_date"])
                     date_suffix(record.get("publication_date", record["release_date"]))
-                    kinds = {"binary", "develop"} if record["linkage"] == "shared" else {"binary"}
+                    kinds = expected_asset_kinds(record["linkage"], PACKAGE_FORMAT_VERSION)
                     if set(record["assets"]) != kinds:
                         continue
-                    if any(asset["file"] != archive_name(record, develop=kind == "develop")
+                    if any(asset["file"] != archive_name(record, kind=kind)
                            or not re.fullmatch(r"sha256:[0-9a-f]{64}", asset["digest"])
                            or asset["size"] <= 0 for kind, asset in record["assets"].items()):
                         continue

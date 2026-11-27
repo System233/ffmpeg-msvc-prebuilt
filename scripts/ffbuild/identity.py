@@ -65,16 +65,29 @@ def public_version(record: dict) -> str:
     return "master" if record.get("yaml") == "master" or record.get("channel") == "master" else normalize_version(str(record["version"]))
 
 
-def archive_name(record: dict, *, develop: bool = False) -> str:
+ASSET_KINDS = ("binary", "develop", "debug")
+DIFFERENTIAL_FORMAT = 4
+
+
+def expected_asset_kinds(linkage: str, package_format: int) -> set[str]:
+    if linkage == "static":
+        return {"binary"}
+    if linkage != "shared":
+        raise ValueError("Invalid asset linkage")
+    return {"binary", "debug" if package_format >= DIFFERENTIAL_FORMAT else "develop"}
+
+
+def archive_name(record: dict, *, kind: str = "binary") -> str:
     version = public_version(record)
     # Reuse canonical validation of target dimensions, never its hash suffix.
     stem = variant_name("1.0" if version == "master" else version, 0,
                         record["triplet"], record["linkage"], record["license"])
     if version == "master":
         stem = stem.replace("ffmpeg-1.0_", "ffmpeg-master_", 1)
-    if develop and record["linkage"] != "shared":
-        raise ValueError("Develop archives require shared linkage")
-    return f"{stem}{'-develop' if develop else ''}-{date_suffix(record['release_date'])}.zip"
+    if kind not in ASSET_KINDS or (kind != "binary" and record["linkage"] != "shared"):
+        raise ValueError("Invalid archive asset kind for linkage")
+    suffix = "" if kind == "binary" else "-" + kind
+    return f"{stem}{suffix}-{date_suffix(record['release_date'])}.zip"
 
 
 def record_release_tag(record: dict) -> str:
