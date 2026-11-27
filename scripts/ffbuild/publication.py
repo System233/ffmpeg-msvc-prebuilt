@@ -512,7 +512,7 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
             if any(r.get("source_commit") != pin["commit"] for r in group):
                 raise ValueError("Master source differs from verified plan")
         if not (data_dir / "index.json").is_file():
-            raise ValueError("Production requires migrated Data catalog")
+            raise ValueError("Production requires release catalog index.json")
     if not (data_dir / ".git").exists():
         raise FileNotFoundError("An authenticated local data branch checkout is required")
     if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):

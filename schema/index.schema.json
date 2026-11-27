@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FFmpeg release catalog v2",
+  "title": "FFmpeg release catalog",
   "type": "object",
   "required": [
     "schema",
@@ -10,7 +10,7 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": 2
+      "const": 1
     },
     "releases": {
       "type": "array",

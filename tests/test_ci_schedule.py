@@ -51,7 +51,7 @@ class WorkflowReleasePolicyTests(unittest.TestCase):
         self.assertIn("needs.build.result == 'success'", condition)
         self.assertNotIn("build-extra", ci["jobs"])
         self.assertIn("!inputs.force", condition)
-        self.assertIn("Require migrated Release catalog", str(ci["jobs"]["plan"]["steps"]))
+        self.assertIn("Validate release catalog for production", str(ci["jobs"]["plan"]["steps"]))
         requests, blocked = build_requests(version="8.1.3", release_date="2026-11-25")
         self.assertFalse(blocked)
         self.assertEqual(16, len(requests))

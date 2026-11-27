@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import yaml
 
-from ffbuild import catalog
+from ffbuild import catalog, catalog_migration
 from ffbuild.identity import archive_name, variant_name
 from ffbuild.state import PublishedState
 from ffbuild.identity import record_release_tag
@@ -64,7 +64,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_native_format_and_legacy_asset_sets(self):
         from ffbuild.versions import ROOT
-        schema = json.loads((ROOT / "schema/v2/shard.schema.json").read_text())
+        schema = json.loads((ROOT / "schema/shard.schema.json").read_text())
         self.assertEqual(2, schema["$defs"]["variant"]["properties"]["format"]["const"])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -92,7 +92,7 @@ class CatalogTests(unittest.TestCase):
     def test_legacy_lgpl_notice_scope_and_validation(self):
         import copy
         from ffbuild.versions import ROOT
-        schema = json.loads((ROOT / "schema/v2/shard.schema.json").read_text())
+        schema = json.loads((ROOT / "schema/shard.schema.json").read_text())
         self.assertEqual(catalog.LEGACY_LGPL_NOTE, schema["$defs"]["variant"]["properties"]["note"]["const"])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -108,7 +108,7 @@ class CatalogTests(unittest.TestCase):
             (folder / "version.yaml").write_text(yaml.safe_dump({
                 "version": "9.1", "release_tag": "ffmpeg-9.1-r1",
                 "release_date": old["release_date"], "channel": "release", "variants": rows}))
-            catalog.migrate(source, dest)
+            catalog_migration.migrate(source, dest)
             path = dest / "releases/9.1.json"
             shard = catalog.load_shard(dest, "releases", "9.1")
             variants = shard["releases"][0]["variants"]
@@ -179,7 +179,7 @@ class CatalogTests(unittest.TestCase):
                 "version": row["version"], "release_tag": record_release_tag(row),
                 "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
             before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
-            self.assertEqual((1, 1, 1), catalog.migrate(source, dest))
+            self.assertEqual((1, 1, 1), catalog_migration.migrate(source, dest))
             self.assertIs(catalog.load_shard(dest, "releases", "9.1")["lts"], True)
             self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
             self.assertEqual(row["assets"], PublishedState(directory=dest).find_abi(
@@ -189,9 +189,9 @@ class CatalogTests(unittest.TestCase):
             broken["assets"]["binary"]["size"] += 1
             path.write_text(yaml.safe_dump(broken), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Legacy asset copies differ"):
-                catalog.migrate(source, root / "broken")
+                catalog_migration.migrate(source, root / "broken")
             self.assertFalse((root / "broken").exists())
-            with self.assertRaisesRegex(ValueError, "explicit catalog migration"):
+            with self.assertRaisesRegex(ValueError, "Unsupported catalog layout"):
                 catalog.register_release(source, [row])
 
     def test_reject_mixed_index_and_duplicate_json_keys(self):
@@ -201,11 +201,33 @@ class CatalogTests(unittest.TestCase):
             path = root / "9.x/9.1/variants/stale.yaml"
             path.parent.mkdir(parents=True)
             path.write_text("{}", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "Remove legacy YAML"):
+            with self.assertRaisesRegex(ValueError, "Unexpected legacy YAML"):
                 catalog.register_release(root, [record()])
-            (root / "index.json").write_text('{"schema":2,"releases":[],"master":[],"master":[]}', encoding="utf-8")
+            (root / "index.json").write_text('{"schema":1,"releases":[],"master":[],"master":[]}', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Duplicate catalog key"):
                 catalog.manifest(root)
+
+    def test_production_validation_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaisesRegex(ValueError, "Missing release catalog"):
+                catalog.validate_catalog(root)
+            path = catalog.register_release(root, [record()])
+            self.assertEqual(["9.1"], catalog.validate_catalog(root)["releases"])
+            original = path.read_bytes()
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "missing shard"):
+                catalog.validate_catalog(root)
+            path.write_bytes(original)
+            index = root / "index.json"
+            good = index.read_bytes()
+            index.write_text('{"schema":2,"releases":["9.1"],"master":[]}')
+            with self.assertRaisesRegex(ValueError, "Invalid catalog manifest"):
+                catalog.validate_catalog(root)
+            index.write_bytes(good)
+            index.unlink()
+            with self.assertRaisesRegex(ValueError, "Missing release catalog"):
+                PublishedState(directory=root).find_abi("9.1", "x64-windows", "a"*64)
 
     def test_git_staging_is_index_only_even_without_master_shard(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,7 +243,7 @@ class CatalogTests(unittest.TestCase):
             # Git tracks removal of the last shard even though its directory vanishes.
             (root / "releases/9.1.json").unlink()
             (root / "releases").rmdir()
-            catalog.write_json(root / "index.json", {"schema": 2, "releases": [], "master": []})
+            catalog.write_json(root / "index.json", {"schema": 1, "releases": [], "master": []})
             catalog.stage_index(root)
             self.assertEqual({"index.json", "releases/9.1.json"}, set(git("diff", "--cached", "--name-only").splitlines()))
             git("add", "unrelated.audit.zip")

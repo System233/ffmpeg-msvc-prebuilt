@@ -69,7 +69,7 @@ class CatalogLifecycle(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name)
         (self.root/".git").mkdir()
-        catalog.write_json(self.root/"index.json",{"schema":2,"releases":[],"master":[]})
+        catalog.write_json(self.root/"index.json",{"schema":1,"releases":[],"master":[]})
 
     def test_same_day_R10_is_latest_and_no_republication(self):
         first=matrix(salt="1")

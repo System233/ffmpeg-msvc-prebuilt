@@ -113,10 +113,13 @@ class HashAndStateTests(unittest.TestCase):
     def test_legacy_recipe_hash_is_not_a_native_abi(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            path = root / "8.x/8.1.3-r3/variants/x64-windows-static-lgpl.yaml"
-            path.parent.mkdir(parents=True)
-            path.write_text(yaml.safe_dump({"version":"8.1.3", "triplet":"x64-windows",
-                "build_hash":"a"*64, "assets":{"binary":{"file":"archive.zip"}}}), encoding="utf-8")
+            from ffbuild import catalog
+            catalog.write_json(root / "index.json", {"schema": 1, "releases": ["8.1.3"], "master": []})
+            catalog.write_json(root / "releases/8.1.3.json", {
+                "version": "8.1.3", "lts": False, "releases": [{
+                    "tag": "ffmpeg-8.1.3-r3", "date": "2026-11-25",
+                    "variants": {"x64-windows-static-lgpl": {"binary": {
+                        "file": "archive.zip", "size": 1, "sha256": "b"*64}}}}]})
             self.assertIsNone(PublishedState(directory=root).find_abi("8.1.3", "x64-windows", "a"*64))
 
     def test_master_and_stable_builds_do_not_share_source(self):

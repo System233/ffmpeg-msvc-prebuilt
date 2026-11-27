@@ -40,7 +40,7 @@ class ToolLayoutTests(unittest.TestCase):
         from tempfile import TemporaryDirectory
         from ffbuild.catalog import stage_index
         with TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "legacy YAML is read-only"):
+            with self.assertRaisesRegex(ValueError, "Missing release catalog index.json"):
                 stage_index(Path(tmp))
 
     def test_skill_references_are_generic_and_resolvable(self):

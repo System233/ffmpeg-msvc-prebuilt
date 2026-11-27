@@ -88,11 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     recovery.add_argument("--tag", required=True)
     recovery.add_argument("--data-dir", type=Path, default=Path("data"))
 
-    migrate = sub.add_parser("migrate-index", help="Convert legacy release YAML into a separate JSON catalog")
-    migrate.add_argument("--source", required=True, type=Path)
-    migrate.add_argument("--output", required=True, type=Path)
-
-    refresh = sub.add_parser("refresh-lts", help="Refresh explicit LTS metadata in V2 catalog shards")
+    refresh = sub.add_parser("refresh-lts", help="Refresh explicit LTS metadata in catalog shards")
     refresh.add_argument("--data-dir", type=Path, default=Path("data"))
 
     sub.add_parser("validate", help="Check configuration, feature and generated port validity")
@@ -273,10 +269,6 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "recover-index":
         from .publication import recover_index
         recover_index(args.tag, args.data_dir)
-    elif args.command == "migrate-index":
-        from .catalog import migrate
-        releases, variants, assets = migrate(args.source, args.output)
-        print(f"Migrated {releases} releases, {variants} variants, {assets} assets")
     elif args.command == "refresh-lts":
         from .catalog import refresh_lts
         print(f"Updated {refresh_lts(args.data_dir)} catalog shards")

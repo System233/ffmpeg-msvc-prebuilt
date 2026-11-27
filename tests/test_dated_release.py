@@ -68,7 +68,7 @@ class DatedPublication(unittest.TestCase):
             data = root / "data"
             data.mkdir()
             (data / ".git").mkdir()
-            catalog.write_json(data / "index.json", {"schema":2,"releases":[],"master":[]})
+            catalog.write_json(data / "index.json", {"schema":1,"releases":[],"master":[]})
             out = root / "out"
             out.mkdir()
             rows, blocked = build_requests(version="9.1", release_date=day)

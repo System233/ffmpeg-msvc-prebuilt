@@ -333,29 +333,13 @@ fulfill every source-distribution or LGPL relinking obligation; final legal
 compatibility, including disputed historical components, requires review.
 
 Native records keep an internal ABI-qualified CI identifier and the full
-abi_hash. Public archive names have no ABI suffix. The native publisher writes one release record per batch into a v2 catalog:
+abi_hash. Public archive names have no ABI suffix. The native publisher writes one release record per batch into the release catalog:
 `index.json` lists version/year shards, `releases/<version>.json` stores stable
 release history and `master/<year>.json` stores snapshots. No duplicate variant
 files or audit data are stored. The original asset date is recorded only when
 a ZIP is reused in a newer release. CI looks up ABI in a lazily loaded in-memory
 map per version (or master history). Legacy records without current native ABI
 and format remain discoverable but are not reused.
-
-Before production cutover, explicitly migrate an up-to-date local Data checkout
-to a separate empty directory:
-
-```sh
-python -m ffbuild migrate-index --source data --output catalog-v2
-```
-
-The migration compares the legacy individual and embedded variant asset records,
-rejects discrepancies and preserves original release tags, filenames, sizes and
-SHA-256 digests. It does not invent unavailable ABI or full snapshot commits.
-Review the generated JSON, coordinate the separate consumer migration, and replace
-the old YAML index with the catalog in one Data commit. Preserve existing repository
-configuration. The command never changes the source checkout, commits or pushes.
-The new publisher rejects a legacy Data checkout before release uploads; the old
-reader remains available until cutover.
 
 `ffbuild publish` verifies the plan and archive digests, creates or uploads
 assets to GitHub Release, then writes the release catalog JSON into
@@ -366,8 +350,7 @@ not uploaded with `--clobber`.
 
 ## Legacy data and versioning
 
-Legacy variant YAMLs containing only license/linkage labels (or independent
-Recipe/Feature hashes) are preserved for historical access. They do not claim
+Historical release entries without native ABI metadata are preserved for access. They do not claim
 to contain a native ABI and are not used for ABI deduplication. New native
 records are additive. Version indexes retain old entries and count only
 native-ABI records toward native build completion.
