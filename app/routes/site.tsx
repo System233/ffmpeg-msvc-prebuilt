@@ -170,7 +170,7 @@ export default function Site() {
       </main>
       <footer className="container footer">
         <span>FFmpeg MSVC Prebuilt</span>
-        <a href={import.meta.env.BASE_URL + "data/index.json"}>Data V2 JSON</a>
+        <a href={import.meta.env.BASE_URL + "data/index.json"}>Release Catalog JSON</a>
         <a href={import.meta.env.VITE_GITHUB_REPO_URL}>GitHub</a>
       </footer>
     </>

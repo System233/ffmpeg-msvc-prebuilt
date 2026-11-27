@@ -117,7 +117,7 @@ export function ErrorPage({
       </main>
       <footer className="container footer">
         <span>FFmpeg MSVC Prebuilt</span>
-        <a href={base + "data/index.json"}>Data V2 JSON</a>
+        <a href={base + "data/index.json"}>Release Catalog JSON</a>
         <a href={repo}>GitHub</a>
       </footer>
     </div>

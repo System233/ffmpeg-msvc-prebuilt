@@ -14,7 +14,7 @@ import type { CatalogIndex } from "../.generated/index-types";
 import type { CatalogShard } from "../.generated/shard-types";
 
 const data = resolve(process.env.CATALOG_DIR ?? "data");
-const schema = resolve(process.env.SCHEMA_DIR ?? "schema/v2");
+const schema = resolve(process.env.SCHEMA_DIR ?? "schema");
 const read = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 const indexSchema = read(resolve(schema, "index.schema.json"));
 const shardSchema = read(resolve(schema, "shard.schema.json"));

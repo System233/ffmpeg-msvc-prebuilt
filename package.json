@@ -46,8 +46,5 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.33.0",
-  "config": {
-    "catalogSchema": 2
-  }
+  "packageManager": "pnpm@10.33.0"
 }

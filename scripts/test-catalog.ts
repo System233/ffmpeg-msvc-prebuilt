@@ -7,7 +7,7 @@ rmSync(root, { force: true, recursive: true });
 mkdirSync(root + "/releases", { recursive: true });
 mkdirSync(root + "/master", { recursive: true });
 const index: Index = {
-  schema: 2,
+  schema: 1,
   releases: ["9.1", "9.0.2", "8.1.3"],
   master: [2026],
 };

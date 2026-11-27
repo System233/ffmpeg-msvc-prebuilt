@@ -1,10 +1,10 @@
 # FFmpeg MSVC Prebuilt — Web
 
-React + Vite + React Router framework mode with build-time pre-rendering. No application server is required in production. Data V2 is the sole contract of the new frontend, including the required shard-level lts flag and support for package format 2 (Binary + Debug) and historical LGPL notices.
+React + Vite + React Router framework mode with build-time pre-rendering. No application server is required in production. The release catalog is the frontend data contract, including the required shard-level lts flag and support for package format 2 (Binary + Debug) and historical LGPL notices.
 
 ## Local development
 
-Use Node 24 and pnpm 10. The data checkout must contain the V2 catalog (index.json, releases/, master/). Copy or check out the authoritative main schema at schema/v2, or set CATALOG_DIR and SCHEMA_DIR to their locations.
+Use Node 24 and pnpm 10. The data checkout must contain the release catalog (index.json, releases/, master/). Copy or check out the authoritative main schema at schema, or set CATALOG_DIR and SCHEMA_DIR to their locations.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -34,18 +34,9 @@ pnpm build
 
 PowerShell: use $env:CATALOG_DIR and $env:CATALOG_FIXTURE, then remove these environment variables before the final production build. CI runs the fixture first, then replaces its build with the production snapshot before uploading the Pages artifact.
 
-## Deployment cutover
+## Deployment
 
-The identical Pages workflow must be synchronized across main, web and data. The workflow uses the frontend's catalogSchema marker and Data V2 index to detect compatible pairs; during cutover, incompatible pairs deliberately skip upload and deployment and retain the existing live site. An unsupported schema, corrupt JSON, or missing catalog fails closed. The new frontend itself has no legacy YAML reader.
-
-Before switching the production branches:
-1. Confirm the remote data head still matches the reviewed migration source. If not, regenerate and review the migration against the latest data.
-2. Drain any running publication, recovery and retention writers. Use a controlled maintenance window; do not allow legacy and V2 writers to modify data concurrently.
-3. Apply the reviewed main code and workflow, the reviewed data migration and workflow, and the reviewed web code and workflow in a coordinated cutover. Ensure the new main schema supports format 2 and historical LGPL notices, and requires lts, and that all Data V2 shards contain the authoritative lts flag, before both data and web switch; keep writers paused until all three branches are ready.
-4. Trigger Pages once against the final branch heads and check build, deployment, public HTML, .data files, JSON, and downloads.
-5. Resume the normal publication and retention schedule only once the V2 writer and data agree.
-
-If the frontend build or deployment fails, the existing Pages publication is not replaced. Do not force-push or restore the old data after new V2 releases are written; coordinate any rollback of the producer with the catalog and preserve published release assets.
+The same Pages workflow is maintained on main, web and data. It validates the release catalog against the authoritative Schema before building. Invalid or missing data fails the build and does not replace the deployed site.
 
 ## UI
 

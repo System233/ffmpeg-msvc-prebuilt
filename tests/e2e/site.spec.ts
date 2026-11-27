@@ -83,7 +83,7 @@ test("all assets have direct download hrefs in both languages' static HTML", asy
 test("public JSON and 404 are static", async ({ request, baseURL }) => {
   const data = await request.get(baseURL + "data/index.json");
   expect(data.ok()).toBeTruthy();
-  expect((await data.json()).schema).toBe(2);
+  expect((await data.json()).schema).toBe(1);
   expect((await request.get(baseURL + "not-a-valid-page/")).status()).toBe(404);
 });
 test("unprefixed docs and localized docs are genuine pages", async ({
