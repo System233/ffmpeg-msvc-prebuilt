@@ -1,84 +1,62 @@
----
-title: Guide
-description: How to choose and use prebuilt FFmpeg binaries for Windows with MSVC — understand variants, file naming, and what's included.
----
-
 # Guide
 
-## Quick Start
+## Quick start
 
-1. Visit the [GitHub Pages site](https://system233.github.io/ffmpeg-msvc-prebuilt/) or [Releases](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
-2. Choose your variant:
+Choose a stable version and the target architecture on the [download page](../), then download the **Binary** ZIP. Shared is the usual choice; choose Static when you need standalone command-line executables. See [license selection](../licenses/#choosing-a-license) for GPL/LGPL.
 
-   | Decision | Options |
-   |---|---|
-   | **Version** | Stable release (7.x, 8.x) or **Master** (latest weekly build) |
-   | **License** | **GPL** (includes x264, x265) / **LGPL** (more permissive) |
-   | **Linkage** | **Shared** (DLLs, for dev & runtime) / **Static** (single exe, portable) |
-   | **Arch** | x64, x86, ARM64, ARM |
+### Verifying downloads
 
-3. Download the `.zip` file and extract anywhere
+Copy the SHA-256 from the download information panel, then hash the original ZIP in PowerShell:
 
-If unsure, pick a **stable shared GPL** variant — it covers most use cases.
-
-## Understanding the Artifacts
-
-Each version produces **16 variants** (4 arch × 2 license × 2 linkage).
-Shared variants also include a **develop** archive with debug symbols.
-
-### File naming
-
-```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary (runnable + dev files)
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop (with debug symbols)
-         ↑       ↑           ↑      ↑
-     version   triplet    linkage license
+```powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\ffmpeg.zip"
 ```
 
-- **Version**: FFmpeg release number (e.g. `8.1.1`) or git describe for Master
-- **Revision** (`-r2`): bump count when a version is rebuilt
-- **Triplet**: `{arch}-windows` — `x64`, `x86`, `arm64`, `arm`
-- **Linkage**: `shared` (DLLs) or `static` (self-contained exe)
-- **License**: `gpl` or `lgpl`
+Replace the filename with the actual ZIP. The hash must match the corresponding download record (case-insensitive). If it differs, do not use the file; download it again. Older archives without a recorded hash cannot be checked this way. This is not digital-signature verification.
 
-### Binary vs Develop (shared only)
+## Installation and first commands
 
-| | Binary | Develop |
-|---|---|---|
-| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅ | ✅ |
-| Headers (`.h`) | ✅ | ✅ |
-| Import libraries (`.lib`) + DLLs | ✅ | ✅ |
-| pkg-config (`.pc`) + CMake module | ✅ | ✅ |
-| PDB debug symbols | ❌ | ✅ |
-| Debug libraries (`debug/lib/`) | ❌ | ✅ |
-| Archive size | Smaller | Larger |
+1. Extract the ZIP to a permanent directory, such as `C:\Tools\ffmpeg`.
+2. Locate `ffmpeg.exe`: typically in `bin/` for Shared, or the extraction root for Static.
+3. Add that directory to the Windows user PATH and reopen PowerShell. Keep the matching Shared DLLs next to the executables.
 
-### Which one to pick?
+Verify your installation first:
+
+```powershell
+Get-Command ffmpeg
+ffmpeg -version
+ffprobe -version
+```
+
+Confirm the path and version match the downloaded build, then run these commands with your actual media filenames:
+
+```powershell
+# Inspect media
+ffprobe -hide_banner input.mp4
+
+# Remux without re-encoding (requires compatible container)
+ffmpeg -i input.mp4 -c copy output.mkv
+
+# Transcode
+ffmpeg -i input.mp4 output.webm
+```
+
+Without changing PATH, run `.\ffmpeg.exe -version` from its directory or use its full path.
+
+## Which one to pick?
 
 | I want to... | Download |
 |---|---|
-| Run FFmpeg commands | **Static Binary** (single exe) or **Shared Binary** |
-| Build my own app with FFmpeg | **Shared Binary** (headers + libs) |
-| Debug my app with FFmpeg symbols | **Shared Develop** (includes PDB) |
-| Carry one exe, no DLLs | **Static Binary** |
+| Run FFmpeg commands | Shared Binary |
+| Use standalone executables without FFmpeg DLLs | Static Binary |
+| Develop a C/C++ application | Shared Binary |
+| Debug FFmpeg with libraries and PDBs | Shared Binary + matching Debug |
 
-**Static** variants contain only executables — no headers, no import libraries.
+Match the architecture to your system or target application: x64, x86, ARM64 or ARM. Stable releases suit everyday use; snapshots are for testing upstream changes. For existing projects, match the required version first.
 
-## What's Included
+## Further reading
 
-### Binary (all linkage types)
-
-- **CLI tools**: `ffmpeg.exe`, `ffplay.exe`, `ffprobe.exe`
-- **Development files** (shared only): headers (`.h`), import libraries (`.lib`), DLLs
-- **Integration** (shared only): pkg-config files (`.pc`), CMake `FindFFMPEG.cmake`
-- **Metadata**: `BUILD_INFO`, `CONTROL`, `LICENSE.txt`
-- All dependencies are statically linked or bundled — **zero runtime DLLs to install**
-
-### Develop (shared only, adds to binary)
-
-- **PDB symbol files** for all executables and DLLs
-- **Debug build libraries** under `debug/lib/`
-
-### Static
-
-- Self-contained executables only — no external DLLs needed at runtime
+- [Integration](../integration/): link FFmpeg libraries into your application.
+- [Build artifacts](../packages/): layouts, Debug, filenames and compatibility.
+- [Licenses and redistribution](../licenses/): choosing GPL/LGPL and distribution considerations.
+- [Self-build guide](../self-build/): customize features or build an SDK from source.

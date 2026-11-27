@@ -1,189 +1,119 @@
----
-title: Integration
-description: Integrate prebuilt FFmpeg MSVC binaries into your CMake project using FindFFmpeg.cmake — targets, variables, and code snippets.
----
-
-# Integrating FFmpeg into Your CMake Project
-
-This guide explains how to link a prebuilt FFmpeg distribution
-(shared, MSVC) into your own CMake project using `FindFFmpeg.cmake`.
+# Integration
 
 ## Prerequisites
 
-Download a **shared** prebuilt FFmpeg archive (binary or develop) from
-the [releases page](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
-or [GitHub Pages](https://system233.github.io/ffmpeg-msvc-prebuilt/).
+Download **Shared Binary** for the target application's architecture, [verify the ZIP](../guide/#verifying-downloads), and extract it, for example to `C:\Tools\ffmpeg`. The SDK root should contain `bin/`, `lib/`, `include/` and `share/ffmpeg/`. A complete static SDK is too large to distribute, so Static archives contain command-line tools only. For static linking, [build from source](../self-build/).
 
-Extract the `.zip` — the resulting directory contains `bin/`, `lib/`,
-`include/`, and `share/ffmpeg/`. This path is your **`FFMPEG_ROOT`**.
+## Minimal version
 
-> **Note**: The static variant does not include headers or libraries
-> and cannot be used for development. Use a shared variant instead.
+Use CMake 3.21+ and MSVC. Create these two files in your project directory.
 
-## How It Works
-
-```
-User passes FFMPEG_ROOT
-         │
-         ▼
-CMakeLists.txt appends to CMAKE_MODULE_PATH
-  → list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
-         │
-         ▼
-find_package(FFmpeg MODULE) loads FindFFmpeg.cmake
-  → scans FFMPEG_ROOT/include and FFMPEG_ROOT/lib
-  → caches results (re-configure skips scan)
-  → detects DLLs on Windows shared builds
-  → creates imported targets with proper locations
-         │
-         ▼
-target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
-  → CMake wires up include dirs, import libs, DLL paths,
-    and per-config (Debug/Release) switching
-```
-
-## Quick Start Snippets
-
-Copy one of the following into your own `CMakeLists.txt` and
-pass `-DFFMPEG_ROOT=<absolute_path>` at configure time.
-
-### Minimal version
+**CMakeLists.txt**
 
 ```cmake
 cmake_minimum_required(VERSION 3.21)
 project(myapp C)
 
-# ---- Required: point to the extracted FFmpeg archive ----
-if(NOT DEFINED FFMPEG_ROOT)
-    message(FATAL_ERROR "\n  Pass -DFFMPEG_ROOT=<absolute_path> to cmake\n")
-endif()
 list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
-
-find_package(FFmpeg 5.0 MODULE REQUIRED)
+find_package(FFmpeg MODULE REQUIRED)
 
 add_executable(myapp main.c)
 target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
 ```
 
-### With DLL deployment (Windows shared builds)
+**main.c**
 
-Adds automatic DLL copying at build time and install time.
+```c
+#include <stdio.h>
+#include <libavutil/avutil.h>
+
+int main(void) {
+    puts(av_version_info());
+    return 0;
+}
+```
+
+Configure, build and run in PowerShell (Visual Studio multi-config generator, x64):
+
+```powershell
+cmake -S . -B build -A x64 "-DFFMPEG_ROOT=C:/Tools/ffmpeg"
+cmake --build build --config Release
+$env:Path = "C:\Tools\ffmpeg\bin;$env:Path"
+.\build\Release\myapp.exe
+```
+
+The program should print the FFmpeg version. For ARM64, x86 or ARM, select the matching generator platform (Win32 for x86). With Ninja or similar generators, use the matching MSVC toolchain environment and omit `-A`.
+
+## With DLL deployment (Windows shared builds)
+
+Append this to the CMakeLists.txt above. It copies matching DLLs after building, so you need not change PATH at runtime, and includes them on installation.
 
 ```cmake
-cmake_minimum_required(VERSION 3.21)
-project(myapp C)
-
-if(NOT DEFINED FFMPEG_ROOT)
-    message(FATAL_ERROR "\n  Pass -DFFMPEG_ROOT=<absolute_path> to cmake\n")
-endif()
-list(APPEND CMAKE_MODULE_PATH "${FFMPEG_ROOT}/share/ffmpeg")
-
-find_package(FFmpeg 5.0 MODULE REQUIRED)
-
-add_executable(myapp main.c)
-target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)
-
-# Copy DLLs to the build output directory
 add_custom_command(TARGET myapp POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_RUNTIME_DLLS:myapp>" "$<TARGET_FILE_DIR:myapp>"
     COMMAND_EXPAND_LISTS
 )
-
-# Install executable + DLLs
 install(TARGETS myapp RUNTIME DESTINATION bin)
 install(FILES $<TARGET_RUNTIME_DLLS:myapp> DESTINATION bin)
 ```
 
-### Legacy variable approach
-
-If you cannot use CMake targets.
-
-```cmake
-find_package(FFmpeg 5.0 MODULE REQUIRED)
-
-add_executable(myapp main.c)
-target_include_directories(myapp PRIVATE ${FFMPEG_INCLUDE_DIRS})
-target_link_libraries(myapp PRIVATE ${FFMPEG_LIBRARIES})
+```powershell
+cmake --build build --config Release
+cmake --install build --config Release --prefix dist
+.\dist\bin\myapp.exe
 ```
 
-### Linking individual modules (without umbrella)
+Before distributing your application, read [Licenses and redistribution](../licenses/).
+
+## Debug builds and symbols
+
+1. Extract Debug from the same build batch, architecture, license and linkage over Shared Binary. An older complete Develop archive can be used directly instead.
+2. Reconfigure and run `cmake --build build --config Debug`. If automatic deployment is enabled, run the application from the Debug output directory.
+3. In Visual Studio, open Debug > Windows > Modules and verify the loaded DLLs and PDBs match.
+
+The updated CMake module selects Debug libraries when a complete Debug library/DLL set is available; otherwise it uses Release libraries. Release PDBs are in `bin/` (when supplied); Debug DLLs and PDBs are in `debug/bin/`. Never mix libraries or symbols from unrelated builds.
+
+## Other linking methods
+
+To link only selected modules, replace the link command with:
 
 ```cmake
-find_package(FFmpeg 5.0 MODULE REQUIRED)
-
-add_executable(myapp main.c)
 target_link_libraries(myapp PRIVATE
-    FFmpeg::avformat
-    FFmpeg::avcodec
-    FFmpeg::avutil
+    FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil
 )
 ```
 
-## Available Targets
+Legacy projects can use `${FFMPEG_INCLUDE_DIRS}` and `${FFMPEG_LIBRARIES}`. Without CMake, add `include/` and `lib/` to your compiler/linker configuration, link the required import libraries, and deploy matching DLLs from `bin/`. Variable-based linking does not provide imported-target DLL discovery; deploy DLLs manually.
 
-Each FFmpeg module is exposed as a CMake imported target:
+## How it works
 
-| Target | Description |
+`FFMPEG_ROOT` points to the SDK root. `CMAKE_MODULE_PATH` makes the supplied `FindFFmpeg.cmake` discoverable. It finds headers, import libraries and DLLs, creates imported targets, and selects libraries per configuration. `FFmpeg::FFmpeg` aggregates available modules; `TARGET_RUNTIME_DLLS` resolves DLLs from imported targets. Reconfigure after changing SDKs; older modules may require a fresh build directory.
+
+## Available targets
+
+| Target | Purpose |
 |---|---|
-| `FFmpeg::FFmpeg` | Umbrella target — links all modules and sets include dirs |
-| `FFMPEG::ffmpeg` | Alias for `FFmpeg::FFmpeg` (legacy) |
-| `FFmpeg::avutil` | libavutil — common utilities |
-| `FFmpeg::avcodec` | libavcodec — audio/video codecs |
-| `FFmpeg::avformat` | libavformat — muxers/demuxers |
-| `FFmpeg::avfilter` | libavfilter — filter graphs |
-| `FFmpeg::avdevice` | libavdevice — device I/O |
-| `FFmpeg::swresample` | libswresample — audio resampling |
-| `FFmpeg::swscale` | libswscale — image scaling / color conversion |
+| `FFmpeg::FFmpeg` | All available modules |
+| `FFmpeg::avutil` | Common utilities |
+| `FFmpeg::avcodec` | Codecs |
+| `FFmpeg::avformat` | Muxing and demuxing |
+| `FFmpeg::avfilter` | Filters |
+| `FFmpeg::avdevice` | Device I/O |
+| `FFmpeg::swresample` | Audio resampling |
+| `FFmpeg::swscale` | Scaling and color conversion |
 
-Each module target is also available under the legacy `FFMPEG::` namespace
-(e.g. `FFMPEG::avcodec`).
+Legacy names such as `FFMPEG::ffmpeg` and `FFMPEG::avcodec` remain supported. Availability depends on version and build configuration.
 
-## Available Variables
-
-### Global variables
+## Available variables
 
 | Variable | Description |
 |---|---|
-| `FFMPEG_FOUND` | True if FFmpeg was found |
-| `FFMPEG_VERSION` | FFmpeg version string |
-| `FFMPEG_INCLUDE_DIRS` | Header file search paths |
+| `FFMPEG_FOUND` / `FFMPEG_VERSION` | Discovery result / version |
+| `FFMPEG_INCLUDE_DIRS` | Header search paths |
 | `FFMPEG_LIBRARY_DIRS` | Library search paths |
-| `FFMPEG_LIBRARIES` | Full list of library paths |
-| `FFMPEG_LIBRARY` | Same as `FFMPEG_LIBRARIES` |
+| `FFMPEG_LIBRARIES` / `FFMPEG_LIBRARY` | Library list |
 
-### Per-module variables
+Per-module variables use the prefix `FFMPEG_lib<name>_`, e.g. `FFMPEG_libavcodec_LIBRARY_RELEASE`. Suffixes include `FOUND`, `INCLUDE_DIRS`, `LIBRARY`, `LIBRARY_RELEASE`, `LIBRARY_DEBUG`, `VERSION`, `DLL_RELEASE`, `DLL_DEBUG` and `DEPS_LIBRARY`, depending on the module and build.
 
-For each module `<name>` in `{avutil, avcodec, avformat, avfilter, avdevice, swresample, swscale}`:
-
-| Variable | Description |
-|---|---|
-| `FFMPEG_lib<name>_FOUND` | Whether this module was found |
-| `FFMPEG_lib<name>_INCLUDE_DIRS` | Module-specific include dirs |
-| `FFMPEG_lib<name>_LIBRARY` | Module library path (Debug/Release aware) |
-| `FFMPEG_lib<name>_LIBRARY_RELEASE` | Release library path |
-| `FFMPEG_lib<name>_LIBRARY_DEBUG` | Debug library path |
-| `FFMPEG_lib<name>_VERSION` | Module version (e.g. `61.19.100`) |
-| `FFMPEG_lib<name>_DLL_RELEASE` | Release DLL path (Windows shared only) |
-| `FFMPEG_lib<name>_DLL_DEBUG` | Debug DLL path (Windows shared only) |
-| `FFMPEG_lib<name>_DEPS_LIBRARY` | External dependency libraries for this module |
-
-## Compatibility
-
-The old `FFMPEG::ffmpeg` / `FFMPEG::avformat` names are kept as
-aliases. Both naming schemes work:
-
-```cmake
-target_link_libraries(myapp PRIVATE FFmpeg::FFmpeg)   # new (recommended)
-target_link_libraries(myapp PRIVATE FFMPEG::ffmpeg)    # old (compat)
-```
-
-## Example: ffmeta
-
-A complete runnable example is available under
-[`examples/`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
-in the repository. It demonstrates all three linking methods and
-includes a CMakePresets.json for quick configuration.
-
-See [`examples/README.md`](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples)
-for build instructions.
+See the [repository examples](https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples) for a complete media information application.

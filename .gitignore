@@ -1,7 +1,9 @@
 node_modules/
-.vitepress/dist/
-.vitepress/cache/
-.vitepress/generated/
-/en/
-/zh/
-# pnpm-lock.yaml (committed for CI reproducibility)
+.react-router/
+build/
+.generated/
+public/data/
+playwright-report/
+test-results/
+data/
+schema/

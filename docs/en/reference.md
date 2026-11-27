@@ -16,7 +16,7 @@ description: Complete reference of all FFmpeg build features, configure flags, d
 | `swresample` | `--enable-swresample` | Build the swresample library | — | — | — |
 | `swscale` | `--enable-swscale` | Build the swscale library | — | — | — |
 | `avresample` | `--enable-avresample` | Build the avresample library | — | — | `<5.0` |
-| `postproc` | `--enable-postproc` | Build the postproc library | `@license-gpl` | — | `<8.0` |
+| `postproc` | `--enable-postproc` | Build the postproc library | — | — | `<8.0` |
 
 ## License Flags
 
@@ -112,16 +112,16 @@ description: Complete reference of all FFmpeg build features, configure flags, d
 
 | Feature | Configure Flag | Description | Dependencies | Platform | Since |
 |---------|---------------|-------------|-------------|----------|-------|
-| `x264` | `--enable-libx264` | H.264 encoding via x264 | `x264`, `@license-gpl` | — | — |
-| `x265` | `--enable-libx265` | HEVC encoding via x265 | `x265`, `@license-gpl` | `!uwp & !xbox` | — |
-| `dvdnav` | `--enable-libdvdnav` | DVD, Blu-ray, and Matroska navigation via libdvdnav | `libdvdnav`, `@license-gpl` | `!uwp & !xbox` | `>=7.0` |
-| `dvdread` | `--enable-libdvdread` | DVD reading support via libdvdread | `libdvdread`, `@license-gpl` | `!uwp & !xbox` | `>=7.0` |
+| `x264` | `--enable-libx264` | H.264 encoding via x264 | `x264` | — | — |
+| `x265` | `--enable-libx265` | HEVC encoding via x265 | `x265` | `!uwp & !xbox` | — |
+| `dvdnav` | `--enable-libdvdnav` | DVD, Blu-ray, and Matroska navigation via libdvdnav | `libdvdnav` | `!uwp & !xbox` | `>=7.0` |
+| `dvdread` | `--enable-libdvdread` | DVD reading support via libdvdread | `libdvdread` | `!uwp & !xbox` | `>=7.0` |
 
 ## Non-free
 
 | Feature | Configure Flag | Description | Dependencies | Platform | Since |
 |---------|---------------|-------------|-------------|----------|-------|
-| `fdk-aac` | `--enable-libfdk-aac` | AAC de/encoding via libfdk-aac | `fdk-aac`, `@license-nonfree` | — | `>=4.0` |
+| `fdk-aac` | `--enable-libfdk-aac` | AAC de/encoding via libfdk-aac | `fdk-aac` | — | `>=4.0` |
 
 ## Meta Features
 
@@ -135,17 +135,17 @@ description: Complete reference of all FFmpeg build features, configure flags, d
 | `app` | — | Build all applications | `@ffmpeg`, `@ffplay`, `@ffprobe` | — | — |
 | `windows-hw` | — | Windows hardware acceleration features | `@d3d11va`, `@d3d12va`, `@dxva2`, `@mediafoundation`, `@w32threads` | — | — |
 | `all` | — | All LGPL features plus Windows hardware acceleration | `@lgpl`, `@windows-hw` | — | — |
-| `lgpl` | — | All LGPL-licensed optional features | `@zlib`, `@bzip2`, `@lzma`, `@iconv`, `@freetype`, `@fribidi`, `@fontconfig`, `@harfbuzz`, `@ass`, `@bluray`, `@opus`, `@vorbis`, `@theora`, `@speex`, `@mp3lame`, `@soxr`, `@openmpt`, `@ilbc`, `@modplug`, `@gme`, `@mysofa`, `@tesseract`, `@dav1d`, `@aom`, `@vpx`, `@webp`, `@openjpeg`, `@snappy`, `@openh264`, `@jxl`, `@lensfun`, `@shaderc`, `@svtav1`, `@vvenc`, `@sdl2`, `@xml2`, `@vulkan`, `@opencl`, `@opengl`, `@srt`, `@ssh`, `@openssl`, `@zmq`, `@nvcodec`, `@amf` | — | — |
+| `lgpl` | — | All LGPL-licensed optional features | `@zlib`, `@bzip2`, `@lzma`, `@iconv`, `@freetype`, `@fribidi`, `@fontconfig`, `@harfbuzz`, `@ass`, `@bluray`, `@opus`, `@vorbis`, `@theora`, `@speex`, `@mp3lame`, `@soxr`, `@openmpt`, `@ilbc`, `@modplug`, `@gme`, `@mysofa`, `@tesseract`, `@dav1d`, `@aom`, `@vpx`, `@webp`, `@openjpeg`, `@snappy`, `@openh264`, `@jxl`, `@shaderc`, `@svtav1`, `@vvenc`, `@sdl2`, `@xml2`, `@vulkan`, `@opencl`, `@opengl`, `@srt`, `@ssh`, `@openssl`, `@zmq`, `@nvcodec`, `@amf` | — | — |
 | `all-lgpl` | — | Meta-feature: all + lgpl | `@all`, `@lgpl` | — | — |
-| `gpl` | — | All GPL-licensed features | `@dvdnav`, `@dvdread`, `@x264`, `@x265`, `@postproc` | — | — |
-| `all-gpl` | — | Meta-feature: all + gpl | `@all`, `@gpl` | — | — |
+| `gpl` | — | All GPL-licensed features | `@lensfun`, `@dvdnav`, `@dvdread`, `@x264`, `@x265`, `@postproc` | — | — |
+| `all-gpl` | — | Meta-feature: all + gpl | `@all`, `@gpl`, `@license-gpl` | — | — |
 | `nonfree` | — | All non-free features | `@fdk-aac` | — | — |
-| `all-nonfree` | — | Meta-feature: all features including non-free | `@all`, `@gpl`, `@lgpl`, `@nonfree` | — | — |
+| `all-nonfree` | — | Meta-feature: all features including non-free | `@all`, `@gpl`, `@lgpl`, `@nonfree`, `@license-gpl`, `@license-nonfree` | — | — |
 
 ## License Summary
 
-**GPL features** (require `--enable-gpl`): `postproc`, `x264`, `x265`, `dvdnav`, `dvdread`
+**GPL components** (require `--enable-gpl`): `postproc`, `lensfun`, `x264`, `x265`, `dvdnav`, `dvdread`. The `all-gpl` and `all-nonfree` aggregate features enable the GPL flag.
 
-**Non-free features** (require `--enable-nonfree`): `fdk-aac`
+**Non-free components** (require `--enable-nonfree`): `fdk-aac`. The `all-nonfree` aggregate enables the non-free flag. Non-free builds are not published by this project.
 
 **Platform-restricted features**: `fribidi`, `fontconfig`, `harfbuzz`, `modplug`, `tesseract`, `aom`, `lensfun`, `svtav1`, `vvenc`, `srt`, `ssh`, `zmq`, `bluray`, `nvcodec`, `qsv`, `mfx`, `vulkan`, `opencl`, `opengl`, `x265`, `dvdnav`, `dvdread`

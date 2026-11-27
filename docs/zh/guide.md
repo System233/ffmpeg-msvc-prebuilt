@@ -1,84 +1,62 @@
----
-title: 使用指南
-description: 如何选择和使用适用于 Windows 的 FFmpeg MSVC 预构建二进制文件 — 了解变体、文件命名规则和包含内容。
----
-
 # 使用指南
 
 ## 快速开始
 
-1. 打开 [GitHub Pages 站点](https://system233.github.io/ffmpeg-msvc-prebuilt/) 或 [Releases](https://github.com/System233/ffmpeg-msvc-prebuilt/releases)
-2. 选择合适的变体：
+从[下载页](../)选择适合目标系统的稳定版本和架构，下载 **二进制（Binary）** ZIP。一般选择共享库；仅需要独立命令行程序时可选择静态库。GPL/LGPL 选型参见[许可证说明](../licenses/#选择许可证)。
 
-   | 选项 | 说明 |
-   |---|---|
-   | **版本** | 稳定版 (7.x, 8.x) 或 **Master**（每周最新构建） |
-   | **许可证** | **GPL**（包含 x264、x265）/ **LGPL**（更宽松） |
-   | **链接方式** | **Shared**（DLL，可开发可运行）/ **Static**（单 exe，便携） |
-   | **架构** | x64、x86、ARM64、ARM |
+### 下载完整性校验
 
-3. 下载 `.zip` 压缩包，解压即可使用
+在下载项的信息面板复制 SHA-256，在 PowerShell 中校验原始 ZIP：
 
-不确定如何选择？推荐 **稳定版 + Shared + GPL**，覆盖大部分使用场景。
-
-## 理解构建产物
-
-每版本有 **16 个变体**（4 架构 × 2 许可证 × 2 链接方式）。
-Shared 变体额外包含一个 **develop** 包（含调试符号）。
-
-### 文件命名
-
-```
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl.zip         ← binary（可运行 + 开发文件）
-ffmpeg-8.1.1-r2_x64-windows-shared-gpl-develop.zip  ← develop（含调试符号）
-         ↑       ↑           ↑      ↑
-     版本号    triplet    链接方式  许可证
+```powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\ffmpeg.zip"
 ```
 
-- **版本号**: FFmpeg 发布号（如 `8.1.1`）或 Master 的 git describe
-- **修订号** (`-r2`): 同一版本重新构建的次数
-- **Triplet**: `{架构}-windows` — `x64`、`x86`、`arm64`、`arm`
-- **链接方式**: `shared`（DLL）或 `static`（独立 exe）
-- **许可证**: `gpl` 或 `lgpl`
+将文件名替换为实际下载的 ZIP。Hash 必须与对应下载项记录一致（不区分大小写）；不一致时不要使用，重新下载。没有记录哈希的旧包无法通过此方法确认一致性。哈希校验不是数字签名验证。
 
-### Binary 与 Develop 的区别（仅 shared）
+## 安装与基本命令
 
-| | Binary | Develop |
-|---|---|---|
-| ffmpeg.exe / ffplay.exe / ffprobe.exe | ✅ | ✅ |
-| 头文件 (`.h`) | ✅ | ✅ |
-| 导入库 (`.lib`) + DLL | ✅ | ✅ |
-| pkg-config (`.pc`) + CMake 模块 | ✅ | ✅ |
-| PDB 调试符号 | ❌ | ✅ |
-| 调试库（`debug/lib/`） | ❌ | ✅ |
-| 压缩包体积 | 较小 | 较大 |
+1. 解压 ZIP 至固定目录，例如 `C:\Tools\ffmpeg`。
+2. 找到 `ffmpeg.exe` 所在目录：共享库通常在 `bin/`，静态库通常在解压根目录。
+3. 将该目录添加到 Windows 用户 PATH，重新打开 PowerShell。共享库的 DLL 应保留在 EXE 旁。
 
-### 如何选择？
+先验证安装：
 
-| 你的需求 | 下载 |
+```powershell
+Get-Command ffmpeg
+ffmpeg -version
+ffprobe -version
+```
+
+确认路径、版本与下载的构建一致，再执行以下命令（将文件名替换为实际媒体文件）：
+
+```powershell
+# 查看媒体信息
+ffprobe -hide_banner input.mp4
+
+# 转封装（无需重新编码，要求容器兼容）
+ffmpeg -i input.mp4 -c copy output.mkv
+
+# 转码
+ffmpeg -i input.mp4 output.webm
+```
+
+不修改 PATH 也可以在可执行文件所在目录运行 `.\ffmpeg.exe -version`，或使用完整路径。
+
+## 如何选择？
+
+| 需求 | 下载 |
 |---|---|
-| 运行 FFmpeg 命令行 | **Static Binary**（单文件）或 **Shared Binary** |
-| 开发自己的 FFmpeg 应用 | **Shared Binary**（头文件 + 库） |
-| 调试 FFmpeg 相关应用 | **Shared Develop**（含 PDB） |
-| 单个 exe，无需 DLL | **Static Binary** |
+| 日常命令行使用 | 共享库二进制 |
+| 独立 EXE，无需 FFmpeg DLL | 静态库二进制 |
+| C/C++ 应用开发 | 共享库二进制 |
+| FFmpeg 调试库及 PDB | 共享库二进制 + 对应调试库 |
 
-**Static** 变体仅包含可执行文件 — 没有头文件和导入库。
+架构应与运行环境或目标应用匹配：x64、x86、ARM64 或 ARM。稳定版本适合日常使用；快照版本适合测试上游新功能。已有项目应优先匹配所需版本。
 
-## 包含内容
+## 进一步阅读
 
-### Binary（所有链接方式）
-
-- **命令行工具**: `ffmpeg.exe`、`ffplay.exe`、`ffprobe.exe`
-- **开发文件**（仅 shared）：头文件 (`.h`)、导入库 (`.lib`)、DLL
-- **集成支持**（仅 shared）：pkg-config 文件 (`.pc`)、CMake `FindFFMPEG.cmake`
-- **元数据**: `BUILD_INFO`、`CONTROL`、`LICENSE.txt`
-- 所有依赖已静态链接或打包 —— **零运行时 DLL 依赖**
-
-### Develop（仅 shared，在 Binary 基础上增加）
-
-- **PDB 符号文件**（所有 exe 和 DLL）
-- **调试库**（位于 `debug/lib/`）
-
-### Static
-
-- 仅独立可执行文件 —— 运行时无需任何外部 DLL
+- [开发集成](../integration/)：将 FFmpeg 库链接到自己的应用。
+- [构建产物](../packages/)：目录、调试库、文件命名与兼容性。
+- [许可证与再分发](../licenses/)：选择 GPL/LGPL 及分发注意事项。
+- [自行构建指南](../self-build/)：定制功能或从源码生成 SDK。
