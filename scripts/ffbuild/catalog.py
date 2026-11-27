@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds
+from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds, is_lts, PACKAGE_FORMAT_VERSION
 
 SCHEMA = 2
 VERSION = re.compile(r"\d+\.\d+(?:\.\d+)?")
@@ -111,7 +111,7 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         if not isinstance(abi, str) or not HASH.fullmatch(abi):
             raise ValueError("Invalid catalog ABI")
         fmt = record["package_format"]
-        if type(fmt) is not int or fmt < 2:
+        if type(fmt) is not int or fmt != PACKAGE_FORMAT_VERSION:
             raise ValueError("Invalid catalog archive format")
         result.update(abi=abi, format=fmt)
         original = _date(record["release_date"])
@@ -125,8 +125,11 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         result[kind] = _asset(asset)
     if "binary" not in result:
         raise ValueError("Missing binary asset")
-    if native and set(record["assets"]) != expected_asset_kinds(record["linkage"], record["package_format"]):
+    kinds = set(record["assets"])
+    if native and kinds != expected_asset_kinds(record["linkage"], record["package_format"]):
         raise ValueError("Incomplete native asset set")
+    if not native and ("debug" in kinds or (record["linkage"] == "static" and kinds != {"binary"})):
+        raise ValueError("Invalid historical asset set")
     return result
 
 
@@ -170,10 +173,13 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
     path = shard_path(root, kind, key)
     identity = {"version": key} if kind == "releases" else {"year": key}
     if not path.is_file():
-        return {**identity, "releases": []}
+        return {**identity, "lts": kind == "releases" and is_lts(str(key)), "releases": []}
     result = read_json(path)
-    if set(result) != {*identity, "releases"} or any(result.get(k) != v for k, v in identity.items()):
+    required = {*identity, "releases", "lts"}
+    if set(result) != required or any(result.get(k) != v for k, v in identity.items()):
         raise ValueError("Catalog shard identity differs")
+    if type(result["lts"]) is not bool or (kind == "master" and result["lts"]):
+        raise ValueError("Invalid catalog LTS classification")
     if not isinstance(result["releases"], list):
         raise ValueError("Invalid release list")
     tags = set()
@@ -193,7 +199,7 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
             if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", *ASSET_KINDS}:
                 raise ValueError("Invalid catalog variant")
             if ("abi" in v) != ("format" in v) or ("abi" in v and (
-                    not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] < 2)):
+                    not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] != PACKAGE_FORMAT_VERSION)):
                 raise ValueError("Invalid catalog ABI or format")
             if "abi" in v:
                 expected_tag = "ffmpeg-" + ("master" if kind == "master" else key) + "-" + date_suffix(r["date"])
@@ -201,14 +207,14 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
                     raise ValueError("Invalid native release tag")
                 if kind == "master" and not re.fullmatch(r"[0-9a-f]{40}", r.get("commit", "")):
                     raise ValueError("Native master requires full commit")
-            if "date" in v and _date(v["date"]) > r["date"]:
+            if "date" in v and ("abi" not in v or _date(v["date"]) > r["date"]):
                 raise ValueError("Invalid original asset date")
             if "binary" not in v:
                 raise ValueError("Missing binary asset")
             kinds = set(v).intersection(ASSET_KINDS)
             linkage = slot.split("-")[2]
-            if "debug" in kinds and ("format" not in v or v["format"] < 4):
-                raise ValueError("Debug add-on requires format 4")
+            if "debug" in kinds and "abi" not in v:
+                raise ValueError("Debug add-on requires native package metadata")
             if "abi" in v and kinds != expected_asset_kinds(linkage, v["format"]):
                 raise ValueError("Incomplete native asset set")
             if linkage == "static" and kinds != {"binary"}:
@@ -332,7 +338,8 @@ def migration_plan(source: Path) -> tuple[dict, dict, list[Path]]:
             release["variants"][slot] = value
         identity = (kind, key)
         if identity not in shards:
-            shards[identity] = {("version" if kind == "releases" else "year"): key, "releases": []}
+            shards[identity] = {("version" if kind == "releases" else "year"): key,
+                                "lts": kind == "releases" and is_lts(str(key)), "releases": []}
             manifest_data[kind].append(key)
         shards[identity]["releases"].append(release)
         consumed.extend([path, *files])
@@ -361,6 +368,25 @@ def migrate(source: Path, destination: Path) -> tuple[int, int, int]:
     releases = [r for s in shards.values() for r in s["releases"]]
     variants = [v for r in releases for v in r["variants"].values()]
     return len(releases), len(variants), sum(k in v for v in variants for k in ASSET_KINDS)
+
+
+def refresh_lts(root: Path) -> int:
+    """Refresh explicit LTS classifications. Validate all shards before writing."""
+    m = manifest(root)
+    changes = []
+    for kind in ("releases", "master"):
+        for key in m[kind]:
+            path = shard_path(root, kind, key)
+            if not path.is_file():
+                raise ValueError("Catalog manifest references missing shard")
+            shard = load_shard(root, kind, key)
+            lts = kind == "releases" and is_lts(str(key))
+            if shard.get("lts") is not lts:
+                shard["lts"] = lts
+                changes.append((path, shard))
+    for path, shard in changes:
+        write_json(path, shard)
+    return len(changes)
 
 
 def stage_index(root: Path) -> None:

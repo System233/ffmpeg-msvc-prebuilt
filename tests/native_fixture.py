@@ -27,7 +27,7 @@ def install_abi(package, job, content=b"native ABI"):
 
 def release_record(job):
     row = dict(job, variant_id=job["id"], channel="master" if job["yaml"] == "master" else "release",
-               package_format=4, assets={})
+               package_format=2, assets={})
     if row["channel"] == "master":
         row["source_commit"] = job["source_ref"]
     for kind in ("binary", "debug") if job["linkage"] == "shared" else ("binary",):

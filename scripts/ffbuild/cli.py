@@ -92,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
     migrate.add_argument("--source", required=True, type=Path)
     migrate.add_argument("--output", required=True, type=Path)
 
+    refresh = sub.add_parser("refresh-lts", help="Refresh explicit LTS metadata in V2 catalog shards")
+    refresh.add_argument("--data-dir", type=Path, default=Path("data"))
+
     sub.add_parser("validate", help="Check configuration, feature and generated port validity")
     autoheal = sub.add_parser("autoheal", help="Guarded FFmpeg CI Auto-Heal")
     autoheal.add_argument("args", nargs=argparse.REMAINDER)
@@ -274,6 +277,9 @@ def main(argv: list[str] | None = None) -> None:
         from .catalog import migrate
         releases, variants, assets = migrate(args.source, args.output)
         print(f"Migrated {releases} releases, {variants} variants, {assets} assets")
+    elif args.command == "refresh-lts":
+        from .catalog import refresh_lts
+        print(f"Updated {refresh_lts(args.data_dir)} catalog shards")
     elif args.command == "validate":
         _validate()
     elif args.command == "autoheal":

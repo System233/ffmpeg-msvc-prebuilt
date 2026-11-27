@@ -19,7 +19,7 @@ from ffbuild.identity import record_release_tag
 def record(version="9.1", when="2026-11-25", arch="x64", channel="release", commit=None):
     row = {"version": version, "release_date": when, "channel": channel,
            "triplet": arch + "-windows", "linkage": "static", "license": "lgpl",
-           "abi_hash": "a" * 64, "package_format": 4, "expected_variants": 1,
+           "abi_hash": "a" * 64, "package_format": 2, "expected_variants": 1,
            "features": ["base"], "dependencies": ["zlib"], "compliance": {"private": True}}
     if commit:
         row["source_commit"] = commit
@@ -29,6 +29,66 @@ def record(version="9.1", when="2026-11-25", arch="x64", channel="release", comm
 
 
 class CatalogTests(unittest.TestCase):
+    def test_lts_metadata_and_refresh(self):
+        from ffbuild.identity import is_lts
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for version, expected in (("5.1.10", True), ("7.1.5", True), ("8.1.3", False),
+                                      ("9.1", False), ("4.4.8", False), ("6.1.6", False)):
+                path = catalog.register_release(root, [record(version)])
+                shard = catalog.read_json(path)
+                self.assertIs(shard["lts"], expected)
+                self.assertIs(is_lts(version), expected)
+            master = catalog.register_release(root, [record("7.1-dev-42-gabcdef", channel="master", commit="a" * 40)])
+            shard = catalog.read_json(master)
+            self.assertIs(shard["lts"], False)
+            invalid = dict(shard, lts=True)
+            catalog.write_json(master, invalid)
+            with self.assertRaisesRegex(ValueError, "LTS classification"):
+                catalog.load_shard(root, "master", 2026)
+            catalog.write_json(master, shard)
+            legacy = root / "releases/7.1.5.json"
+            original = catalog.read_json(legacy)
+            missing = dict(original)
+            del missing["lts"]
+            catalog.write_json(legacy, missing)
+            with self.assertRaises(ValueError):
+                catalog.load_shard(root, "releases", "7.1.5")
+            with self.assertRaises(ValueError):
+                catalog.refresh_lts(root)
+            stale = dict(original, lts=False)
+            catalog.write_json(legacy, stale)
+            self.assertEqual(1, catalog.refresh_lts(root))
+            self.assertEqual(original, catalog.read_json(legacy))
+            self.assertEqual(0, catalog.refresh_lts(root))
+
+    def test_native_format_and_legacy_asset_sets(self):
+        from ffbuild.versions import ROOT
+        schema = json.loads((ROOT / "schema/v2/shard.schema.json").read_text())
+        self.assertEqual(2, schema["$defs"]["variant"]["properties"]["format"]["const"])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row = dict(record(), linkage="shared")
+            row["assets"] = {k: {"file": archive_name(row, kind=k), "size": 1,
+                                  "digest": "sha256:" + "b"*64} for k in ("binary", "debug")}
+            path = catalog.register_release(root, [row])
+            original = catalog.read_json(path)
+            import copy
+            for fmt in (1, 3, 4, 99):
+                invalid = copy.deepcopy(original)
+                invalid["releases"][0]["variants"]["x64-windows-shared-lgpl"]["format"] = fmt
+                catalog.write_json(path, invalid)
+                with self.assertRaisesRegex(ValueError, "ABI or format"):
+                    catalog.load_shard(root, "releases", "9.1")
+            invalid = copy.deepcopy(original)
+            del invalid["releases"][0]["variants"]["x64-windows-shared-lgpl"]["debug"]
+            catalog.write_json(path, invalid)
+            with self.assertRaisesRegex(ValueError, "asset set"):
+                catalog.load_shard(root, "releases", "9.1")
+            catalog.write_json(path, original)
+            self.assertEqual(row["assets"], PublishedState(directory=root).find_abi(
+                "9.1", row["triplet"], row["abi_hash"])["assets"])
+
     def test_lookup_reads_only_requested_shard_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -77,6 +137,7 @@ class CatalogTests(unittest.TestCase):
                 "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
             before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
             self.assertEqual((1, 1, 1), catalog.migrate(source, dest))
+            self.assertIs(catalog.load_shard(dest, "releases", "9.1")["lts"], False)
             self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
             self.assertEqual(row["assets"], PublishedState(directory=dest).find_abi(
                 "9.1", row["triplet"], row["abi_hash"])["assets"])

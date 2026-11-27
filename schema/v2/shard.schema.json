@@ -4,7 +4,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "releases"
+    "releases",
+    "lts"
   ],
   "properties": {
     "version": {
@@ -21,6 +22,10 @@
       "items": {
         "$ref": "#/$defs/release"
       }
+    },
+    "lts": {
+      "type": "boolean",
+      "description": "Explicit long-term-support release-family classification. Not an active support guarantee."
     }
   },
   "oneOf": [
@@ -75,6 +80,9 @@
               "version"
             ]
           }
+        },
+        "lts": {
+          "const": false
         }
       }
     }
@@ -115,8 +123,7 @@
           "pattern": "^[0-9a-f]{64}$"
         },
         "format": {
-          "type": "integer",
-          "minimum": 2
+          "const": 2
         },
         "date": {
           "type": "string",
@@ -160,12 +167,22 @@
           },
           "then": {
             "required": [
+              "abi",
               "format"
-            ],
-            "properties": {
-              "format": {
-                "minimum": 4
-              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "abi"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "develop"
+              ]
             }
           }
         }

@@ -241,7 +241,7 @@ vcpkg ABI input file** at `share/ffmpeg/vcpkg_abi_info.txt` and refuses to publi
 from the proposed pre-build ABI. The dry-run ABI is only the proposal, not
 independent evidence that the package was built with those inputs.
 
-Package-format v4 also requires the Worker-installed vcpkg root and unpacked
+Package-format v2 also requires the Worker-installed vcpkg root and unpacked
 FFmpeg source (`--installed-root`, `--buildtrees` or `--source-tree`).
 It enumerates dependency packages actually installed and reachable from
 FFmpeg's status records, copies reachable Port copyright and original SPDX,

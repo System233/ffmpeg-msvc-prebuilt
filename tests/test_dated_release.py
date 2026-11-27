@@ -77,7 +77,7 @@ class DatedPublication(unittest.TestCase):
             for i,row in enumerate(rows):
                 row["abi_hash"] = hashlib.sha256(str(i).encode()).hexdigest()
                 row["id"] = variant_name("9.1",0,row["triplet"],row["linkage"],row["license"],abi_hash=row["abi_hash"])
-                record = dict(row, variant_id=row["id"], channel="release", package_format=4,
+                record = dict(row, variant_id=row["id"], channel="release", package_format=2,
                               package_spec=row["package"])
                 record["assets"] = {}
                 for kind in (("binary","debug") if row["linkage"]=="shared" else ("binary",)):
@@ -328,9 +328,10 @@ class DatedPublication(unittest.TestCase):
             public.write_bytes(b"tampered")
             with self.assertRaisesRegex(ValueError, "digest or size mismatch"):
                 _verify_distribution(stored, output, reused=True)
-            shard["releases"][0]["variants"]["x64-windows-static-lgpl"]["format"] = 2
+            shard["releases"][0]["variants"]["x64-windows-static-lgpl"]["format"] = 99
             catalog.write_json(location, shard)
-            self.assertEqual(1, len(plan_native(scan, state=PublishedState(directory=data))["jobs"]))
+            with self.assertRaisesRegex(ValueError, "Invalid catalog ABI or format"):
+                plan_native(scan, state=PublishedState(directory=data))
 
     def test_public_copyright_reproduced_from_original_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

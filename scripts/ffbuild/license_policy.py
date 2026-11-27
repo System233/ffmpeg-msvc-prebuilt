@@ -17,7 +17,7 @@ from functools import lru_cache
 
 from license_expression import AND, OR, ExpressionError, LicenseSymbol, LicenseWithExceptionSymbol, Licensing
 
-POLICY_VERSION = 4
+POLICY_VERSION = 1
 # Exact IDs, not name prefixes. Unlisted terms require review. GNU FSF
 # license-list and GPL FAQ are the basis for these conservative rules.
 # https://www.gnu.org/licenses/license-list.html

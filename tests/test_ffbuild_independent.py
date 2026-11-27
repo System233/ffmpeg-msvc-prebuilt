@@ -177,7 +177,7 @@ class PackageRoundTrip(unittest.TestCase):
                 package, job, root / "release",
                 installed_root=installed, source_tree=source_tree)
             record = yaml.safe_load(metadata.read_text(encoding="utf-8"))
-            self.assertEqual(4, record["package_format"])
+            self.assertEqual(2, record["package_format"])
             self.assertEqual(archive_name(job), record["assets"]["binary"]["file"])
             self.assertEqual({"binary", "debug"}, set(record["assets"]))
             self.assertEqual(variant_name(version, 0, "x64-windows", "shared", "gpl",

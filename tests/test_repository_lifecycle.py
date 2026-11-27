@@ -44,7 +44,7 @@ def records(rows, tag=None):
     result = []
     for job in rows:
         r = dict(job, variant_id=job["id"], channel="master" if job["yaml"]=="master" else "release",
-                 package_format=4, package_spec=job["package"], assets={})
+                 package_format=2, package_spec=job["package"], assets={})
         if job.get("source_ref"):
             r["source_commit"] = job["source_ref"]
         for k in (("binary","debug") if r["linkage"]=="shared" else ("binary",)):
