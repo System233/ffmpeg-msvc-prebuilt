@@ -5,7 +5,6 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-MAX_AGENT_ATTEMPTS = 3
 MAX_REPAIR_ROUNDS = 2
 MAX_INFRA_RERUNS = 1
 MAX_CONCURRENT_REPAIRS = 2

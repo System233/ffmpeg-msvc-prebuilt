@@ -208,7 +208,13 @@ jobs:
           key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
           restore-keys: |
             ffbuild-downloads-2026.06.01-
-            vcpkg-dl-all-2026.06.01-
+      - name: Reuse legacy dependency source downloads
+        if: steps.download-cache.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg/downloads
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          prefix: vcpkg-dl-all-2026.06.01-
       - name: Download sources once for all Triplets
         if: steps.download-cache.outputs.cache-hit != 'true'
         shell: pwsh
@@ -261,7 +267,13 @@ jobs:
           restore-keys: |
             ffbuild-seed-2026.06.01-${{ matrix.triplet }}-
             ffbuild-native-2026.06.01-${{ matrix.triplet }}-
-            vcpkg-seed-2026.06.01-${{ matrix.triplet }}-
+      - name: Reuse legacy dependency binaries
+        if: steps.seed-cache.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-${{ matrix.triplet }}-
       - name: Restore shared dependency source downloads
         if: steps.seed-cache.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v5

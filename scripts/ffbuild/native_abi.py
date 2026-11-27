@@ -45,7 +45,8 @@ def read_nuget_abis(path: Path) -> dict[str, str]:
 
 def native_abi_query(packages: list[str], triplet: str, *,
                      port_overlay: Path,
-                     binary: Path | None = None) -> dict[str, str]:
+                     binary: Path | None = None,
+                     env: dict[str, str] | None = None) -> dict[str, str]:
     """Scan one dependency graph using one explicitly selected FFmpeg Port.
 
     Never supply the generated-ports parent: multiple version directories all
@@ -72,7 +73,7 @@ def native_abi_query(packages: list[str], triplet: str, *,
                 f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
                 f"--x-install-root={base / 'installed'}", "--dry-run",
                 f"--x-write-nuget-packages-config={output}", "--no-print-usage"]
-        finished = subprocess.run(args, cwd=ROOT, capture_output=True, text=True)
+        finished = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, **({"env": env} if env is not None else {}))
         if finished.returncode != 0:
             raise RuntimeError(f"Native vcpkg ABI query failed for {triplet}: "
                                f"{(finished.stderr + finished.stdout)[-4500:]}")

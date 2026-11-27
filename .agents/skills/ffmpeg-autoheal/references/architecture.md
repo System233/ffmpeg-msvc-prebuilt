@@ -17,4 +17,4 @@ The pipeline is YAML -> generated version directory -> native ABI plan -> shared
 
 Read the current workflow step and generated Port before diagnosing. The worker should use prepared dependencies rather than compile third-party packages; failure to prepare or restore them is not evidence of a FFmpeg source bug. The CMake Port downloads/extracts the pinned archive, applies patches in order, sets feature-dependent configure and toolchain options, invokes build.sh for applicable release/debug builds, and installs/normalizes the SDK. The tester consumes installed headers and libraries. A packaging or publishing failure belongs to a different stage.
 
-The repair runtime provides Python and the repository tools, not necessarily MSVC or a native vcpkg installation. Use source and minimal static checks locally; full matrix CI is the build authority. Read actual definitions when details change.
+The Windows repair runtime provides MSVC, pinned vcpkg, verified source and dependency caches. Build selected representative variants through autoheal build/test/smoke; the supervisor repeats clean native validation before delivery. Full matrix CI remains the merge authority.

@@ -4,8 +4,7 @@
 
 FFmpeg's normal build remains owned by the existing ffbuild planner, native vcpkg
 ABI scanner, central dependency Seed, and native MSVC build workers. The new
-ffbuild.autoheal Python package **consumes CI evidence**; it never computes a
-second dependency ABI or builds a local FFmpeg matrix.
+ffbuild.autoheal Python package **consumes CI evidence**; it reuses native vcpkg ABI and verifies representative FFmpeg builds in the same repair Runner, not the full production matrix.
 
 GitHub workflows are maintained as repository code. The autonomous repair
 worker may change only the exact failed version YAML and newly added,
@@ -14,7 +13,7 @@ build script, third-party Port, data branch content, or another version YAML.
 
 ## Trigger and lifecycle
 
-1. The independently triggered OpenCode Auto-Heal workflow observes completed
+1. The independently triggered FFmpeg Auto-Heal workflow observes completed
    Build All FFmpeg Versions automatic version PRs, explicit main Build FFmpeg
    Release dispatches, and scheduled Build FFmpeg Master runs, or accepts an explicitly supplied completed run ID/attempt. Main Push
    and human/fork PRs cannot become source-repair inputs.
@@ -27,13 +26,18 @@ build script, third-party Port, data branch content, or another version YAML.
    Download, Prepare/Seed, ABI, Runner, Package, and Publish failures are
    diagnosed, not sent to the source repair agent.
 4. Eligible versions run as separate Repair matrix jobs (parallelism at most 2).
+   A Windows 2022 worker restores the exact dependency Seed and pinned source,
+   then runs Pi with native FFmpeg/Tester build access. The supervisor rebuilds
+   each chosen representative from a clean install root before committing.
    The worker produces repair.patch, manifest.json, and repair-report.md;
    it receives no GitHub write permission or GitHub App token.
-5. An independent privileged Delivery job verifies the source run identity,
+5. An independent read-only Audit job reviews the exact native-verified patch.
+   Only a matching approval receipt permits delivery.
+6. An independent privileged Delivery job verifies the source run identity,
    exact source SHA, target YAML, patch checksum, path additions/changes,
    patch ownership, staged modes, and branch ancestry **again**. Fail closed
    if any material is missing, ambiguous, or out of scope.
-6. The bot pushes without force, creates or updates only its own repair PR,
+7. The bot pushes without force, creates or updates only its own repair PR,
    synchronizes the PR description and comments. Only verified complete
    single-version CI success permits GitHub native squash Auto-merge.
    The repair lifecycle ends at merge. Neither successful CI nor merging
@@ -64,7 +68,7 @@ The report schema (version 1) contains:
 - per job: GitHub job ID, native variant ID, triplet, native ABI, exact artifact;
 - additional nonrepairable diagnostic jobs and an eligible Repair matrix.
 
-A run attempt is different from an OpenCode attempt and from a Repair round.
+A run attempt is different from a Pi invocation and from a Repair round.
 The JSON record must always match the authenticated GitHub API source.
 
 The matrix job name is explicitly "ffbuild-<native variant ID>" so no build
@@ -103,7 +107,8 @@ family template can acquire a pinned source only if existing versions remain unc
 
 ## Repair limits and recursion
 
-- Maximum local OpenCode attempts per incident: 3.
+- One persistent Pi session per incident, with a 180-minute repair budget and a
+  300-minute Runner job timeout. Three consecutive Agent invocation failures abort.
 - Maximum CI-verified Repair rounds per bot PR: 2.
 - Maximum concurrent Repair jobs: 2.
 - At most one active bot repair PR per version and original error signature.
@@ -197,9 +202,8 @@ ffbuild validate, and actionlint. No remote end-to-end test or local full
 MSVC FFmpeg build matrix is required for mechanism acceptance.
 
 Simulations validate policy and state transitions, not actual Windows compiler
-results. A real FFmpeg patch may only be marked as successfully compiled when
-its normal required GitHub CI passes; that production build is separate from
-mechanism testing. Remaining operational limitations must be recorded rather
+results. A candidate is marked locally verified only after an actual native build and
+Tester pass; full production matrix CI is a separate merge gate. Remaining operational limitations must be recorded rather
 than mislabeled as tests passed.
 
 Eligibility for bounded diagnosis is not proof that a repair exists.
@@ -214,26 +218,56 @@ Missing evidence and mixed out-of-scope failures remain fail closed.
 The Agent may explicitly decline with `Decision: no_safe_fix` and leave the
 source unchanged; the supervisor emits a source-bound no-op manifest, and
 Delivery performs no GitHub writes. A candidate still requires the same strict
-scope validation and complete 16-variant CI. Existing retry and round limits
-are unchanged.
+scope validation and complete 16-variant CI. The two-round production repair limit remains unchanged.
 
-The legacy standalone repair scripts have been removed. The bounded Agent
-runner is now ffbuild.autoheal.runner, using the same independent scope checks.
-The portable skill at .agents/skills/ffmpeg-autoheal/SKILL.md is tracked with
-the build tools; the repair prompt names it explicitly. No opencode branch is
-fetched. OpenCode remains only an execution adapter; client-specific skill
-auto-discovery is not required.
-The skill is a procedural repair guide rather than a historical patch catalog.
-The Agent receives a per-failed-job projection of the matched native Build
-Plan (including feature closure, package, triplet, ABI and source pin), plus
-exact log paths. These fields are diagnostic evidence only; the existing
-trusted-source, scope, round and delivery checks remain authoritative.
-For stable versions resolve the pin from the target YAML; Master uses the
-recorded full upstream commit and SHA512. No native build or install is
-required in the repair job: reconstruct the source and patch sequence,
-compare configuration semantics and submit a candidate for remote MSVC CI.
- A pre-relocation failed checkout without this
-tool layout must be rebuilt from the new main before automated repair.
+## In-Runner repair
+
+The worker uses pinned Pi with OPENAI_BASE_URL (default https://api.openai.com/v1),
+OPENAI_API_KEY (secret) and OPENAI_MODEL. OPENAI_AUDIT_MODEL optionally selects
+a separate review model. The endpoint must implement OpenAI Responses, native
+web_search, streaming for Pi, and strict JSON Schema structured outputs for audit.
+No Chat Completions fallback is allowed. GitHub write
+credentials remain exclusive to Delivery. Agent tooling runs as the Runner
+user; scope checks and independent verification are acceptance gates, not
+an OS sandbox.
+
+Preparation binds the exact failed commit, pinned source and dependency
+contract, generates the Seed key, restores the required architecture caches
+and verifies every external native ABI before Pi starts. Cache restoration also supports the historical runner paths; a legacy hit is moved into the current cache before native ABI validation. Missing cache entries
+may be prepared in preflight; no external dependency may be built during
+repair. Incompatible historical tool layouts must be rebuilt first.
+
+The repository-owned skill guides diagnosis, source changes and variant selection.
+The Agent runs:
+
+- python -m ffbuild autoheal build "ffmpeg[all-gpl]:x64-windows"
+- python -m ffbuild autoheal test "ffmpeg[all-gpl]:x64-windows"
+- python -m ffbuild autoheal smoke "ffmpeg[all-gpl]:x64-windows"
+- python -m ffbuild autoheal status
+
+Use GPL/nonfree shared by default, static for static-only failure groups,
+and LGPL fallback for LGPL-specific failures. Select affected architectures
+and explain which failed jobs each representative covers in validation-plan.json.
+Do not execute the full matrix in the repair job. Tester compilation/linking
+and PE/COFF architecture verification are mandatory; executable smoke tests
+run only on compatible Windows hosts. A cross-target runtime skip is explicit.
+
+Supervisor feedback returns to the same session until clean verification
+passes or the budget/environment fails. The supervisor commits the exact
+verified tree; manifest schema 2 binds the patch, candidate commit/tree and
+representative ABI/test evidence. Delivery independently checks those bindings
+and scope before any write. Normal full-matrix CI is still mandatory for merge.
+
+A separate Ubuntu audit job replays the candidate Git tree without executing
+its code, compares the full dependency/feature/license contract, and reviews
+the diff and effective configurations with an independent Responses session.
+It has only bounded read-only context tools (referenced patch files and SHA512-
+verified pristine upstream source) and native Web Search. The strict structured
+verdict is bound by the controller to the manifest SHA256, patch SHA256, source
+incident and candidate tree. Missing, rejected, inconclusive, invalid or mismatched
+audit results block GitHub App credentials and delivery. Artifacts are scoped to the workflow attempt; rerun all jobs rather than only failed jobs to regenerate the entire chain. An approved audit is
+not a proof of security; production CI remains mandatory. Audit rejection ends
+the incident without automatic delivery; no candidate code is executed in audit.
 
 ## Public GitHub messages
 

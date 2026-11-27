@@ -16,7 +16,7 @@ from .port import ffmpeg_port_name
 from .versions import GENERATED_PORTS
 
 
-def verify_dependency_cache(job: dict, cache_dir: Path) -> int:
+def verify_dependency_cache(job: dict, cache_dir: Path, *, abi_map: dict[str, str] | None = None) -> int:
     """Require a complete, nonempty vcpkg files binary cache for the job.
 
     This is a pre-build gate; no package is compiled or installed. A missing
@@ -30,8 +30,9 @@ def verify_dependency_cache(job: dict, cache_dir: Path) -> int:
     tester = f'{job["tester_port"]}_{triplet}'
     if job["port"] != "ffmpeg" or job["tester_port"] != "ffmpeg-tester":
         raise ValueError("Worker must install stable ffmpeg and ffmpeg-tester Ports")
-    abi_map = native_abi_query([job["package"], job["tester_port"]], triplet,
-                               port_overlay=GENERATED_PORTS / ffmpeg_port_name(job["yaml"]))
+    if abi_map is None:
+        abi_map = native_abi_query([job["package"], job["tester_port"]], triplet,
+                                   port_overlay=GENERATED_PORTS / ffmpeg_port_name(job["yaml"]))
     if not {target, tester}.issubset(abi_map):
         raise RuntimeError(
             f"Native ABI plan missing selected FFmpeg/Tester: {target}, {tester}")

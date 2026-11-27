@@ -151,7 +151,8 @@ def _resume_submitted_pr(pr: dict, incident: str, report: dict, base: str) -> bo
 
 def _recover_orphan(
         branch: str, remote: str, base: str, incident: str,
-        report: dict, yaml: str, patch: Path, expected_paths: list[str]) -> None:
+        report: dict, yaml: str, patch: Path, expected_paths: list[str],
+        *, verified_tree: str | None = None) -> None:
     """Recover a pushed bot commit only when it equals the candidate patch.
 
     A remote branch without a PR is not evidence of bot ownership. Require
@@ -179,6 +180,8 @@ def _recover_orphan(
         raise ValueError("Orphan commit changed a different set of files")
     git("fetch", "origin", sha)
     actual_tree = git("rev-parse", f"{sha}^{{tree}}")
+    if verified_tree is not None and actual_tree != verified_tree:
+        raise ValueError("Orphan commit differs from the independently verified tree")
     with tempfile.TemporaryDirectory(prefix="autoheal-orphan-verify-") as scratch:
         workspace = Path(scratch)
         git("worktree", "add", "--detach", str(workspace), base)
@@ -219,36 +222,17 @@ def _recover_orphan(
         raise RuntimeError("Recovered orphan PR did not pass source provenance checks")
 
 
-def deliver(report: dict, yaml: str, output: Path) -> None:
+def deliver(report: dict, yaml: str, output: Path, audit_output: Path | None = None) -> None:
+    from .audit import candidate_identity, require_audit
     incident = validate_triage(report, yaml)
-    manifest_path = output / "manifest.json"
-    patch_path = output / "repair.patch"
-    if not manifest_path.is_file():
-        raise ValueError("Repair artifact or manifest missing")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    base = report["pr"]["head_sha"] if report.get("pr") else report["source"]["head_sha"]
-    commit_sha(base)
-    if manifest.get("decision") == "no_safe_fix":
-        identity = {"schema": 1, "decision": "no_safe_fix", "yaml": yaml,
-                    "signature": incident.signature, "run_id": report["source"]["run_id"],
-                    "run_attempt": report["source"]["run_attempt"], "base_sha": base}
-        if manifest != identity or patch_path.exists():
-            raise ValueError("Invalid safe-decline artifact")
+    identity, manifest, patch = candidate_identity(report, yaml, output)
+    if patch is None:
         print("No authorized fix proposed; no GitHub mutation.")
         return
-    if not patch_path.is_file():
-        raise ValueError("Repair artifact or manifest missing")
-    patch = patch_path.read_bytes()
-    if not patch or b"diff --git " not in patch:
-        raise ValueError("Empty repair patch")
-    expected = {
-        "schema": 1, "yaml": yaml, "signature": incident.signature,
-        "run_id": report["source"]["run_id"],
-        "run_attempt": report["source"]["run_attempt"],
-        "base_sha": base, "patch_sha256": hashlib.sha256(patch).hexdigest(),
-    }
-    if any(manifest.get(key) != value for key, value in expected.items()):
-        raise ValueError("Candidate patch does not match authenticated triage record")
+    require_audit(identity, audit_output or Path("audit-output"))
+    base = identity["base_sha"]
+    verified_tree = identity["candidate_tree"]
+    patch_path = output / "repair.patch"
     subject = repair_title(yaml, manifest.get("subject", ""))
     hypothesis = manifest.get("root_cause_hypothesis", "Not independently verified")
     if not isinstance(hypothesis, str) or len(hypothesis) > 300:
@@ -302,7 +286,7 @@ def deliver(report: dict, yaml: str, output: Path) -> None:
             git("fetch", "origin", main_sha, base)
             git("merge-base", "--is-ancestor", base, main_sha)
             changed = git("diff", "--name-only", base, main_sha, "--",
-                          "ffmpeg", "patches", "ports", "triplets", "ffbuild", "ffvcpkg", "licenses",
+                          "ffmpeg", "patches", "ports", "triplets", "scripts", "licenses",
                           "vcpkg-configuration.json", "requirements.txt")
             if changed:
                 raise ValueError("Build inputs changed since the failed build; manual retry required")
@@ -318,7 +302,7 @@ def deliver(report: dict, yaml: str, output: Path) -> None:
     remote = git("ls-remote", "origin", f"refs/heads/{branch}")
     if remote and not previous_pr:
         _recover_orphan(branch, remote, base, incident.signature,
-                        report, yaml, patch_path, manifest["paths"])
+                        report, yaml, patch_path, manifest["paths"], verified_tree=verified_tree)
         return
     if bool(remote) != bool(previous_pr):
         raise ValueError("Remote branch and bot PR disagree")
@@ -334,6 +318,8 @@ def deliver(report: dict, yaml: str, output: Path) -> None:
             git("apply", "--index", "--check", str(patch_path.resolve()), cwd=workspace)
             git("apply", "--index", str(patch_path.resolve()), cwd=workspace)
             git("diff", "--cached", "--check", cwd=workspace)
+            if git("write-tree", cwd=workspace) != verified_tree:
+                raise ValueError("Candidate patch tree differs from independent native verification")
             modified = changes(workspace)
             if report["source"].get("event") in ("workflow_dispatch", "schedule", "pull_request"):
                 verified_paths = check_worktree(yaml, base, workspace)
@@ -368,7 +354,7 @@ def deliver(report: dict, yaml: str, output: Path) -> None:
         tuple(paths), hypothesis, subject)
     rounds = [*previous_rounds, current_round_record]
     events = [*previous_events, pr_history.event_for_round(current_round_record)]
-    status = "Repair submitted; awaiting full MSVC CI."
+    status = "Representative native repair verification and independent security audit passed; awaiting full production MSVC CI."
     body = pr_history.render_history(rounds, events, status=status, report=report)
     if previous_pr:
         latest = github.api(f"repos/{github.repository()}/pulls/{previous_pr['number']}")

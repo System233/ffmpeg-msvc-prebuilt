@@ -1,19 +1,4 @@
-#!/usr/bin/env python3
-"""OpenCode autonomous agent repair loop.
-
-Runs OpenCode with an agent prompt to autonomously fix CI build failures,
-iterating up to --max-retries times. After each attempt, validates that
-only the target YAML and authorized patch files were modified.
-On scope violation, appends feedback and retries. On success, leaves a locally validated candidate commit for the repair worker.
-The runner never delivers a PR or writes remote Git state.
-
-Usage
------
-  export OPCODE_MODEL="opencode/deepseek-v4-flash-free"
-  export OPCODE_KEY_ENV="DEEPSEEK_API_KEY" && export "$OPCODE_KEY_ENV"="sk-..."
-  python -m ffbuild.autoheal.runner [--max-retries 3]
-"""
-
+"""Pi session supervisor. Only a clean native build of the candidate can succeed."""
 from __future__ import annotations
 
 import argparse
@@ -21,267 +6,187 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import List
 
-from ._allowed import find_violations
-
-from .models import version_name
+from . import build as native
+from .scope import check_worktree
 
 
-
-def _require_target_yaml() -> str:
-    path = Path("agent_context.json")
-    if not path.is_file():
-        raise ValueError("Missing agent_context.json with mandatory target_yaml")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("Invalid agent context")
-    return version_name(data.get("target_yaml"))
-
-# ── Feedback generation (bash _generate_feedback equivalent) ──────────────────
-
-def _generate_feedback(attempt: int, violations: List[str], feedback_file: str) -> None:
-    """Read FEEDBACK_FILE template, substitute {attempt} and {violations},
-    and write feedback.txt."""
-    # sed 's/^/- /' equivalent: prefix each violation line with "- "
-    formatted = "\n".join(f"- {v}" for v in violations)
-
-    template = Path(feedback_file).read_text(encoding="utf-8")
-    content = template.replace("{attempt}", str(attempt)).replace("{violations}", formatted)
-    Path("feedback.txt").write_text(content, encoding="utf-8")
+def git(*args: str) -> str:
+    return subprocess.check_output(["git", *args], text=True, encoding="utf-8").strip()
 
 
-# ── Git helpers ───────────────────────────────────────────────────────────────
+def configure_pi(directory: Path) -> tuple[list[str], dict]:
+    from .api import api_config
+    config = api_config()
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "models.json").write_text(json.dumps({"providers": {"autoheal": {
+        "baseUrl": config.base_url, "api": "openai-responses", "apiKey": "$OPENAI_API_KEY",
+        "models": [{"id": config.model, "name": config.model}]
+    }}}, indent=2), encoding="utf-8")
+    # Use node directly with the npm bin entrypoint, avoiding cmd.exe quoting on Windows.
+    package = os.environ.get("FFBUILD_PI_PACKAGE")
+    if package:
+        root = Path(package)
+        meta = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        entry = meta["bin"]["pi"] if isinstance(meta["bin"], dict) else meta["bin"]
+        executable = root / entry
+        if not executable.is_file() or not shutil.which("node"):
+            raise ValueError("Pinned Pi installation is incomplete")
+        command = ["node", str(executable)]
+    else:
+        executable = shutil.which("pi")
+        if not executable:
+            raise ValueError("Pi executable is missing")
+        command = [executable]
+    env = dict(os.environ)
+    for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+                "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY",
+                "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+        env.pop(key, None)
+    env["OPENAI_API_KEY"] = config.key
+    env["OPENAI_MODEL"] = config.model
+    env["PI_CODING_AGENT_DIR"] = str(directory)
+    env["PI_CODING_AGENT_SESSION_DIR"] = str(directory / "sessions")
+    return command, env
 
-def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run a git command, return CompletedProcess without checking exit code."""
-    return subprocess.run(["git", *args], capture_output=True, text=True)
 
-
-def _git_check(*args: str) -> str:
-    """Run a git command that must succeed; return stripped stdout."""
-    result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
-    return result.stdout.strip()
-
-
-# ── OpenCode execution ────────────────────────────────────────────────────────
-
-def _run_opencode(prompt_text: str, model: str, *, resume: bool = False) -> int:
-    """Run opencode with the given prompt as a single argument.
-    Returns the process exit code."""
-    result = subprocess.run(
-        ["opencode", "run", "--model", model,
-         "--dangerously-skip-permissions",
-         *(["--continue"] if resume else []), prompt_text],
-    )
+def run_pi(command: list[str], env: dict, prompt: str, *, resume: bool, timeout: float) -> int:
+    args = [*command, "--print", "--mode", "json", "--provider", "autoheal",
+            "--model", env["OPENAI_MODEL"], "--no-extensions",
+            "--extension", str(Path(__file__).with_name("extensions") / "responses.ts"),
+            "--no-approve", "--offline",
+            "--no-context-files", "--no-skills", "--no-prompt-templates",
+            "--tools", "read,write,edit,powershell" if os.name == "nt" else "read,write,edit,bash", *(["--continue"] if resume else [])]
+    # The prompt is stdin rather than an argument (Windows length/escaping limits).
+    result = subprocess.run(args, env=env, input=prompt, encoding="utf-8", errors="replace",
+                            timeout=timeout, check=False, capture_output=True)
+    # Keep the session in the private runtime directory. Do not emit raw tool arguments
+    # or provider responses to the public CI log.
+    log = Path(env["PI_CODING_AGENT_DIR"]) / "last-events.jsonl"
+    key = env["OPENAI_API_KEY"]
+    log.write_text((result.stdout or "").replace(key, "[redacted]"), encoding="utf-8")
+    log.with_name("last-stderr.log").write_text((result.stderr or "").replace(key, "[redacted]"), encoding="utf-8")
+    # Pi can exit normally even when the model response failed. Require a completed turn.
+    events = []
+    for line in (result.stdout or "").splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    completed = any(event.get("type") == "agent_end" and any(
+        msg.get("role") == "assistant" and msg.get("stopReason") in ("stop", "toolUse")
+        for msg in event.get("messages", [])[-1:]) for event in events if isinstance(event, dict))
+    if not result.returncode and not completed:
+        print("Pi did not complete a Responses turn", flush=True)
+        return 1
+    if result.returncode:
+        print(f"Pi exited with status {result.returncode}", flush=True)
     return result.returncode
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+def _declined(base: str) -> bool:
+    report = Path("fix_report.md")
+    if not report.is_file() or report.is_symlink() or report.stat().st_size > 65536:
+        return False
+    if not re.search(r"(?m)^Decision: no_safe_fix[ \t]*$", report.read_text(encoding="utf-8")):
+        return False
+    return git("rev-parse", "HEAD") == base and not git("status", "--porcelain", "--untracked-files=no")
+
+
+def supervise(*, budget: float) -> int:
+    data = native.context()
+    base, target = data["base_sha"], data["target_yaml"]
+    root = Path.cwd()
+    if git("rev-parse", "HEAD") != base or git("status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("Repair must start on the exact clean failed source")
+    directory = native.runtime_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "verification.json").unlink(missing_ok=True)
+    command, env = configure_pi(directory / "pi")
+    prompt = Path("scripts/ffbuild/autoheal/prompts/repair.md").read_text(encoding="utf-8")
+    deadline = time.monotonic() + budget
+    resume = False
+    agent_failures = 0
+    while time.monotonic() < deadline:
+        try:
+            rc = run_pi(command, env, prompt, resume=resume, timeout=deadline - time.monotonic())
+        except subprocess.TimeoutExpired:
+            print("Repair budget exhausted", flush=True)
+            return 4
+        resume = True
+        if rc:
+            agent_failures += 1
+            if agent_failures >= 3:
+                return 6
+            prompt = "The last Pi invocation failed. Continue the same incident if possible."
+            continue
+        agent_failures = 0
+        try:
+            if _declined(base):
+                if check_worktree(target, base, root, allow_empty=True):
+                    raise ValueError("A declined repair cannot leave candidate changes")
+                return 3
+            paths = check_worktree(target, base, root)
+            plan_file = Path("validation-plan.json")
+            if not plan_file.is_file() or plan_file.is_symlink() or plan_file.stat().st_size > 65536:
+                raise ValueError("Missing bounded validation-plan.json")
+            raw = json.loads(plan_file.read_text(encoding="utf-8"))
+            plan = native.validate_plan(raw, data)
+            # Keep the candidate available to the Agent on failure. The final commit
+            # is made only after independently rebuilding its exact staged tree.
+            if git("rev-parse", "HEAD") != base:
+                git("reset", "--soft", base)
+            git("add", "--", *paths)
+            git("diff", "--cached", "--check")
+            tree = git("write-tree")
+            if git("diff", "--name-only"):
+                raise ValueError("Candidate has unstaged tracked modifications")
+            results = []
+            for item in plan:
+                if time.monotonic() >= deadline:
+                    return 4
+                result = native.build(item["spec"], clean=True)
+                results.append(dict(result, jobs=item["jobs"], reason=item["reason"]))
+            if time.monotonic() >= deadline:
+                return 4
+            if (git("write-tree") != tree or git("diff", "--name-only")
+                    or set(check_worktree(target, base, root)) != set(paths)):
+                raise ValueError("Candidate changed during independent verification")
+            report = Path("fix_report.md")
+            if not report.is_file() or report.is_symlink() or report.stat().st_size > 65536:
+                raise ValueError("Missing bounded fix_report.md")
+            summary = report.read_text(encoding="utf-8")
+            if not re.search(r"(?m)^Root cause:\s*\S", summary):
+                raise ValueError("Report must include Root cause")
+            native.validate_evidence({"schema": 1, "candidate": base, "tree": tree, "checks": results}, data)
+            git("-c", "user.name=ffmpeg-dev[bot]", "-c", "user.email=ffmpeg-dev@users.noreply.github.com",
+                "-c", "commit.gpgsign=false", "commit", "-m", f"fix({target}): repair native FFmpeg build")
+            candidate = git("rev-parse", "HEAD")
+            evidence = {"schema": 1, "candidate": candidate, "tree": tree, "checks": results}
+            (directory / "verification.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+            return 0
+        except native.EnvironmentFailure as exc:
+            print(f"Repair environment failed: {exc}", flush=True)
+            return 5
+        except (native.BuildFailure, ValueError, OSError, KeyError, subprocess.CalledProcessError) as exc:
+            # An Agent exit is never the success criterion. Resume with actual feedback.
+            prompt = ("The independent verification failed. Continue modifying the same candidate; "
+                      "do not disable features or change tests.\n" + str(exc)[-4000:])
+            print(prompt, flush=True)
+    return 4
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="OpenCode autonomous agent repair loop",
-    )
-    parser.add_argument(
-        "--action",
-        default="pr",
-        choices=["pr", "push"],
-        help="Operation mode: 'pr' reset to base_sha, 'push' stays on PR HEAD (default: pr)",
-    )
-    parser.add_argument(
-        "--base-sha",
-        default=None,
-        help="Base commit SHA (default: git rev-parse HEAD)",
-    )
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=3,
-        help="Max repair attempts (default: 3)",
-    )
-    parser.add_argument(
-        "--prompt-file",
-        default="scripts/ffbuild/autoheal/prompts/repair.md",
-        help="Path to prompt template (default: scripts/ffbuild/autoheal/prompts/repair.md)",
-    )
-    parser.add_argument(
-        "--feedback-file",
-        default="scripts/ffbuild/autoheal/prompts/feedback.md",
-        help="Path to feedback template (default: scripts/ffbuild/autoheal/prompts/feedback.md)",
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--budget-seconds", type=int, default=10800)
     args = parser.parse_args()
-
-    # ── Read OPCODE_MODEL (full model string with provider prefix) ────────────
-    model = os.environ.get("OPCODE_MODEL")
-    if not model:
-        print("ERROR: OPCODE_MODEL is required (set in workflow env)", file=sys.stderr)
-        sys.exit(1)
-
-    # ── Validate opencode in PATH (bash: command -v opencode) ──────────────────
-    if shutil.which("opencode") is None:
-        print("ERROR: opencode not found in PATH", file=sys.stderr)
-        sys.exit(1)
-
-    # ── Validate prompt file exists (bash: [ -f "$PROMPT_FILE" ]) ─────────────
-    prompt_file = args.prompt_file
-    if not Path(prompt_file).is_file():
-        print(f"ERROR: PROMPT_FILE not found: {prompt_file}", file=sys.stderr)
-        sys.exit(1)
-
-    # ── Validate feedback file exists (bash: [ -f "$FEEDBACK_FILE" ]) ─────────
-    feedback_file = args.feedback_file
-    if not Path(feedback_file).is_file():
-        print(f"ERROR: FEEDBACK_FILE not found: {feedback_file}", file=sys.stderr)
-        sys.exit(1)
-
-    # ── Read target_yaml from context (bash: read target_yaml from agent_context.json) ─
-    try:
-        target_yaml = _require_target_yaml()
-    except (ValueError, OSError, json.JSONDecodeError) as exc:
-        print(f"ERROR: Auto-Heal target is not authenticated: {exc}", file=sys.stderr)
-        sys.exit(1)
-    print(f"Allowed YAML scope: ffmpeg/{target_yaml}.yaml")
-
-    # ── Resolve BASE_SHA (bash: [ -z "$BASE_SHA" ] && BASE_SHA=$(git rev-parse HEAD)) ─
-    base_sha = args.base_sha
-    if not base_sha:
-        base_sha = _git_check("rev-parse", "HEAD")
-
-    # Determine the start SHA for the agent loop.
-    # For push: start from PR branch HEAD to preserve existing commits.
-    # For pr:    start from base_sha (main) for a clean base.
-    start_sha = _git_check("rev-parse", "HEAD") if args.action == "push" else base_sha
-
-    max_retries: int = args.max_retries
-
-    # ── Initialize prompt from template (bash: cp "$PROMPT_FILE" prompt.txt) ──
-    shutil.copy(prompt_file, "prompt.txt")
-
-    # ── Reset SIGINT/SIGTERM to default (lets runner kill process group) ───
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
-    signal.signal(signal.SIGTERM, signal.SIG_DFL)
-
-    # ── Main repair loop ──────────────────────────────────────────────────────
-    attempt = 0
-    supervised = bool(os.environ.get("FFBUILD_REPAIR_BASE"))
-
-    while attempt < max_retries:
-        attempt += 1
-        print(f"=== Agent repair attempt {attempt}/{max_retries} ===")
-
-        # Keep the supervised repair candidate and resume its existing session.
-        # The initial checkout and legacy unbound callers start clean.
-        if attempt == 1 or not supervised:
-            _git_check("reset", "--hard", start_sha)
-
-        # If feedback.txt exists, append it to prompt.txt
-        # (bash: if [ -f feedback.txt ]; then cat feedback.txt >> prompt.txt; fi)
-        if Path("feedback.txt").exists():
-            feedback_content = Path("feedback.txt").read_text(encoding="utf-8")
-            with open("prompt.txt", "a", encoding="utf-8") as fh:
-                fh.write(feedback_content)
-
-        # Run opencode with accumulated prompt (bash: opencode run ... "$(cat prompt.txt)" &)
-        prompt_text = Path("prompt.txt").read_text(encoding="utf-8")
-        oc_rc = _run_opencode(prompt_text, model, resume=supervised and attempt > 1)
-        if oc_rc != 0:
-            print(f"[WARNING] opencode failed (exit {oc_rc})", file=sys.stderr)
-            continue
-
-        # Check if any commits were made (bash: if ! git log --oneline ... | grep -q .)
-        log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
-        if not log_result.stdout.strip():
-            print(f"No changes on attempt {attempt}")
-            if supervised:
-                report = Path("fix_report.md")
-                if (report.is_file() and not report.is_symlink()
-                        and report.stat().st_size <= 65536
-                        and re.search(r"(?m)^Decision: no_safe_fix[ \t]*$", report.read_text(encoding="utf-8"))
-                        and _git_check("rev-parse", "HEAD") == start_sha
-                        and not _git_check("status", "--porcelain", "--untracked-files=no")):
-                    print("Agent declined: no safe version-scoped repair.")
-                    sys.exit(3)
-            if attempt < max_retries:
-                # Agent made no changes — give feedback and retry instead of
-                # silently ending (opencode may exit cleanly without acting).
-                _generate_feedback(
-                    attempt,
-                    ["No candidate committed. Diagnose the evidence and either produce an authorized fix "
-                     "or explicitly report Decision: no_safe_fix." if supervised else
-                     "Agent made no changes — you MUST modify files to fix the build failure"],
-                    feedback_file,
-                )
-                continue
-            # Retries exhausted with no changes — fall through to failure path.
-            break
-
-        # Count commits; squash if > 1 (bash: COMMIT_COUNT=$(git rev-list --count ...))
-        commit_count_str = _git_check("rev-list", "--count", f"{start_sha}..HEAD")
-        commit_count = int(commit_count_str)
-        if commit_count > 1:
-            print(f"Squashing {commit_count} commits into one")
-            # Get latest commit message from the range
-            # (bash: MSG=$(git log --format=%s -1 "${BASE_SHA}..HEAD"))
-            msg = _git_check("log", "--format=%s", "-1", f"{start_sha}..HEAD")
-            _git_check("reset", "--soft", start_sha)
-            _git_check("commit", "-m", msg)
-
-        # Generate patch (bash: mkdir -p patch-output; git format-patch -1 HEAD -o patch-output)
-        Path("patch-output").mkdir(exist_ok=True)
-        _git_check("format-patch", "-1", "HEAD", "-o", "patch-output")
-
-        # (bash: PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1); [ -z "$PATCH" ] && continue)
-        patch_files = list(Path("patch-output").glob("*.patch"))
-        if not patch_files:
-            continue
-
-        # Check for scope violations (bash: git diff HEAD~1..HEAD --name-only | grep -vE ... || true)
-        files_output = _git_check("diff", "HEAD~1..HEAD", "--name-only")
-        changed_files = [line for line in files_output.splitlines() if line.strip()]
-        violations = find_violations(changed_files, yaml=target_yaml)
-        if os.environ.get("FFBUILD_REPAIR_BASE"):
-            from ffbuild.autoheal.scope import check_worktree
-            try:
-                check_worktree(target_yaml, start_sha, Path.cwd())
-            except ValueError as exc:
-                violations.append(str(exc))
-
-        if violations:
-            print(f"[WARNING] Scope violation on attempt {attempt}:", file=sys.stderr)
-            for f in violations:
-                print(f"[WARNING]   {f}", file=sys.stderr)
-
-            if attempt < max_retries:
-                _generate_feedback(attempt, violations, feedback_file)
-                continue
-        else:
-            print(f"All checks passed on attempt {attempt}")
-            break
-
-    # ── Post-loop: check max retry outcome (bash lines 147-160) ──────────────
-    if attempt >= max_retries:
-        # (bash: if git log --oneline "${BASE_SHA}..HEAD" | grep -q .; then ...)
-        log_result = _git("log", "--oneline", f"{start_sha}..HEAD")
-        if log_result.stdout.strip():
-            # (bash: PATCH=$(ls patch-output/*.patch 2>/dev/null | head -1); [ -n "$PATCH" ] && ...)
-            patch_files = list(Path("patch-output").glob("*.patch"))
-            if patch_files:
-                files_output = _git_check("diff", "HEAD~1..HEAD", "--name-only")
-                changed_files = [line for line in files_output.splitlines() if line.strip()]
-                violations = find_violations(changed_files, yaml=target_yaml)
-                if not violations:
-                    if os.environ.get("FFBUILD_REPAIR_BASE"):
-                        from ffbuild.autoheal.scope import check_worktree
-                        check_worktree(target_yaml, start_sha, Path.cwd())
-                    sys.exit(0)
-        # (bash: echo "[ERROR] Max retries exhausted with violations" >&2; exit 1)
-        print("[ERROR] Max retries exhausted without a valid fix", file=sys.stderr)
-        sys.exit(1)
+    if args.budget_seconds <= 0:
+        parser.error("Budget must be positive")
+    raise SystemExit(supervise(budget=args.budget_seconds))
 
 
 if __name__ == "__main__":

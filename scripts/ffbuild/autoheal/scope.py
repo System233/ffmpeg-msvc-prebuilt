@@ -234,7 +234,8 @@ def check_pr(target: str, base: str, head: str, root: Path, *, allow_new: bool =
         return _rules(target, delta, before, after, allow_new=allow_new)
 
 
-def check_worktree(target: str, base: str, root: Path, *, allow_new: bool = False) -> list[str]:
+def check_worktree(target: str, base: str, root: Path, *, allow_new: bool = False,
+                   allow_empty: bool = False) -> list[str]:
     """Check current candidate, including uncommitted and newly created files."""
     import tempfile
     from .models import commit_sha
@@ -247,12 +248,14 @@ def check_worktree(target: str, base: str, root: Path, *, allow_new: bool = Fals
     for status, path in staged:
         if path not in delta:
             raise ValueError(f"Staged change hidden by worktree: {path}")
-    runtime_files = {"agent_context.json", "failed_steps_hint.txt", "fix_report.md", "prompt.txt", "feedback.txt", "autoheal-triage.json"}
-    runtime_dirs = {"error_logs", ".opencode", "patch-output"}
+    runtime_files = {"agent_context.json", "failed_steps_hint.txt", "fix_report.md", "autoheal-triage.json", "validation-plan.json"}
+    runtime_dirs = {"error_logs"}
     for path in _git(root, "ls-files", "--others", "--exclude-standard", "-z").decode("utf-8").split("\0"):
         if not path or path in runtime_files or path.split("/")[0] in runtime_dirs:
             continue
         delta[path] = "A"
+    if allow_empty and not delta and not staged:
+        return []
     with tempfile.TemporaryDirectory(prefix="ffbuild-scope-") as temp:
         before = Path(temp) / "before"
         _tree(root, base, before)
