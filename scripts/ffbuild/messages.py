@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from .identity import normalize_version
+from .markdown import render_template
 from .autoheal.models import version_name, commit_sha
 
 PROPOSAL_START = "<!-- ffbuild-proposal:start -->"
@@ -25,53 +26,59 @@ def release_message(tag: str, version: str, *, snapshot: bool = False,
     if day:
         rev = re.search(r"R[0-9]+$", tag)
         title += " — " + day + (" " + rev[0] if rev else "")
-    lines = ["Prebuilt FFmpeg binaries for Windows, built with MSVC and vcpkg."]
+    downloads = ""
     if records:
         arch = {r["triplet"].removesuffix("-windows") for r in records}
         licenses = {r["license"].upper() for r in records}
         linkages = {r["linkage"] for r in records}
-        lines += ["", "## Downloads", "", "| Package | Contents |", "| --- | --- |"]
+        packages = []
         if "static" in linkages:
-            lines.append("| Static | Standalone FFmpeg executables |")
+            packages.append("| Static | Standalone FFmpeg executables |")
         if "shared" in linkages:
-            lines.append("| Shared | Executables, DLLs and release SDK |")
+            packages.append("| Shared | Executables, DLLs and release SDK |")
         if any("debug" in r.get("assets", {}) for r in records):
-            lines.append("| Debug Add-on | Debug libraries and Release/Debug PDBs; extract over matching Shared Binary |")
+            packages.append("| Debug Add-on | Debug libraries and Release/Debug PDBs; extract over matching Shared Binary |")
         if any("develop" in r.get("assets", {}) for r in records):
-            lines.append("| Develop | Release SDK, debug libraries and symbols |")
-        lines += ["", "**Architectures:** " + ", ".join(a for a in ("x86", "x64", "arm", "arm64") if a in arch).replace("arm64", "ARM64").replace("arm", "ARM"),
-                  "**Licenses:** " + " / ".join(l for l in ("LGPL", "GPL") if l in licenses),
-                  "", "License notices and an SPDX SBOM are included in each archive.",
-                  "", "## Source and build"]
+            packages.append("| Develop | Release SDK, debug libraries and symbols |")
+        architectures = ", ".join(a.upper() if a.startswith("arm") else a
+                                  for a in ("x86", "x64", "arm", "arm64") if a in arch)
+        downloads = "\n".join([
+            "", "## Downloads", "", "| Package | Contents |", "| --- | --- |", *packages,
+            "", f"**Architectures:** {architectures}",
+            "**Licenses:** " + " / ".join(l for l in ("LGPL", "GPL") if l in licenses),
+            "", "License notices and an SPDX SBOM are included in each archive.",
+            "", "## Source and build", "",
+        ])
     if snapshot:
         source = (records or [{}])[0].get("source_commit")
         if source:
             source = commit_sha(source)
-            lines += ["", f"**Source:** [FFmpeg {version}](https://github.com/FFmpeg/FFmpeg/commit/{source}) ({source[:12]})"]
+            source_line = f"**Source:** [FFmpeg {version}](https://github.com/FFmpeg/FFmpeg/commit/{source}) ({source[:12]})"
         else:
-            lines += ["", f"**Source:** FFmpeg {version} (Master snapshot)"]
+            source_line = f"**Source:** FFmpeg {version} (Master snapshot)"
     else:
-        lines += ["", f"**Source:** [FFmpeg n{version}](https://github.com/FFmpeg/FFmpeg/tree/n{version})"]
+        source_line = f"**Source:** [FFmpeg n{version}](https://github.com/FFmpeg/FFmpeg/tree/n{version})"
+    build = ""
     if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) and re.fullmatch(r"[1-9][0-9]*", run_id):
         url = f"https://github.com/{repo}/actions/runs/{run_id}"
         if re.fullmatch(r"[1-9][0-9]*", attempt):
             url += f"/attempts/{attempt}"
-        lines.append(f"**Build:** [GitHub Actions]({url})")
-    return title, "\n".join(lines)
+        build = f"\n**Build:** [GitHub Actions]({url})"
+    return title, render_template("release.md", downloads=downloads, source=source_line, build=build)
+
+
+def _verification(status: str, references: str = "", marker: str = "") -> str:
+    # The managed section is also updated independently of the initial PR.
+    return "\n".join(part for part in (PROPOSAL_START, marker, "## Verification\n\n" + status + references, PROPOSAL_END) if part)
 
 
 def proposal_message(version: str, parent: str, paths: list[str]) -> str:
     version_name(version)
     if parent != "base":
         version_name(parent)
-    return "\n".join([
-        f"Add support for [FFmpeg n{version}](https://github.com/FFmpeg/FFmpeg/tree/n{version}).",
-        "", f"**Configuration:** inherits `{parent}`.", "", "## Changes",
-        *[f"- `{path}`" for path in paths],
-        "", PROPOSAL_START, "## Verification", "",
-        "Awaiting version-scope validation and the full MSVC build matrix (16 variants).",
-        PROPOSAL_END, "", "This PR does not publish a release or create a tag.",
-    ])
+    return render_template("proposal-pr.md", version=version, parent=parent,
+                           changes="\n".join(f"- `{path}`" for path in paths),
+                           verification=_verification("Awaiting version-scope validation and the full MSVC build matrix (16 variants)."))
 
 
 def proposal_status(body: str, source: dict, verified: bool, repo: str) -> str:
@@ -98,8 +105,8 @@ def proposal_status(body: str, source: dict, verified: bool, repo: str) -> str:
     if previous and previous[0][0] == head and (int(previous[0][1]), int(previous[0][2])) > (run, attempt):
         return body
     url = f"https://github.com/{repo}/actions/runs/{run}/attempts/{attempt}"
-    new = "\n".join([PROPOSAL_START, f"<!-- ffbuild-proposal-ci:v1 {head} {run} {attempt} -->", "## Verification", "", status,
-                      f"**CI:** [Run {run}, attempt {attempt}]({url})", PROPOSAL_END])
+    new = _verification(status, f"\n**CI:** [Run {run}, attempt {attempt}]({url})",
+                        f"<!-- ffbuild-proposal-ci:v1 {head} {run} {attempt} -->")
     return body[:a] + new + body[b+len(PROPOSAL_END):]
 
 
@@ -116,12 +123,10 @@ def proposal_pending(body: str, source: dict, new_head: str, repo: str) -> str:
     a, b = updated.index(PROPOSAL_START), updated.index(PROPOSAL_END)
     run, attempt = source["run_id"], source["run_attempt"]
     url = f"https://github.com/{repo}/actions/runs/{run}/attempts/{attempt}"
-    replacement = "\n".join([
-        PROPOSAL_START, "## Verification", "",
+    replacement = _verification(
         "Repair submitted; awaiting the full MSVC build matrix for the new PR HEAD.",
-        f"**Current commit:** [{new_head[:12]}](https://github.com/{repo}/commit/{new_head})",
-        f"**Previous CI:** [Run {run}, attempt {attempt}]({url})", PROPOSAL_END,
-    ])
+        f"\n**Current commit:** [{new_head[:12]}](https://github.com/{repo}/commit/{new_head})"
+        f"\n**Previous CI:** [Run {run}, attempt {attempt}]({url})")
     return updated[:a] + replacement + updated[b+len(PROPOSAL_END):]
 
 

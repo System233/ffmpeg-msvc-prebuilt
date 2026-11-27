@@ -21,7 +21,7 @@ REPO = "simulated/example"
 
 def row(variant: str) -> dict:
     return {"yaml": "8.1.1", "id": variant, "triplet": "x64-windows",
-            "abi_hash": ABI, "package": "ffmpeg-8-1-1", "port": "ffmpeg-8-1-1"}
+            "abi_hash": ABI, "package": "ffmpeg[all-gpl]", "port": "ffmpeg", "tester_port": "ffmpeg-tester", "license": "gpl", "linkage": "shared"}
 
 
 def failed_job(variant: str) -> dict:
@@ -54,7 +54,7 @@ def report() -> dict:
 
 class SimulatedSafetyCases(unittest.TestCase):
     def setUp(self) -> None:
-        patcher = mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": REPO})
+        patcher = mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": REPO, "GITHUB_RUN_ID": "4321", "GITHUB_RUN_ATTEMPT": "1"})
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -151,20 +151,36 @@ class SimulatedSafetyCases(unittest.TestCase):
         value["pr"] = None
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            patch = b"From abc\n\ndiff --git a/x b/x\n"
+            candidate = "d" * 40
+            patch = f"From {candidate} Mon Sep 17 00:00:00 2001\n\ndiff --git a/x b/x\n".encode()
             import hashlib
             (folder / "repair.patch").write_bytes(patch)
             (folder / "manifest.json").write_text(json.dumps({
-                "schema": 1, "yaml": "8.1.1",
+                "schema": 2, "yaml": "8.1.1",
                 "signature": value["groups"][0]["signature"],
                 "run_id": 1234, "run_attempt": 1, "base_sha": SHA,
                 "patch_sha256": hashlib.sha256(patch).hexdigest(),
                 "paths": ["ffmpeg/8.1.1.yaml"],
+                "validation": {"schema": 1, "candidate": candidate, "tree": "e" * 40,
+                    "checks": [{"spec": "ffmpeg[all-gpl]:x64-windows", "jobs": [failed_job("v1")["id"]],
+                                "reason": "same diagnostic", "abi_hash": ABI,
+                                "ffmpeg_build": "passed", "consumer_compile_link": "passed",
+                                "binary_inspection": "passed", "external_dependency_builds": 0,
+                                "tester_targets": {"release": 39, "debug": 39},
+                                "runtime": {"status": "passed", "tester_executions": 78, "cli_executions": 1}}]},
+            }), encoding="utf-8")
+            from ffbuild.autoheal.audit import candidate_identity
+            binding, _, _ = candidate_identity(value, "8.1.1", folder)
+            audit_dir = folder / "audit"
+            audit_dir.mkdir()
+            (audit_dir / "audit.json").write_text(json.dumps({
+                "schema": 1, "binding": binding, "model": "test-auditor", "response_id": "resp_test",
+                "decision": "approve", "verdict": {"decision": "approve", "summary": "ok", "findings": [], "limitations": []}
             }), encoding="utf-8")
             api.return_value = {"object": {"sha": SHA}}
             git.return_value = "deadbeef\trefs/heads/autoheal/8.1.1/existing"
             with self.assertRaisesRegex(ValueError, "Unexpected remote orphan branch reference"):
-                delivery.deliver(value, "8.1.1", folder)
+                delivery.deliver(value, "8.1.1", folder, audit_output=audit_dir)
             # Authentication and remote lookup are simulated, never executed.
             # Malformed orphan references must fail before fetch or mutation.
             run.assert_called_once_with("gh", "auth", "setup-git")

@@ -1,4 +1,4 @@
-name: OpenCode Auto-Heal
+name: FFmpeg Auto-Heal
 
 on:
   workflow_run:
@@ -55,14 +55,15 @@ jobs:
           python -m ffbuild autoheal triage "${args[@]}"
       - uses: actions/upload-artifact@v6
         with:
-          name: autoheal-triage
+          name: autoheal-triage-a${{ github.run_attempt }}
           path: autoheal-triage.json
           retention-days: 7
 
   repair:
     needs: [triage, sync-pr]
     if: ${{ always() && needs.triage.outputs.has_repairs == 'true' && (needs.sync-pr.result == 'success' || needs.sync-pr.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
+    timeout-minutes: 300
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -76,8 +77,180 @@ jobs:
       contents: read
       actions: read
     env:
-      OPENCODE_VERSION: '1.17.9'
-      OPENCODE_SHA256: '85aeac95258d409d16ca34f1cfcd74c78d9d1a70b0a4154128b588e1405384f9'
+      FFBUILD_REPAIR_BUDGET_SECONDS: '10800'
+    steps:
+      - name: Initialize native repair paths
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          FFBUILD_REPAIR_DIR: ${{ runner.temp }}/ffheal
+          FFBUILD_REPAIR_CACHE: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          FFBUILD_PI_PACKAGE: ${{ runner.temp }}/ffbuild/pi/node_modules/@earendil-works/pi-coding-agent
+        run: |
+          "VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "FFBUILD_REPAIR_DIR=$env:FFBUILD_REPAIR_DIR" >> $env:GITHUB_ENV
+          "FFBUILD_REPAIR_CACHE=$env:FFBUILD_REPAIR_CACHE" >> $env:GITHUB_ENV
+          "FFBUILD_PI_PACKAGE=$env:FFBUILD_PI_PACKAGE" >> $env:GITHUB_ENV
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: autoheal-triage-a${{ github.run_attempt }}
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Bind failed source and generate baseline ports
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_YAML: ${{ matrix.yaml }}
+        shell: pwsh
+        run: |
+          python -m ffbuild autoheal prepare --triage autoheal-triage.json --yaml $env:TARGET_YAML --github-output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - name: Restore shared dependency downloads
+        id: downloads
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            ffbuild-downloads-2026.06.01-
+      - name: Reuse legacy dependency downloads
+        if: steps.downloads.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg/downloads
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          prefix: vcpkg-dl-all-2026.06.01-
+      # Restore into the production cache path (part of the Actions cache version).
+      # The ABI-addressed archives from all required triplets form one cache.
+      - name: Restore x64-windows dependency Seed
+        id: seed-x64
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') }}
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-x64-windows-
+            ffbuild-native-2026.06.01-x64-windows-
+      - name: Reuse legacy x64-windows dependency Seed
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') && steps.seed-x64.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-x64-windows-
+      - name: Restore x86-windows dependency Seed
+        id: seed-x86
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') }}
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-x86-windows-
+            ffbuild-native-2026.06.01-x86-windows-
+      - name: Reuse legacy x86-windows dependency Seed
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') && steps.seed-x86.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-x86-windows-
+      - name: Restore arm64-windows dependency Seed
+        id: seed-arm64
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') }}
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-arm64-windows-
+            ffbuild-native-2026.06.01-arm64-windows-
+      - name: Reuse legacy arm64-windows dependency Seed
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') && steps.seed-arm64.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-arm64-windows-
+      - name: Restore arm-windows dependency Seed
+        id: seed-arm
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') }}
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-arm-windows-
+            ffbuild-native-2026.06.01-arm-windows-
+      - name: Reuse legacy arm-windows dependency Seed
+        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') && steps.seed-arm.outputs.cache-matched-key == '' }}
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-arm-windows-
+      - name: Prepare MSVC and verify exact dependency cache coverage
+        env:
+          FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
+          FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
+          FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
+          FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
+        shell: pwsh
+        run: |
+          python -m ffbuild autoheal preflight
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install pinned Pi
+        shell: pwsh
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/ffbuild/pi" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.0.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Repair and independently build selected candidates
+        env:
+          FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
+          FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
+          FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
+          FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        shell: pwsh
+        run: |
+          python -m ffbuild autoheal repair --triage autoheal-triage.json --yaml $env:FFBUILD_REPAIR_TARGET --output repair-output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: repair-output/
+          retention-days: 7
+          if-no-files-found: error
+
+  audit:
+    needs: [triage, repair]
+    if: ${{ always() && needs.triage.outputs.has_repairs == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.triage.outputs.matrix) }}
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -86,40 +259,39 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: autoheal-triage
+          name: autoheal-triage-a${{ github.run_attempt }}
+      - uses: actions/download-artifact@v8
+        id: candidate
+        continue-on-error: true
+        with:
+          name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: repair-output
       - uses: ./.github/actions/setup-python
+        if: ${{ steps.candidate.outcome == 'success' }}
         with:
           requirements: requirements.txt
-      - name: Install pinned OpenCode
-        run: |
-          curl -fsSL -o /tmp/opencode.tar.gz \
-            "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
-          echo "$OPENCODE_SHA256  /tmp/opencode.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/opencode.tar.gz -C /tmp
-          mkdir -p "$HOME/.opencode/bin"
-          mv /tmp/opencode "$HOME/.opencode/bin/opencode"
-          chmod 755 "$HOME/.opencode/bin/opencode"
-          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
-      - name: Produce version-scoped repair patch
+      - name: Review exact candidate without executing it
+        if: ${{ steps.candidate.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENAI_AUDIT_MODEL: ${{ vars.OPENAI_AUDIT_MODEL }}
           TARGET_YAML: ${{ matrix.yaml }}
-          OPCODE_MODEL: ${{ secrets.OPCODE_MODEL || 'opencode/deepseek-v4-flash-free' }}
-          OPCODE_API_KEY: ${{ secrets.OPCODE_API_KEY }}
         run: |
-          python -m ffbuild autoheal repair \
-            --triage autoheal-triage.json --yaml "$TARGET_YAML" \
-            --output repair-output
+          python -m ffbuild autoheal audit --triage autoheal-triage.json --yaml "$TARGET_YAML" --output repair-output --audit-output audit-output
       - uses: actions/upload-artifact@v6
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
         with:
-          name: autoheal-patch-${{ matrix.yaml }}-${{ matrix.signature }}
-          path: repair-output/
+          name: autoheal-audit-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: audit-output/
           retention-days: 7
           if-no-files-found: error
 
   deliver:
-    needs: [triage, repair]
-    if: ${{ always() && needs.triage.outputs.has_repairs == 'true' }}
+    needs: [triage, repair, audit]
+    # A failed audit job (including duplicate artifact upload) must never authorize delivery.
+    if: ${{ !cancelled() && needs.audit.result == 'success' && needs.triage.outputs.has_repairs == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -141,15 +313,33 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: autoheal-triage
+          name: autoheal-triage-a${{ github.run_attempt }}
       - uses: actions/download-artifact@v8
+        id: candidate
+        continue-on-error: true
         with:
-          name: autoheal-patch-${{ matrix.yaml }}-${{ matrix.signature }}
+          name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
           path: repair-output
       - uses: ./.github/actions/setup-python
+        if: ${{ steps.candidate.outcome == 'success' }}
         with:
           requirements: requirements.txt
+      - uses: actions/download-artifact@v8
+        id: audit
+        if: ${{ steps.candidate.outcome == 'success' }}
+        continue-on-error: true
+        with:
+          name: autoheal-audit-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: audit-output
+      - name: Require exact independent approval before write credentials
+        id: gate
+        if: ${{ steps.candidate.outcome == 'success' }}
+        env:
+          TARGET_YAML: ${{ matrix.yaml }}
+        run: |
+          python -m ffbuild autoheal audit-gate --triage autoheal-triage.json --yaml "$TARGET_YAML" --output repair-output --audit-output audit-output --github-output
       - uses: actions/create-github-app-token@v3
+        if: ${{ steps.gate.outputs.approved == 'true' }}
         id: bot
         with:
           client-id: ${{ secrets.CI_BOT_CLIENT_ID }}
@@ -157,13 +347,14 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Validate patch and synchronize bot PR
+        if: ${{ steps.gate.outputs.approved == 'true' }}
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
           TARGET_YAML: ${{ matrix.yaml }}
         run: |
           python -m ffbuild autoheal deliver \
             --triage autoheal-triage.json --yaml "$TARGET_YAML" \
-            --output repair-output
+            --output repair-output --audit-output audit-output
 
   sync-pr:
     needs: triage
@@ -183,7 +374,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: autoheal-triage
+          name: autoheal-triage-a${{ github.run_attempt }}
       - uses: ./.github/actions/setup-python
         with:
           requirements: requirements.txt

@@ -8,4 +8,4 @@ A detection error does not mean a dependency is absent. Find the exact required 
 4. Prefer a compatible source adaptation or precise configuration correction that preserves functionality. A version threshold may be changed only if the actual API/ABI requirements are shown to hold. Never relax a minimum version just because detection failed. Do not edit a shared dependency Port, disable a required feature, or alter license modes to avoid the problem.
 5. Re-evaluate all affected target configurations, including conditional features and release/debug differences. Record the dependency revision/source, evidence and limits of the local check. If correction requires a change to shared toolchain/dependency policy, report that explicitly and decline the automatic version-scoped fix.
 
-No full dependency build or install is needed. Use read-only source, manifests, log excerpts and upstream history.
+Do not compile third-party dependencies during repair. Use the prepared dependency caches, installed headers, manifests, logs and upstream history; build and test the FFmpeg target as needed.

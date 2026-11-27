@@ -170,7 +170,8 @@ class RepairEvidenceContract(unittest.TestCase):
                     with mock.patch.object(repair, "_git", side_effect=fake_git), \
                          mock.patch.object(repair.github, "download_artifact") as download, \
                          mock.patch.object(repair.subprocess, "run", side_effect=inspect_context), \
-                         mock.patch.object(repair, "check_worktree") as check:
+                         mock.patch.object(repair, "require_ready"), mock.patch.object(repair, "check_worktree") as check:
+                        repair.prepare_context(report, target)
                         repair.repair(report, target, Path("out"))
                         self.assertEqual(2, download.call_count)
                         check.assert_not_called()
@@ -222,7 +223,7 @@ class DeclineContract(unittest.TestCase):
                 with mock.patch.object(repair, "_git", side_effect=git), \
                      mock.patch.object(repair.github, "download_artifact"), \
                      mock.patch.object(repair.subprocess, "run", return_value=mock.Mock(returncode=3)), \
-                     mock.patch.object(repair, "check_worktree") as scope:
+                     mock.patch.object(repair, "require_ready"), mock.patch.object(repair, "check_worktree") as scope:
                     out = Path("out")
                     repair.repair(self.report, "master", out)
                     self.assertEqual(self.identity, json.loads((out / "manifest.json").read_text(encoding="utf-8")))
