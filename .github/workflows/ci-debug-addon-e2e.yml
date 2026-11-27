@@ -1,0 +1,114 @@
+name: FFmpeg Cached Native Build Validation
+on:
+  push:
+    branches: [ci/debug-addon-e2e-20261126]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: cached-native-build-validation
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - run: python -m ffbuild validate
+      - run: python -m unittest discover -s tests
+  build:
+    needs: validate
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - name: Set native environment
+        shell: pwsh
+        run: |
+          "VCPKG_ROOT=$env:RUNNER_TEMP/ffbuild/vcpkg" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/ffbuild/vcpkg-cache,read" >> $env:GITHUB_ENV
+      - name: Generate production recipes and scan one target
+        id: plan
+        shell: pwsh
+        run: |
+          python -m ffbuild generate --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          targets:
+            - {package: 'ffmpeg[all-gpl]', triplet: x64-windows}
+          '@ | Set-Content -Encoding utf8 ci-target.yaml
+          python -m ffbuild scan --version 8.1.3 --targets-file ci-target.yaml --output ffbuild-abi.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $scan = Get-Content ffbuild-abi.json -Raw | ConvertFrom-Json
+          if ($scan.jobs.Count -ne 1 -or $scan.blocked.Count -ne 0) { throw 'Expected one native target' }
+          $job = $scan.jobs[0]
+          if ($job.yaml -ne '8.1.3' -or $job.triplet -ne 'x64-windows' -or $job.license -ne 'gpl' -or $job.linkage -ne 'shared') { throw 'Unexpected target' }
+          "job=$($job | ConvertTo-Json -Depth 100 -Compress)" >> $env:GITHUB_OUTPUT
+      - name: Restore existing x64 Seed from previous successful CI
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-x64-windows-2b84adf9078ca2e93e1f6b7de43a2e03b1935e4447499993327cce4a587f8b13
+          fail-on-cache-miss: true
+      - name: Verify worker vcpkg ABI equals planned ABI
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        run: python -m ffbuild scan --job-env FFBUILD_JOB
+      - name: Require exact third-party binary cache coverage
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        run: python -m ffbuild.ci verify-cache --job-env FFBUILD_JOB "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+      - name: Build and test via native vcpkg
+        id: native-build
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        shell: pwsh
+        run: |
+          $job = $env:FFBUILD_JOB | ConvertFrom-Json
+          $versionPort = "_work/ffbuild/generated-ports/ffmpeg-$($job.yaml.Replace('.', '-'))"
+          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" `
+            "--overlay-ports=$versionPort" "--overlay-ports=ports" --recurse
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify no external dependencies were compiled by Worker
+        if: ${{ always() && steps.native-build.outcome != 'skipped' && steps.plan.outcome == 'success' }}
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        run: python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
+      - name: Verify and package installed vcpkg result
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/ffmpeg_x64-windows" --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --buildtrees "${{ runner.temp }}/ffbuild/vcpkg/buildtrees" --output-dir Release
+      - name: Validate packaged ZIPs with the publication gate
+        run: python -m ffbuild publish --artifacts-dir Release --dry-run
+      - name: Validate extracted public SDK and CLI
+        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe"
+      - uses: actions/upload-artifact@v6
+        if: ${{ success() }}
+        with:
+          name: cached-native-build-8.1.3-x64-gpl-shared
+          path: Release/
+          retention-days: 3
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: ${{ failure() }}
+        with:
+          name: native-build-failure-logs
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
+            ffbuild-abi.json
+          retention-days: 3
+          if-no-files-found: ignore
