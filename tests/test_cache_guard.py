@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -119,13 +121,87 @@ class DependencyCacheGateTests(unittest.TestCase):
                 build = next(i for i, step in enumerate(steps)
                              if step.get("name") == "Build and test via native vcpkg")
                 self.assertEqual(build - 1, gate)
-                self.assertIn("ffbuild.ci verify-cache", steps[gate]["run"])
+                self.assertIn("ffbuild.ci restore-dependencies", steps[gate]["run"])
+                self.assertNotIn("--recurse", steps[build]["run"])
                 self.assertIn("VCPKG_ROOT", steps[gate]["env"])
                 self.assertIn("--cache-dir=", steps[gate]["run"])
                 self.assertIn("ffvcpkg install", steps[build]["run"])
                 self.assertEqual("Verify no external dependencies were compiled by Worker",
                                  steps[build + 1]["name"])
                 self.assertIn("ffbuild.ci audit-worker", steps[build + 1]["run"])
+
+
+class NativeCacheOnly(unittest.TestCase):
+    def test_native_feature_plan_is_exact(self):
+        from ffbuild.native_abi import planned_specs
+        text = """Computing installation plan...
+The following packages will be built and installed:
+  * audit-dep[core,extra]:x64-windows@1.0.0
+    ffmpeg[core,all-gpl]:arm64-windows@8.1.3
+    ffmpeg-tester:arm64-windows@1.0.0
+Additional packages (*) will be modified to complete this operation.
+"""
+        self.assertEqual({"audit-dep_x64-windows": "audit-dep[core,extra]:x64-windows",
+                          "ffmpeg_arm64-windows": "ffmpeg[all-gpl,core]:arm64-windows",
+                          "ffmpeg-tester_arm64-windows": "ffmpeg-tester[core]:arm64-windows"}, planned_specs(text))
+        with self.assertRaises(ValueError):
+            planned_specs(text.replace("audit-dep[core,extra]", "invalid package"))
+
+    def test_target_plan_rejects_unexpected_dependency_build(self):
+        from ffbuild import cache_guard
+        output = "The following packages will be built and installed:\n    ffmpeg:x64-windows@8.1.3\n    ffmpeg-tester:x64-windows@1.0\n  * mp3lame:x64-windows@3.100\n"
+        with mock.patch.object(cache_guard, "vcpkg_command", side_effect=lambda args: args), \
+                mock.patch.object(cache_guard.subprocess, "run", return_value=mock.Mock(stdout=output)):
+            with self.assertRaisesRegex(RuntimeError, "external dependency"):
+                cache_guard.require_target_plan(JOB, port=Path("port"), paths=[], env={},
+                                                expected={"ffmpeg_x64-windows", "ffmpeg-tester_x64-windows"})
+
+    @unittest.skipUnless(os.environ.get("FFBUILD_TEST_VCPKG_BIN"), "Set native vcpkg binary for tiny real cache-only smoke")
+    def test_native_cache_only_rejects_corruption_without_building_dependency(self):
+        from ffbuild import cache_guard, native_abi
+        import ffvcpkg
+        binary = Path(os.environ["FFBUILD_TEST_VCPKG_BIN"]).resolve()
+        with tempfile.TemporaryDirectory(prefix="ffbuild-cache-only-") as tmp:
+            root = Path(tmp); ports = root / "ports"; ports.mkdir(); cache = root / "cache"; cache.mkdir()
+            shutil.copytree(ROOT / "triplets", root / "triplets")
+            marker = root / "dep-built"
+            payload = 'file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/include")\nfile(WRITE "${CURRENT_PACKAGES_DIR}/include/${PORT}.h" "/* fixture */")\nfile(INSTALL "${CMAKE_CURRENT_LIST_DIR}/copyright" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")\n'
+            def make(name, fields, content):
+                port = ports / name; port.mkdir()
+                (port / "vcpkg.json").write_text(json.dumps(dict(name=name, version="1.0.0", license="MIT", **fields)))
+                (port / "portfile.cmake").write_text(content)
+                (port / "copyright").write_text("MIT fixture")
+                return port
+            make("audit-dep", {"features": {"extra": {"description": "required"}, "default-extra": {"description": "default"}},
+                               "default-features": ["default-extra"]}, payload + f'file(WRITE "{marker.as_posix()}" "built")\n')
+            ffmpeg = make("ffmpeg", {"dependencies": [{"name": "audit-dep", "default-features": False, "features": ["extra"]}],
+                                    "features": {"all-gpl": {"description": "fixture"}}}, payload)
+            make("ffmpeg-tester", {"dependencies": [{"name": "ffmpeg", "default-features": False}]}, payload)
+            env = dict(os.environ, FFVCPKG_BIN=str(binary), VCPKG_ROOT=str(binary.parent),
+                       VCPKG_BINARY_SOURCES=f"clear;files,{cache},readwrite")
+            job = dict(JOB, package="ffmpeg[all-gpl]")
+            def paths(name):
+                return [f"--x-install-root={root / name}", f"--x-buildtrees-root={root / (name + '-trees')}",
+                        f"--x-packages-root={root / (name + '-packages')}"]
+            with mock.patch.object(native_abi, "ROOT", root), mock.patch.object(cache_guard, "ROOT", root), \
+                    mock.patch.object(ffvcpkg, "ROOT", root), mock.patch.dict(os.environ, env):
+                specs = {}
+                graph = native_abi.native_abi_query([job["package"], job["tester_port"]], job["triplet"],
+                                                      port_overlay=ffmpeg, binary=binary, env=env, specs=specs)
+                subprocess.run(ffvcpkg.command(["install", specs["audit-dep_x64-windows"],
+                    "--triplet=x64-windows", f"--overlay-ports={ffmpeg}", f"--overlay-ports={ports}", *paths("seed")]),
+                    cwd=root, env=env, check=True)
+                self.assertTrue(marker.is_file()); marker.unlink()
+                env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache},read"
+                self.assertEqual(graph, cache_guard.restore_dependencies(job, cache, port=ffmpeg,
+                                  installed=root / "good", paths=paths("good"), env=env))
+                self.assertFalse(marker.exists())
+                archive = cache_archive(cache, graph["audit-dep_x64-windows"])
+                archive.write_bytes(b"not a ZIP")
+                with self.assertRaises(subprocess.CalledProcessError):
+                    cache_guard.restore_dependencies(job, cache, port=ffmpeg,
+                            installed=root / "bad", paths=paths("bad"), env=env)
+                self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":

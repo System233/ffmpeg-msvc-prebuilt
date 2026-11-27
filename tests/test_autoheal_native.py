@@ -156,7 +156,7 @@ class NativeValidation(unittest.TestCase):
     def test_workflow_reuses_production_cache_path(self):
         import yaml
         from ffbuild.versions import ROOT
-        repair=yaml.safe_load((ROOT/".github/workflows/auto-heal.yml").read_text(encoding="utf-8"))["jobs"]["repair"]
+        repair=yaml.safe_load((ROOT/".github/actions/prepare-repair/action.yml").read_text(encoding="utf-8"))["runs"]
         worker=yaml.safe_load((ROOT/".github/workflows/build-release.yml").read_text(encoding="utf-8"))["jobs"]["prepare"]
         seed=[step["with"] for step in worker["steps"] if step.get("uses","").startswith("actions/cache/save") and step.get("with",{}).get("key","").startswith("ffbuild-seed-")][0]
         restores=[step["with"] for step in repair["steps"] if step.get("with",{}).get("key","").startswith("ffbuild-seed-")]
@@ -169,7 +169,7 @@ class NativeValidation(unittest.TestCase):
         import yaml
         from ffbuild.versions import ROOT
         workflow=yaml.safe_load((ROOT/".github/workflows/auto-heal.yml").read_text(encoding="utf-8"))
-        steps=workflow["jobs"]["repair"]["steps"]
+        steps=yaml.safe_load((ROOT/".github/actions/prepare-repair/action.yml").read_text(encoding="utf-8"))["runs"]["steps"]
         fallback=[s for s in steps if s.get("uses")=="./.github/actions/restore-legacy-cache"]
         self.assertEqual(5,len(fallback))
         for item in fallback:

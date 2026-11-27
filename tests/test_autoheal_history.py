@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import os
+import json
+import html
 import unittest
 from unittest import mock
 
 from ffbuild.autoheal import delivery, pr_history
-from ffbuild.autoheal.ledger import RepairEvent, RepairRound
+from ffbuild.autoheal.ledger import AuditReport, RepairDetails, RepairEvent, RepairRound
+from dataclasses import replace
 
 REPO = "simulated/repo"
 INCIDENT = "b" * 64
@@ -35,7 +38,7 @@ def events() -> list[RepairEvent]:
 
 
 def api_commit(item: RepairRound) -> dict:
-    return {"sha": item.sha, "commit": {"message":
+    raw = {"sha": item.sha, "commit": {"message":
             f"fix(8.1.1): repair\n\nAutoheal-Round: {item.number}\n"
             f"Autoheal-Incident: {item.incident}\n"
             f"Autoheal-Source-Run: {item.source_run}\n"
@@ -44,6 +47,25 @@ def api_commit(item: RepairRound) -> dict:
             "files": [{"filename": path, "status": "added" if path.endswith(".patch")
                        else "modified"} for path in item.paths],
             "parents": [{"sha": C1}] if item.number == 2 else [{"sha": "d" * 40}]}
+    if item.audit is not None:
+        raw["commit"]["message"] += "\nAutoheal-Audit: " + item.audit.trailer()
+        raw["commit"]["tree"] = {"sha": item.audit.tree}
+        raw["author"] = raw["committer"] = {"login": pr_history.BOT}
+    if item.details is not None:
+        raw["commit"]["message"] += "\nAutoheal-Details: " + item.details.trailer()
+    return raw
+
+
+def audited_rounds() -> list[RepairRound]:
+    first, second = rounds()
+    return [replace(first, audit=AuditReport(701, 1, "1" * 40, "2" * 64,
+                    "The original patch effects are retained."), details=RepairDetails(
+                        "Restore the original macro detection without disabling the component.",
+                        ("ffmpeg[all-gpl]:x64-windows: native runtime passed",))),
+            replace(second, audit=AuditReport(702, 2, "3" * 40, "4" * 64,
+                    "License and dependency contracts were checked; the affected code path is covered."),
+                    details=RepairDetails("Correct the symbol declaration for the target architecture.",
+                        ("ffmpeg[all-gpl]:arm64-windows: runtime skipped (host architecture incompatible)",)))]
 
 
 class FakeGitHub:
@@ -139,6 +161,65 @@ class HistoryRenderingTests(unittest.TestCase):
         self.assertIn("Run 202, attempt 1", body)
         self.assertIn("Run 203, attempt 1", body)
         self.assertEqual(1, body.count("### Changes"))
+
+    def test_audit_metadata_round_trip_and_exact_tree(self):
+        item = audited_rounds()[0]
+        raw = api_commit(item)
+        self.assertEqual(item.audit, pr_history.round_from_commit(raw, INCIDENT).audit)
+        raw["commit"]["tree"]["sha"] = "9" * 40
+        with self.assertRaisesRegex(ValueError, "does not match repair commit tree"):
+            pr_history.round_from_commit(raw, INCIDENT)
+        raw = api_commit(item)
+        raw["author"] = {"login": "human"}
+        with self.assertRaisesRegex(ValueError, "authorized bot"):
+            pr_history.round_from_commit(raw, INCIDENT)
+        for bad in ("bad!", "A" * 66001, "e30="):
+            with self.assertRaises(ValueError):
+                AuditReport.from_trailer(bad)
+
+    def test_repair_details_are_bound_and_cannot_inject_trailers(self):
+        item = audited_rounds()[0]
+        details = replace(item.details, rationale="Real change\nAutoheal-Round: 2\n<!-- ffbuild-autoheal:end --> @someone [link](https://example.invalid)")
+        raw = api_commit(replace(item, details=details))
+        parsed = pr_history.round_from_commit(raw, INCIDENT)
+        self.assertEqual(details, parsed.details)
+        body = pr_history.render_history([parsed], [])
+        self.assertEqual(1, body.count(pr_history.END))
+        self.assertNotIn("@someone", body)
+        self.assertNotIn("[link](", body)
+        with self.assertRaisesRegex(ValueError, "authenticated audit trailer"):
+            pr_history.round_from_commit(api_commit(replace(item, audit=None)), INCIDENT)
+        for value in ("{}", "[]", json.dumps({"rationale": "x", "validation": []}),
+                      json.dumps({"rationale": "x" * 1201, "validation": ["pass"]})):
+            with self.assertRaises(ValueError):
+                RepairDetails.from_trailer(value)
+
+    def test_audit_summary_cannot_inject_trailers_or_pr_markup(self):
+        item = audited_rounds()[0]
+        bad = replace(item, audit=replace(item.audit, summary=(
+            "Reviewed\nAutoheal-Round: 2\n<!-- ffbuild-autoheal:end --> "
+            "[click](https://evil.invalid) @someone <script>")))
+        self.assertEqual(bad.audit, pr_history.round_from_commit(api_commit(bad), INCIDENT).audit)
+        body = pr_history.render_history([bad], [])
+        self.assertEqual(1, body.count(pr_history.END))
+        self.assertNotIn("[click](", body)
+        self.assertNotIn("@someone", body)
+        self.assertNotIn("<script>", body)
+        self.assertNotIn("https://evil.invalid", body)
+
+    def test_audits_render_per_candidate_and_old_round_is_not_approved(self):
+        history = audited_rounds()
+        body = pr_history.render_history(history, events())
+        self.assertIn("The original patch effects are retained.", body)
+        self.assertIn("License and dependency contracts were checked", body)
+        self.assertIn("Round 1 (previous candidate)", body)
+        self.assertIn("Round 2 (current candidate)", body)
+        self.assertIn("actions/runs/702/attempts/2", body)
+        self.assertIn(f"autoheal-audit-a2-8.1.1-{INCIDENT}", body)
+        self.assertEqual(2, body.count("**Decision:** Approved"))
+        body = pr_history.render_history([rounds()[0], history[1]], events())
+        self.assertIn("No persisted audit report is available for this round.", body)
+        self.assertEqual(1, body.count("**Decision:** Approved"))
 
     def test_first_round_ci_failure_then_second_pending(self):
         both = rounds()
@@ -259,6 +340,38 @@ class HistorySynchronizationTests(unittest.TestCase):
         delivery.sync_status(ci_report(C2, "success"))
         self.assertEqual(4, len(fake.comments))
         self.assertEqual(1, fake.write_calls)
+
+    def test_audit_report_recovers_from_commits_after_partial_delivery(self):
+        history = audited_rounds()
+        fake = FakeGitHub(history, "Maintainer notes without managed content")
+        self._install(fake)
+        delivery.sync_status(ci_report(C2, "success"))
+        body = fake.pr["body"]
+        self.assertIn("Maintainer notes", body)
+        self.assertIn("The original patch effects are retained.", body)
+        self.assertIn("License and dependency contracts were checked", body)
+        self.assertIn("Restore the original macro detection", body)
+        self.assertIn("Correct the symbol declaration", body)
+        self.assertIn("runtime skipped", body)
+        self.assertIn("ffmpeg[all-gpl]:arm64-windows", html.unescape(body))
+        self.assertNotIn("&&#35;", body)
+        delivery.sync_status(ci_report(C2, "success"))
+        self.assertEqual(body, fake.pr["body"])
+        self.assertEqual(1, fake.write_calls)
+
+    def test_resume_requires_the_exact_audited_tree(self):
+        history = audited_rounds()[:1]
+        fake = FakeGitHub(history, "Maintainer notes")
+        self._install(fake)
+        report = {"source": {"run_id": 101, "run_attempt": 1}}
+        with self.assertRaisesRegex(ValueError, "differs from the audited candidate tree"):
+            delivery._resume_submitted_pr(fake.pr, INCIDENT, report, "d" * 40,
+                                          verified_tree="9" * 40)
+        self.assertEqual(0, fake.write_calls)
+        self.assertEqual([], fake.comments)
+        self.assertTrue(delivery._resume_submitted_pr(fake.pr, INCIDENT, report, "d" * 40,
+                                                      verified_tree=history[0].audit.tree))
+        self.assertIn("The original patch effects are retained.", fake.pr["body"])
 
     def test_ci_rerun_keeps_all_attempts_and_latest_status(self):
         history = rounds()

@@ -20,6 +20,7 @@ from .scope import check_worktree, _tree
 from ..spec import read_spec, resolve_features
 from ..port import manifest_for, _policy_script
 from ..versions import ROOT
+from ..markdown import render_template
 
 MAX_PATCH = 512 * 1024
 MAX_FILE = 4 * 1024 * 1024
@@ -55,7 +56,7 @@ def bounded(path: Path, limit: int) -> bytes:
     return data
 
 
-def candidate_identity(report: dict, yaml: str, output: Path) -> tuple[dict, dict, bytes | None]:
+def candidate_identity(report: dict, yaml: str, output: Path, *, require_independent: bool = True) -> tuple[dict, dict, bytes | None]:
     """Use original triage and immutable artifact bytes, never model-supplied identity."""
     incident = validate_triage(report, yaml)
     if not (output / "manifest.json").is_file():
@@ -82,6 +83,26 @@ def candidate_identity(report: dict, yaml: str, output: Path) -> tuple[dict, dic
     digest = hashlib.sha256(patch).hexdigest()
     if manifest.get("schema") != 2 or manifest.get("patch_sha256") != digest:
         raise ValueError("Invalid candidate patch identity")
+    from ..messages import repair_title
+    subject = manifest.get("subject")
+    if not isinstance(subject, str) or repair_title(yaml, subject) != subject:
+        raise ValueError("Invalid candidate repair title")
+    for key, limit in (("root_cause_hypothesis", 300), ("repair_rationale", 1200)):
+        value = manifest.get(key)
+        if not isinstance(value, str) or not value.strip() or len(value) > limit or any(c in value for c in "\r\n"):
+            raise ValueError("Missing or invalid candidate report field: " + key)
+    if require_independent:
+        origin = manifest.get("verification_origin")
+        if (not isinstance(origin, dict) or set(origin) != {"kind", "run_id", "run_attempt"}
+                or origin["kind"] != "isolated_runner" or any(type(origin[k]) is not int or origin[k] < 1
+                                                               for k in ("run_id", "run_attempt"))):
+            raise ValueError("Missing isolated Runner verification provenance")
+        # The workflow downloads only the verifier's attempt-scoped artifact.
+        # Also reject any receipt carrying a different run/attempt identity.
+        if os.environ.get("GITHUB_JOB") in ("audit", "deliver"):
+            if (origin["run_id"] != int(os.environ["GITHUB_RUN_ID"]) or
+                    origin["run_attempt"] != int(os.environ["GITHUB_RUN_ATTEMPT"])):
+                raise ValueError("Isolated verification belongs to a different workflow attempt")
     evidence = manifest.get("validation")
     try:
         data = incident_context(report, yaml)
@@ -117,7 +138,7 @@ def validate_verdict(value: object) -> dict:
     return value
 
 
-def require_audit(binding: dict, audit_dir: Path, *, declined: bool = False) -> bool:
+def read_approved_audit(binding: dict, audit_dir: Path, *, declined: bool = False) -> dict | None:
     record = json.loads(bounded(audit_dir / "audit.json", 256 * 1024))
     if (not isinstance(record, dict) or record.get("schema") != 1
             or record.get("binding") != binding):
@@ -125,13 +146,17 @@ def require_audit(binding: dict, audit_dir: Path, *, declined: bool = False) -> 
     if declined:
         if record.get("decision") != "not_applicable":
             raise ValueError("Missing safe-decline audit status")
-        return False
+        return None
     if not isinstance(record.get("model"), str) or not record["model"].strip() or not isinstance(record.get("response_id"), str) or not record["response_id"].strip():
         raise ValueError("Missing audit model/response evidence")
     verdict = validate_verdict(record.get("verdict"))
     if record.get("decision") != verdict["decision"] or verdict["decision"] != "approve":
         raise ValueError("Independent audit did not approve candidate")
-    return True
+    return record
+
+
+def require_audit(binding: dict, audit_dir: Path, *, declined: bool = False) -> bool:
+    return read_approved_audit(binding, audit_dir, declined=declined) is not None
 
 
 def verify_delivery(report: dict, yaml: str, output: Path, audit_dir: Path) -> bool:
@@ -306,20 +331,22 @@ def write_record(output: Path, record: dict) -> None:
         raise ValueError("Audit result contains API credential")
     (output / "audit.json").write_text(text + "\n", encoding="utf-8")
     verdict = record.get("verdict", {})
-    lines = ["# Independent FFmpeg patch audit", "", f"Decision: {record['decision']}",
-             "", verdict.get("summary", "No repair candidate was proposed.")]
-    for item in verdict.get("findings", []):
-        lines.extend(["", f"- {item['severity']} — {item['location']}: {item['description']}",
-                      f"  Remediation: {item['remediation']}"])
-    for item in verdict.get("limitations", []):
-        lines.extend(["", "- Limitation: " + item])
-    (output / "audit-report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    binding = record["binding"]
+    findings = "".join(f"\n\n- {item['severity']} — {item['location']}: {item['description']}\n"
+                       f"  Remediation: {item['remediation']}" for item in verdict.get("findings", []))
+    limitations = "".join("\n\n- Limitation: " + item for item in verdict.get("limitations", []))
+    markdown = render_template("audit-report.md", decision=record["decision"], target=binding["yaml"],
+                               source_run=binding["run_id"], source_attempt=binding["run_attempt"], base=binding["base_sha"],
+                               tree=binding.get("candidate_tree") or "Not applicable", digest=binding.get("patch_sha256") or "Not applicable",
+                               summary=verdict.get("summary", "No repair candidate was proposed."), findings=findings, limitations=limitations)
+    (output / "audit-report.md").write_text(markdown + "\n", encoding="utf-8")
 
 
 def audit(report: dict, yaml: str, candidate: Path, output: Path, *, root: Path = ROOT) -> None:
     if not report.get("trusted_repair_source"):
         raise ValueError("Untrusted source cannot enter audit")
     (output / "audit.json").unlink(missing_ok=True)
+    (output / "audit-report.md").unlink(missing_ok=True)
     binding, manifest, patch = candidate_identity(report, yaml, candidate)
     if patch is None:
         write_record(output, {"schema": 1, "binding": binding, "decision": "not_applicable"})
@@ -357,6 +384,8 @@ def audit(report: dict, yaml: str, candidate: Path, output: Path, *, root: Path 
                 {"job_id": j["job_id"], "diagnostic": j.get("diagnostic"), "build_plan": j.get("build_plan")}
                 for j in incident.jobs], "native_validation": manifest["validation"],
                 "root_cause_hypothesis": manifest.get("root_cause_hypothesis"),
+                "repair_rationale": manifest["repair_rationale"],
+                "verification_origin": manifest["verification_origin"],
                 "baseline_config": original, "candidate_config": modified,
                 "patch": patch.decode("utf-8")}, ensure_ascii=False)
             if len(prompt.encode("utf-8")) > 1024 * 1024:

@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   triage:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' || ((github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule') && github.event.workflow_run.head_branch == 'main') }}
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' || ((github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule') && github.event.workflow_run.head_branch == 'main')) }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.analyze.outputs.matrix }}
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python
         with:
@@ -79,21 +79,9 @@ jobs:
     env:
       FFBUILD_REPAIR_BUDGET_SECONDS: '10800'
     steps:
-      - name: Initialize native repair paths
-        shell: pwsh
-        env:
-          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
-          FFBUILD_REPAIR_DIR: ${{ runner.temp }}/ffheal
-          FFBUILD_REPAIR_CACHE: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          FFBUILD_PI_PACKAGE: ${{ runner.temp }}/ffbuild/pi/node_modules/@earendil-works/pi-coding-agent
-        run: |
-          "VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
-          "FFBUILD_REPAIR_DIR=$env:FFBUILD_REPAIR_DIR" >> $env:GITHUB_ENV
-          "FFBUILD_REPAIR_CACHE=$env:FFBUILD_REPAIR_CACHE" >> $env:GITHUB_ENV
-          "FFBUILD_PI_PACKAGE=$env:FFBUILD_PI_PACKAGE" >> $env:GITHUB_ENV
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@v8
@@ -102,114 +90,10 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           requirements: requirements.txt
-      - name: Bind failed source and generate baseline ports
+      - uses: ./.github/actions/prepare-repair
         id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_YAML: ${{ matrix.yaml }}
-        shell: pwsh
-        run: |
-          python -m ffbuild autoheal prepare --triage autoheal-triage.json --yaml $env:TARGET_YAML --github-output
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: ./.github/actions/vcpkg-bootstrap
         with:
-          tag: 2026.06.01
-          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
-      - name: Restore shared dependency downloads
-        id: downloads
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            ffbuild-downloads-2026.06.01-
-      - name: Reuse legacy dependency downloads
-        if: steps.downloads.outputs.cache-matched-key == ''
-        uses: ./.github/actions/restore-legacy-cache
-        with:
-          legacy-path: ${{ runner.temp }}/vcpkg/downloads
-          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-          prefix: vcpkg-dl-all-2026.06.01-
-      # Restore into the production cache path (part of the Actions cache version).
-      # The ABI-addressed archives from all required triplets form one cache.
-      - name: Restore x64-windows dependency Seed
-        id: seed-x64
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') }}
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
-          restore-keys: |
-            ffbuild-seed-2026.06.01-x64-windows-
-            ffbuild-native-2026.06.01-x64-windows-
-      - name: Reuse legacy x64-windows dependency Seed
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') && steps.seed-x64.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/restore-legacy-cache
-        with:
-          legacy-path: ${{ runner.temp }}/vcpkg-cache
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          prefix: vcpkg-seed-2026.06.01-x64-windows-
-      - name: Restore x86-windows dependency Seed
-        id: seed-x86
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') }}
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
-          restore-keys: |
-            ffbuild-seed-2026.06.01-x86-windows-
-            ffbuild-native-2026.06.01-x86-windows-
-      - name: Reuse legacy x86-windows dependency Seed
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') && steps.seed-x86.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/restore-legacy-cache
-        with:
-          legacy-path: ${{ runner.temp }}/vcpkg-cache
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          prefix: vcpkg-seed-2026.06.01-x86-windows-
-      - name: Restore arm64-windows dependency Seed
-        id: seed-arm64
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') }}
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
-          restore-keys: |
-            ffbuild-seed-2026.06.01-arm64-windows-
-            ffbuild-native-2026.06.01-arm64-windows-
-      - name: Reuse legacy arm64-windows dependency Seed
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') && steps.seed-arm64.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/restore-legacy-cache
-        with:
-          legacy-path: ${{ runner.temp }}/vcpkg-cache
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          prefix: vcpkg-seed-2026.06.01-arm64-windows-
-      - name: Restore arm-windows dependency Seed
-        id: seed-arm
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') }}
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
-          restore-keys: |
-            ffbuild-seed-2026.06.01-arm-windows-
-            ffbuild-native-2026.06.01-arm-windows-
-      - name: Reuse legacy arm-windows dependency Seed
-        if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') && steps.seed-arm.outputs.cache-matched-key == '' }}
-        uses: ./.github/actions/restore-legacy-cache
-        with:
-          legacy-path: ${{ runner.temp }}/vcpkg-cache
-          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          prefix: vcpkg-seed-2026.06.01-arm-windows-
-      - name: Prepare MSVC and verify exact dependency cache coverage
-        env:
-          FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
-          FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
-          FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
-          FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
-        shell: pwsh
-        run: |
-          python -m ffbuild autoheal preflight
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          target: ${{ matrix.yaml }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -218,12 +102,13 @@ jobs:
         run: |
           npm install --prefix "$env:RUNNER_TEMP/ffbuild/pi" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.0.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Repair and independently build selected candidates
+      - name: Repair and validate candidate for feedback
         env:
           FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
           FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
           FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
           FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
+          FFBUILD_PI_PACKAGE: ${{ runner.temp }}/ffbuild/pi/node_modules/@earendil-works/pi-coding-agent
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
@@ -233,14 +118,78 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v6
         with:
-          name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          name: autoheal-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
           path: repair-output/
           retention-days: 7
           if-no-files-found: error
 
-  audit:
+  verify:
     needs: [triage, repair]
-    if: ${{ always() && needs.triage.outputs.has_repairs == 'true' }}
+    if: ${{ !cancelled() && needs.repair.result == 'success' && needs.triage.outputs.has_repairs == 'true' }}
+    runs-on: windows-2022
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.triage.outputs.matrix) }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: autoheal-triage-a${{ github.run_attempt }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: autoheal-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: ${{ runner.temp }}/ffheal-proposal
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Validate proposal identity and decline status
+        id: proposal
+        shell: pwsh
+        env:
+          TARGET_YAML: ${{ matrix.yaml }}
+          PROPOSAL: ${{ runner.temp }}/ffheal-proposal
+          VERIFIED: ${{ runner.temp }}/ffheal-verified
+        run: |
+          python -m ffbuild autoheal verify --triage autoheal-triage.json --yaml $env:TARGET_YAML --proposal $env:PROPOSAL --output $env:VERIFIED --inspect --github-output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/prepare-repair
+        id: source
+        if: steps.proposal.outputs.has_candidate == 'true'
+        with:
+          target: ${{ matrix.yaml }}
+      - name: Clean-build exact candidate on fresh Runner
+        if: steps.proposal.outputs.has_candidate == 'true'
+        shell: pwsh
+        env:
+          FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
+          FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
+          FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
+          FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
+          PROPOSAL: ${{ runner.temp }}/ffheal-proposal
+          VERIFIED: ${{ runner.temp }}/ffheal-verified
+        run: |
+          python -m ffbuild autoheal verify --triage autoheal-triage.json --yaml $env:FFBUILD_REPAIR_TARGET --proposal $env:PROPOSAL --output $env:VERIFIED
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: ${{ runner.temp }}/ffheal-verified/
+          retention-days: 7
+          if-no-files-found: error
+
+  audit:
+    needs: [triage, verify]
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.triage.outputs.has_repairs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -254,7 +203,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@v8
@@ -289,9 +238,9 @@ jobs:
           if-no-files-found: error
 
   deliver:
-    needs: [triage, repair, audit]
+    needs: [triage, verify, audit]
     # A failed audit job (including duplicate artifact upload) must never authorize delivery.
-    if: ${{ !cancelled() && needs.audit.result == 'success' && needs.triage.outputs.has_repairs == 'true' }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.audit.result == 'success' && needs.triage.outputs.has_repairs == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -308,7 +257,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@v8
@@ -370,7 +319,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:

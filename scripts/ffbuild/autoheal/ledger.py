@@ -1,9 +1,11 @@
 """Deterministic incident identity and durable, bounded repair-event contracts."""
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 MAX_REPAIR_ROUNDS = 2
 MAX_INFRA_RERUNS = 1
@@ -45,6 +47,89 @@ def next_round(previous: int) -> int:
 
 
 @dataclass(frozen=True)
+class AuditReport:
+    """Public, bounded approval summary from the independently validated record."""
+    run_id: int
+    attempt: int
+    tree: str
+    patch_sha256: str
+    summary: str
+
+    def __post_init__(self) -> None:
+        if type(self.run_id) is not int or self.run_id < 1 or type(self.attempt) is not int or self.attempt < 1:
+            raise ValueError("Invalid audit workflow provenance")
+        if not isinstance(self.tree, str) or not _SHA.fullmatch(self.tree):
+            raise ValueError("Invalid audited candidate tree")
+        if not isinstance(self.patch_sha256, str) or not _SIGNATURE.fullmatch(self.patch_sha256):
+            raise ValueError("Invalid audited patch digest")
+        if not isinstance(self.summary, str) or not self.summary.strip() or len(self.summary) > 8000:
+            raise ValueError("Invalid audit summary")
+
+    def trailer(self) -> str:
+        # Encode untrusted model text: it must never inject a commit trailer.
+        raw = json.dumps(asdict(self), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii")
+
+    @classmethod
+    def from_trailer(cls, value: str) -> AuditReport:
+        if not isinstance(value, str) or len(value) > 66000 or not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", value):
+            raise ValueError("Invalid audit commit trailer")
+        try:
+            raw = base64.b64decode(value, altchars=b"-_", validate=True)
+            record = cls(**json.loads(raw))
+            if record.trailer() != value:
+                raise ValueError("Noncanonical audit commit trailer")
+            return record
+        except (ValueError, TypeError, UnicodeError) as exc:
+            raise ValueError("Invalid audit commit trailer") from exc
+
+
+@dataclass(frozen=True)
+class RepairDetails:
+    """Public repair rationale and actual supervisor validation, bound to a bot commit."""
+    rationale: str
+    validation: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.rationale, str) or len(self.rationale) > 1200:
+            raise ValueError("Invalid repair rationale")
+        if (not isinstance(self.validation, tuple) or not 1 <= len(self.validation) <= 16 or
+                any(not isinstance(line, str) or not line.strip() or len(line) > 500 for line in self.validation)):
+            raise ValueError("Invalid native validation summary")
+
+    def trailer(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=True, separators=(",", ":"))
+
+    @classmethod
+    def from_trailer(cls, value: str) -> RepairDetails:
+        if not isinstance(value, str) or len(value) > 64000:
+            raise ValueError("Invalid repair details trailer")
+        try:
+            data = json.loads(value)
+            if not isinstance(data, dict) or set(data) != {"rationale", "validation"} or not isinstance(data["validation"], list):
+                raise ValueError("Invalid repair details fields")
+            record = cls(data["rationale"], tuple(data["validation"]))
+            if record.trailer() != value:
+                raise ValueError("Noncanonical repair details trailer")
+            return record
+        except (ValueError, TypeError) as exc:
+            raise ValueError("Invalid repair details trailer") from exc
+
+
+def native_validation_summary(evidence: dict) -> tuple[str, ...]:
+    """Presentation only; callers must first run the native evidence gate."""
+    lines = []
+    for check in evidence["checks"]:
+        runtime = check["runtime"]
+        counts = check["tester_targets"]
+        execution = (f"runtime passed ({runtime['tester_executions']} Tester, {runtime['cli_executions']} CLI executions)"
+                     if runtime["status"] == "passed" else "runtime skipped (host architecture incompatible)")
+        lines.append(f"{check['spec']}: FFmpeg, Tester compile/link ({counts['release']} Release + {counts['debug']} Debug), "
+                     f"PE/COFF passed; {execution}; external dependency builds: 0.")
+    return tuple(lines)
+
+
+@dataclass(frozen=True)
 class RepairRound:
     """Immutable facts extracted from a bot commit, not a mutable PR body."""
     number: int
@@ -55,6 +140,8 @@ class RepairRound:
     paths: tuple[str, ...]
     hypothesis: str = ""
     subject: str = ""
+    audit: AuditReport | None = None
+    details: RepairDetails | None = None
 
     def __post_init__(self) -> None:
         if type(self.number) is not int or not 1 <= self.number <= MAX_REPAIR_ROUNDS:
@@ -75,6 +162,10 @@ class RepairRound:
             raise ValueError("Invalid root-cause hypothesis")
         if not isinstance(self.subject, str) or len(self.subject) > 120 or "\n" in self.subject or "\r" in self.subject:
             raise ValueError("Invalid repair subject")
+        if self.audit is not None and not isinstance(self.audit, AuditReport):
+            raise ValueError("Invalid repair audit report")
+        if self.details is not None and not isinstance(self.details, RepairDetails):
+            raise ValueError("Invalid repair details")
 
 
 @dataclass(frozen=True)

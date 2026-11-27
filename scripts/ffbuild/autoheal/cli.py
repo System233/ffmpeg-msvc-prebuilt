@@ -38,6 +38,13 @@ def build_parser() -> argparse.ArgumentParser:
     repair.add_argument("--triage", type=Path, required=True)
     repair.add_argument("--yaml", required=True)
     repair.add_argument("--output", type=Path, default=Path("repair-output"))
+    verify = commands.add_parser("verify", help="Rebuild an exact repair proposal on a separate prepared Runner")
+    verify.add_argument("--triage", type=Path, required=True)
+    verify.add_argument("--yaml", required=True)
+    verify.add_argument("--proposal", type=Path, required=True)
+    verify.add_argument("--output", type=Path, required=True)
+    verify.add_argument("--inspect", action="store_true")
+    verify.add_argument("--github-output", action="store_true")
     for name in ("audit", "audit-gate"):
         audit = commands.add_parser(name, help="Independently audit or require approval for a candidate")
         audit.add_argument("--triage", type=Path, required=True)
@@ -143,6 +150,14 @@ def main(argv: list[str] | None = None) -> None:
             validate_triage(report, args.yaml)
             from .repair import repair
             repair(report, args.yaml, args.output)
+        elif args.action == "verify":
+            if not report.get("trusted_repair_source"):
+                raise ValueError("Untrusted source cannot enter verification")
+            from .repair import verify_proposal
+            candidate = verify_proposal(report, args.yaml, args.proposal, args.output, inspect=args.inspect)
+            if args.github_output:
+                with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as file:
+                    file.write("has_candidate=" + str(candidate).lower() + "\n")
         elif args.action in ("audit", "audit-gate"):
             if not report.get("trusted_repair_source"):
                 raise ValueError("Untrusted source cannot enter audit")

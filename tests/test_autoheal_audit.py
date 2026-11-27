@@ -44,7 +44,9 @@ def write_candidate(directory, report, patch=None, candidate="d"*40, tree="e"*40
     manifest = {"schema": 2, "yaml": "8.1.1", "signature": group["signature"],
         "run_id": report["source"]["run_id"], "run_attempt": 1,
         "base_sha": report["source"]["head_sha"], "patch_sha256": hashlib.sha256(patch).hexdigest(),
-        "paths": ["ffmpeg/8.1.1.yaml"], "validation": {"schema": 1, "candidate": candidate, "tree": tree,
+        "paths": ["ffmpeg/8.1.1.yaml"], "subject": "fix(8.1.1): restore declaration",
+        "root_cause_hypothesis": "Missing declaration", "repair_rationale": "Restore declaration without removing features",
+        "verification_origin": {"kind": "isolated_runner", "run_id": 6789, "run_attempt": 2}, "validation": {"schema": 1, "candidate": candidate, "tree": tree,
         "checks": [{"spec":"ffmpeg[all-gpl]:x64-windows", "jobs":[group["jobs"][0]["job_id"]],
                    "reason":"same diagnostic", "abi_hash":ABI, "ffmpeg_build":"passed",
                    "consumer_compile_link":"passed", "binary_inspection":"passed",
@@ -75,6 +77,12 @@ class AuditGate(unittest.TestCase):
     def test_approve_and_exact_binding(self):
         write_verdict(self.output,self.binding,APPROVE)
         self.assertTrue(self.verify())
+        report = (self.output / "audit-report.md").read_text(encoding="utf-8")
+        self.assertIn("Decision: approve", report)
+        self.assertIn(self.binding["candidate_tree"], report)
+        self.assertIn(self.binding["patch_sha256"], report)
+        self.assertIn("no rebuild or test execution", report)
+        self.assertIn(APPROVE["summary"], report)
         # Even a whitespace change to the manifest invalidates approval.
         path=self.candidate/"manifest.json"
         path.write_bytes(path.read_bytes()+b"\n")
@@ -97,6 +105,134 @@ class AuditGate(unittest.TestCase):
             find.assert_not_called()
             run.assert_not_called()
             api.assert_not_called()
+
+    def test_approved_delivery_persists_actual_audit_in_commit_and_pr(self):
+        from ffbuild.autoheal.ledger import AuditReport, RepairDetails, branch_name
+        from ffbuild.autoheal import pr_history
+        summary = "Reviewed the patch effects and all applicable license obligations."
+        rationale = "Restore the upstream declaration without changing supported features."
+        manifest_path = self.candidate / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["repair_rationale"] = rationale
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        self.binding, _, _ = audit.candidate_identity(self.report, "8.1.1", self.candidate)
+        write_verdict(self.output, self.binding, dict(APPROVE, summary=summary))
+        report = self.report
+        # Simulate an original production incident and the privileged writer.
+        report["source"]["request"] = {"yaml": "8.1.1", "repository_commit": self.binding["base_sha"], "production": True}
+        branch = branch_name("8.1.1", self.binding["signature"])
+        sha = "f" * 40
+        pr = {"number": 42, "user": {"login": pr_history.BOT}, "state": "open",
+              "head": {"ref": branch, "sha": sha, "repo": {"full_name": "simulated/repo"}}, "base": {"ref": "main"}}
+        commits, bodies = [], []
+        def fake_git(*args, cwd=None):
+            if "commit" in args:
+                commits.append(args)
+            if args[:2] == ("rev-parse", "HEAD"):
+                return sha
+            if args[:2] == ("rev-parse", "FETCH_HEAD"):
+                return self.binding["base_sha"]
+            if args == ("write-tree",):
+                return self.binding["candidate_tree"]
+            if args[:2] == ("ls-remote", "origin"):
+                return ""
+            return ""
+        def fake_run(*args, cwd=None):
+            if args[:3] == ("gh", "pr", "create"):
+                bodies.append(Path(args[args.index("--body-file") + 1]).read_text(encoding="utf-8"))
+            return ""
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "simulated/repo", "GITHUB_RUN_ID": "6789", "GITHUB_RUN_ATTEMPT": "2"}), \
+             mock.patch.object(delivery, "find_pr", side_effect=[None, pr]), \
+             mock.patch.object(delivery.github, "api", return_value={"object": {"sha": self.binding["base_sha"]}}), \
+             mock.patch("ffbuild.autoheal.duplicates.open_repairs", return_value=[]), \
+             mock.patch.object(delivery, "git", side_effect=fake_git), \
+             mock.patch.object(delivery, "run", side_effect=fake_run), \
+             mock.patch.object(delivery, "changes", return_value=[("M", "ffmpeg/8.1.1.yaml")]), \
+             mock.patch.object(delivery, "check_worktree", return_value=["ffmpeg/8.1.1.yaml"]), \
+             mock.patch.object(delivery, "check_modes"), \
+             mock.patch.object(delivery, "check_pr"), \
+             mock.patch.object(delivery, "ensure_label", return_value="repair"), \
+             mock.patch.object(pr_history, "publish_event"):
+            delivery.deliver(report, "8.1.1", self.candidate, self.output)
+        self.assertEqual(1, len(commits))
+        trailer = next(line.split(": ", 1)[1] for line in commits[0][-1].splitlines() if line.startswith("Autoheal-Audit: "))
+        persisted = AuditReport.from_trailer(trailer)
+        self.assertEqual(self.binding["candidate_tree"], persisted.tree)
+        self.assertEqual(self.binding["patch_sha256"], persisted.patch_sha256)
+        self.assertEqual(summary, persisted.summary)
+        self.assertEqual((6789, 2), (persisted.run_id, persisted.attempt))
+        self.assertEqual(1, len(bodies))
+        self.assertIn(summary, bodies[0])
+        self.assertIn("actions/runs/6789/attempts/2", bodies[0])
+        self.assertIn("**Decision:** Approved", bodies[0])
+        details = RepairDetails.from_trailer(next(line.split(": ", 1)[1] for line in commits[0][-1].splitlines()
+                                                   if line.startswith("Autoheal-Details: ")))
+        self.assertEqual(rationale, details.rationale)
+        self.assertIn("39 Release + 39 Debug", details.validation[0])
+        self.assertIn("runtime passed (78 Tester, 2 CLI executions)", details.validation[0])
+        self.assertIn(rationale, bodies[0])
+        self.assertIn("39 Release + 39 Debug", bodies[0])
+
+    def test_unverified_proposal_and_wrong_workflow_attempt_cannot_authorize_audit(self):
+        path = self.candidate / "manifest.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value.pop("verification_origin")
+        path.write_text(json.dumps(value), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Missing isolated Runner"):
+            audit.candidate_identity(self.report, "8.1.1", self.candidate)
+        audit.candidate_identity(self.report, "8.1.1", self.candidate, require_independent=False)
+        value["verification_origin"] = {"kind": "isolated_runner", "run_id": 1, "run_attempt": 1}
+        path.write_text(json.dumps(value), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"GITHUB_JOB": "audit", "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "2"}):
+            with self.assertRaisesRegex(ValueError, "different workflow attempt"):
+                audit.candidate_identity(self.report, "8.1.1", self.candidate)
+
+    def test_fresh_verifier_replays_exact_tree_and_replaces_agent_evidence(self):
+        from ffbuild.autoheal import repair, build
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp); repo = folder / "repo"; repo.mkdir()
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=repo, text=True, encoding="utf-8").strip()
+            git("init", "-q"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.invalid")
+            git("config", "commit.gpgsign", "false")
+            shutil.copytree(ROOT / "ffmpeg", repo / "ffmpeg")
+            shutil.copytree(ROOT / "patches", repo / "patches")
+            git("add", "."); git("commit", "-qm", "baseline")
+            base = git("rev-parse", "HEAD")
+            with (repo / "ffmpeg/8.1.1.yaml").open("a", encoding="utf-8") as stream:
+                stream.write("\n# verified regression fixture\n")
+            git("add", "."); git("commit", "-qm", "fix(8.1.1): restore declaration")
+            candidate, tree = git("rev-parse", "HEAD"), git("rev-parse", "HEAD^{tree}")
+            patch = subprocess.check_output(["git", "format-patch", "-1", "--stdout", "--binary"], cwd=repo)
+            git("reset", "--hard", base)
+            report = report_for(base); proposal = folder / "proposal"; verified = folder / "verified"
+            manifest = write_candidate(proposal, report, patch, candidate, tree)
+            manifest.pop("verification_origin")
+            (proposal / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            result = dict(manifest["validation"]["checks"][0], abi_hash="9" * 64)
+            old = Path.cwd(); os.chdir(repo)
+            try:
+                with mock.patch.object(repair, "require_ready"), mock.patch.object(build, "build", return_value=result) as worker, \
+                        mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "6789", "GITHUB_RUN_ATTEMPT": "2"}):
+                    self.assertTrue(repair.verify_proposal(report, "8.1.1", proposal, verified, inspect=True))
+                    worker.assert_not_called()
+                    self.assertTrue(repair.verify_proposal(report, "8.1.1", proposal, verified))
+                    worker.assert_called_once_with("ffmpeg[all-gpl]:x64-windows", clean=True)
+                    _, actual, actual_patch = audit.candidate_identity(report, "8.1.1", verified)
+                    self.assertEqual(patch, actual_patch)
+                    self.assertEqual(tree, actual["validation"]["tree"])
+                    self.assertEqual("9" * 64, actual["validation"]["checks"][0]["abi_hash"])
+                    self.assertEqual("isolated_runner", actual["verification_origin"]["kind"])
+                    self.assertEqual(base, git("rev-parse", "HEAD"))
+                    self.assertEqual(tree, git("write-tree"))
+                    git("reset", "--hard", base)
+                    worker.reset_mock(); worker.side_effect = build.BuildFailure("fresh build failed")
+                    rejected = folder / "rejected"
+                    with self.assertRaisesRegex(build.BuildFailure, "fresh build failed"):
+                        repair.verify_proposal(report, "8.1.1", proposal, rejected)
+                    self.assertFalse((rejected / "manifest.json").exists())
+            finally:
+                os.chdir(old)
 
     def test_modified_patch_rejected(self):
         write_verdict(self.output,self.binding,APPROVE)
@@ -242,6 +378,16 @@ class WorkflowAudit(unittest.TestCase):
         import yaml
         jobs=yaml.safe_load((ROOT/".github/workflows/auto-heal.yml").read_text(encoding="utf-8"))["jobs"]
         self.assertEqual("ubuntu-latest",jobs["audit"]["runs-on"])
+        self.assertEqual("windows-2022", jobs["verify"]["runs-on"])
+        self.assertIn("verify", jobs["audit"]["needs"])
+        self.assertIn("needs.verify.result == 'success'", jobs["audit"]["if"])
+        self.assertIn("needs.verify.result == 'success'", jobs["deliver"]["if"])
+        self.assertNotIn("OPENAI_API_KEY", json.dumps(jobs["verify"]))
+        self.assertNotIn("create-github-app-token", json.dumps(jobs["verify"]))
+        repair_upload = next(s for s in jobs["repair"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+        verify_upload = next(s for s in jobs["verify"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+        self.assertTrue(repair_upload["with"]["name"].startswith("autoheal-proposal-"))
+        self.assertTrue(verify_upload["with"]["name"].startswith("autoheal-patch-"))
         self.assertEqual("read",jobs["audit"]["permissions"]["contents"])
         self.assertIn("audit",jobs["deliver"]["needs"])
         self.assertIn("needs.audit.result == 'success'",jobs["deliver"]["if"])

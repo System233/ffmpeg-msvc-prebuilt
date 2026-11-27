@@ -13,15 +13,16 @@ from dataclasses import asdict
 from typing import Any
 
 from . import github
-from .ledger import MAX_REPAIR_ROUNDS, RepairEvent, RepairRound
+from .ledger import MAX_REPAIR_ROUNDS, AuditReport, RepairDetails, RepairEvent, RepairRound
 from .models import commit_sha, error_signature, version_name
+from ..markdown import render_template
 
 BOT = "ffmpeg-dev[bot]"
 START = "<!-- ffbuild-autoheal:start -->"
 END = "<!-- ffbuild-autoheal:end -->"
 EVENT_PREFIX = "<!-- ffbuild-autoheal-event:v1 "
 EVENT_PATTERN = re.compile(r"^<!-- ffbuild-autoheal-event:v1 (\{[^\r\n]*\}) -->", re.ASCII)
-_TRAILER = re.compile(r"(?m)^Autoheal-(Round|Incident|Source-Run|Source-Attempt|Hypothesis): ([^\r\n]*)$")
+_TRAILER = re.compile(r"(?m)^Autoheal-(Round|Incident|Source-Run|Source-Attempt|Hypothesis|Audit|Details): ([^\r\n]*)$")
 _SAFE = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -76,8 +77,18 @@ def round_from_commit(raw: dict[str, Any], incident: str) -> RepairRound:
     subject = message.split("\n", 1)[0]
     if len(subject) > 120:
         subject = ""
+    audit = AuditReport.from_trailer(values["Audit"]) if "Audit" in values else None
+    if audit is not None:
+        if ((raw.get("author") or {}).get("login") != BOT or
+                (raw.get("committer") or {}).get("login") != BOT):
+            raise ValueError("Audit trailer is not from the authorized bot")
+        if commit_sha((raw.get("commit", {}).get("tree") or {}).get("sha")) != audit.tree:
+            raise ValueError("Audit trailer does not match repair commit tree")
+    details = RepairDetails.from_trailer(values["Details"]) if "Details" in values else None
+    if details is not None and audit is None:
+        raise ValueError("Repair details require an authenticated audit trailer")
     return RepairRound(number, sha, incident, source_run, source_attempt,
-                       tuple(paths), values.get("Hypothesis", ""), subject)
+                       tuple(paths), values.get("Hypothesis", ""), subject, audit, details)
 
 
 def validate_rounds(rounds: list[RepairRound], incident: str, expected_head: str | None = None) -> None:
@@ -188,13 +199,9 @@ def event_comment(event: RepairEvent) -> str:
                                        sort_keys=True, separators=(",", ":")) + " -->"
     repo = github.repository()
     label = "Repair submitted" if event.kind == "repair" else f"CI {event.conclusion}"
-    return "\n".join([
-        marker,
-        f"### Auto-Heal · Round {event.round} · {label}",
-        f"- Commit: [`{event.sha[:12]}`]({_commit_url(repo, event.sha)})",
-        f"- CI: [Run {event.run_id}, attempt {event.attempt}]({_url(repo, event.run_id, event.attempt)})",
-
-    ])
+    return marker + "\n" + render_template("repair-event.md", round=event.round, label=label,
+        commit=f"[`{event.sha[:12]}`]({_commit_url(repo, event.sha)})",
+        ci=f"[Run {event.run_id}, attempt {event.attempt}]({_url(repo, event.run_id, event.attempt)})")
 
 
 def parse_event(comment: dict, incident: str, rounds: list[RepairRound]) -> RepairEvent | None:
@@ -299,46 +306,64 @@ def render_history(rounds: list[RepairRound], events: list[RepairEvent],
 
     from ..messages import repair_title
     action = repair_title(target_yaml, latest.subject).split(": ", 1)[1]
-    result = [
-        START, f"<!-- ffbuild-autoheal-incident:v1 {incident} -->",
-        "## Auto-Heal", "",
-        f"**Status:** {_text(state)}",
-        f"**Repair round:** {latest.number}/{MAX_REPAIR_ROUNDS}",
-        f"**Source failure:** [Run {source.source_run}, attempt {source.source_attempt}]({original_url})",
-        "", "### Summary", "",
-        _text(action[0].upper() + action[1:]) + ".",
-        "Root-cause hypotheses remain unverified by CI.",
-        "", "### Changes", "",
-        *[f"- `{_text(path).replace(chr(96), '&#96;')}`" for path in full_paths[:40]],
-        *([f"- {len(full_paths) - 40} additional files (see Files changed)"] if len(full_paths) > 40 else []),
-        "", "### Repair history", "",
-        "| Round | Commit | Root-cause hypothesis | CI |",
-        "| --- | --- | --- | --- |",
-    ]
+    changes = [f"- `{_text(path)}`" for path in full_paths[:40]]
+    if len(full_paths) > 40:
+        changes.append(f"- {len(full_paths) - 40} additional files (see Files changed)")
+    history = []
+    earlier = []
     for item in rounds:
         checks = sorted((e for e in events if e.kind == "ci" and e.sha == item.sha),
                         key=lambda e: (e.run_id, e.attempt))
-        # Keep all attempts accessible through their immutable comments; only
-        # latest status is shown in the compact history table.
         ci = status_for(item, events)
         if checks:
             newest = checks[-1]
             ci = f"[{ci} (Run {newest.run_id}, attempt {newest.attempt})]({_url(repo, newest.run_id, newest.attempt)})"
-        result.append(
-            f"| {item.number} | [`{item.sha[:12]}`]({_commit_url(repo, item.sha)}) | "
-            f"{cell(item.hypothesis or 'Not provided')} | {ci} |")
-    multi = [(item, sorted((e for e in events if e.kind == "ci" and e.sha == item.sha),
-                           key=lambda e: (e.run_id, e.attempt))) for item in rounds]
-    if any(len(checks) > 1 for _, checks in multi):
-        result += ["", "<details>", "<summary>Earlier CI attempts</summary>", ""]
-        for item, checks in multi:
-            for e in checks[:-1][-20:]:
-                result.append(f"- Round {item.number}: [Run {e.run_id}, attempt {e.attempt}]({_url(repo, e.run_id, e.attempt)}) — {e.conclusion}")
-        result += ["", "</details>"]
-    result += ["", "### Verification", "",
-               "Changes are restricted to the selected version. Required CI verifies the current PR HEAD.",
-               END]
-    return "\n".join(result)
+        history.append(f"| {item.number} | [`{item.sha[:12]}`]({_commit_url(repo, item.sha)}) | "
+                       f"{cell(item.hypothesis or 'Not provided')} | {ci} |")
+        for event in checks[:-1][-20:]:
+            earlier.append(f"- Round {item.number}: [Run {event.run_id}, attempt {event.attempt}]({_url(repo, event.run_id, event.attempt)}) — {event.conclusion}")
+
+    def public_text(value: str, limit: int) -> str:
+        # Treat all report fields as display-only plain text, not Markdown.
+        # Encode original characters in one pass; never re-escape entity syntax.
+        special = "&<>\"'[]`*@:_~!#|(){}\\"
+        return _SAFE.sub(" ", value[:limit]).translate(str.maketrans({c: f"&#{ord(c)};" for c in special}))
+
+    round_reports = []
+    for item in rounds:
+        audit = item.audit
+        current = "current candidate" if item == latest else "previous candidate"
+        if audit is None:
+            audit_text = "No persisted audit report is available for this round."
+        else:
+            artifact = f"autoheal-audit-a{audit.attempt}-{target_yaml}-{item.incident}"
+            summary = public_text(audit.summary, 8000)
+            if len(summary) > 6000:
+                summary = re.sub(r"&(?:#\d*)?$", "", summary[:6000]) + "… (see full report)"
+            audit_text = "\n".join([
+                "**Independent security audit**", "", "**Decision:** Approved", "", summary, "",
+                f"- Audit run: [Run {audit.run_id}, attempt {audit.attempt}]({_url(repo, audit.run_id, audit.attempt)})",
+                f"- Full report: `audit-report.md` in artifact `{artifact}` (7-day retention).",
+                "- Read-only review of existing evidence; no additional build or test execution.",
+            ])
+        details = item.details
+        rationale = public_text(details.rationale, 1200) if details and details.rationale else "No persisted repair rationale is available."
+        validation = ("\n".join(f"- {public_text(line, 500)}" for line in details.validation)
+                      if details else "No persisted native validation summary is available.")
+        round_reports.append("\n".join([
+            f"**Round {item.number} ({current}) — [`{item.sha[:12]}`]({_commit_url(repo, item.sha)})**",
+            "", f"**Repair:** {rationale}", "", "**Native validation:**", "", validation,
+            "", audit_text,
+        ]))
+    earlier_attempts = ("\n<details>\n<summary>Earlier CI attempts</summary>\n\n"
+                        + "\n".join(earlier) + "\n\n</details>\n") if earlier else ""
+    body = render_template("repair-pr.md", status=_text(state), round=latest.number, max_rounds=MAX_REPAIR_ROUNDS,
+                           source_failure=f"[Run {source.source_run}, attempt {source.source_attempt}]({original_url})",
+                           summary=(public_text(latest.hypothesis, 300) if latest.details and latest.hypothesis else
+                                    _text(action[0].upper() + action[1:]) + "."), changes="\n".join(changes),
+                           history="\n".join(history), earlier_attempts=earlier_attempts,
+                           round_reports="\n\n".join(round_reports))
+    return "\n".join([START, f"<!-- ffbuild-autoheal-incident:v1 {incident} -->", body, END])
 
 
 def incident_from_pr_body(body: str) -> str:

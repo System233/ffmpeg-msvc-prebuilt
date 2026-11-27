@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
 
 from . import github
-from .ledger import RepairRound, branch_name, branch_matches, next_round
+from .ledger import AuditReport, RepairDetails, RepairRound, branch_name, branch_matches, native_validation_summary, next_round
 from . import pr_history
 from .models import commit_sha, validate_triage
 from ..release_trigger import automatic_pr, ensure_label
@@ -115,7 +116,7 @@ def _ensure_auto_merge(pr: dict) -> None:
             raise RuntimeError(f"Could not enable GitHub auto-merge: {result.stderr[-800:]}")
 
 
-def _resume_submitted_pr(pr: dict, incident: str, report: dict, base: str) -> bool:
+def _resume_submitted_pr(pr: dict, incident: str, report: dict, base: str, *, verified_tree: str | None = None) -> bool:
     """Recover a successful push / PR creation without consuming another round."""
     history = (pr_history.load_new_version_rounds(pr) if pr["head"]["ref"].startswith("auto/ffmpeg-") else pr_history.load_rounds(pr, incident))
     latest = history[-1]
@@ -128,6 +129,9 @@ def _resume_submitted_pr(pr: dict, incident: str, report: dict, base: str) -> bo
     if not isinstance(parents, list) or len(parents) != 1 or \
        commit_sha(parents[0].get("sha")) != base.lower():
         return False
+    if verified_tree is not None and (latest.audit is None or latest.audit.tree != verified_tree or
+            (detail.get("commit", {}).get("tree") or {}).get("sha") != verified_tree):
+        raise ValueError("Previously submitted repair differs from the audited candidate tree or lacks its audit report")
     events = pr_history.load_events(pr["number"], incident, history)
     for item in history:
         pr_history.publish_event(pr["number"], pr_history.event_for_round(item), events)
@@ -180,8 +184,8 @@ def _recover_orphan(
         raise ValueError("Orphan commit changed a different set of files")
     git("fetch", "origin", sha)
     actual_tree = git("rev-parse", f"{sha}^{{tree}}")
-    if verified_tree is not None and actual_tree != verified_tree:
-        raise ValueError("Orphan commit differs from the independently verified tree")
+    if verified_tree is not None and (actual_tree != verified_tree or entry.audit is None or entry.audit.tree != verified_tree):
+        raise ValueError("Orphan commit differs from the independently verified tree or lacks its audit report")
     with tempfile.TemporaryDirectory(prefix="autoheal-orphan-verify-") as scratch:
         workspace = Path(scratch)
         git("worktree", "add", "--detach", str(workspace), base)
@@ -218,20 +222,24 @@ def _recover_orphan(
     if pr is None:
         raise RuntimeError("Recovered orphan branch PR creation was not confirmed")
     verify_pr(pr, branch)
-    if not _resume_submitted_pr(pr, incident, report, base):
+    if not _resume_submitted_pr(pr, incident, report, base, verified_tree=verified_tree):
         raise RuntimeError("Recovered orphan PR did not pass source provenance checks")
 
 
 def deliver(report: dict, yaml: str, output: Path, audit_output: Path | None = None) -> None:
-    from .audit import candidate_identity, require_audit
+    from .audit import candidate_identity, read_approved_audit
     incident = validate_triage(report, yaml)
     identity, manifest, patch = candidate_identity(report, yaml, output)
     if patch is None:
         print("No authorized fix proposed; no GitHub mutation.")
         return
-    require_audit(identity, audit_output or Path("audit-output"))
+    approved = read_approved_audit(identity, audit_output or Path("audit-output"))
     base = identity["base_sha"]
     verified_tree = identity["candidate_tree"]
+    audit_report = AuditReport(int(os.environ.get("GITHUB_RUN_ID", "0")),
+                               int(os.environ.get("GITHUB_RUN_ATTEMPT", "0")),
+                               verified_tree, identity["patch_sha256"], approved["verdict"]["summary"])
+    details = RepairDetails(manifest.get("repair_rationale", ""), native_validation_summary(manifest["validation"]))
     patch_path = output / "repair.patch"
     subject = repair_title(yaml, manifest.get("subject", ""))
     hypothesis = manifest.get("root_cause_hypothesis", "Not independently verified")
@@ -259,11 +267,11 @@ def deliver(report: dict, yaml: str, output: Path, audit_output: Path | None = N
         if not previous_pr or report["pr"]["number"] != previous_pr["number"]:
             raise ValueError("Cannot modify another PR for this incident")
     if previous_pr and previous_pr["head"]["sha"].lower() != base.lower():
-        if _resume_submitted_pr(previous_pr, incident.signature, report, base):
+        if _resume_submitted_pr(previous_pr, incident.signature, report, base, verified_tree=verified_tree):
             return
         raise ValueError("Repair PR changed since this CI failure")
     if previous_pr and not report.get("pr"):
-        if _resume_submitted_pr(previous_pr, incident.signature, report, base):
+        if _resume_submitted_pr(previous_pr, incident.signature, report, base, verified_tree=verified_tree):
             return
         raise ValueError("Incident branch has a PR for a different source run")
     if not previous_pr:
@@ -339,7 +347,9 @@ def deliver(report: dict, yaml: str, output: Path, audit_output: Path | None = N
                       f"Autoheal-Incident: {incident.signature}\n"
                       f"Autoheal-Source-Run: {report['source']['run_id']}\n"
                       f"Autoheal-Source-Attempt: {report['source']['run_attempt']}\n"
-                      f"Autoheal-Hypothesis: {hypothesis}", cwd=workspace)
+                      f"Autoheal-Hypothesis: {hypothesis}\n"
+                      f"Autoheal-Audit: {audit_report.trailer()}\n"
+                      f"Autoheal-Details: {details.trailer()}", cwd=workspace)
             submitted_sha = commit_sha(git("rev-parse", "HEAD", cwd=workspace))
             if report.get("automatic_version_pr") or report["source"].get("event") in ("workflow_dispatch", "schedule"):
                 git("fetch", "origin", "main", cwd=workspace)
@@ -351,7 +361,7 @@ def deliver(report: dict, yaml: str, output: Path, audit_output: Path | None = N
     current_round_record = RepairRound(
         round_no, submitted_sha, incident.signature,
         report["source"]["run_id"], report["source"]["run_attempt"],
-        tuple(paths), hypothesis, subject)
+        tuple(paths), hypothesis, subject, audit_report, details)
     rounds = [*previous_rounds, current_round_record]
     events = [*previous_events, pr_history.event_for_round(current_round_record)]
     status = "Representative native repair verification and independent security audit passed; awaiting full production MSVC CI."

@@ -236,6 +236,11 @@ def _verify_compliance_archive(path: Path, record: dict, audit_file: Path, *, ki
             if hashlib.sha256(public.read(name)).hexdigest() != summary.get(field):
                 raise ValueError(f"Compliance metadata hash differs for {name}: {path.name}")
         provenance = json.loads(archive.read("metadata/BUILD_PROVENANCE.json"))
+        if os.environ.get("FFBUILD_PUBLISH") == "true" and (
+                provenance.get("ci_commit") != os.environ.get("GITHUB_SHA") or
+                provenance.get("ci_repository") != os.environ.get("GITHUB_REPOSITORY") or
+                not re.fullmatch(r"[0-9a-f]{40}", str(provenance.get("ci_commit", "")))):
+            raise ValueError("Fresh artifact source recipes differ from the production build commit")
         if provenance.get("assets") != record["assets"]:
             raise ValueError("Audit evidence does not bind the distribution assets")
         if record.get("abi_hash") and hashlib.sha256(archive.read("native/share/ffmpeg/vcpkg_abi_info.txt")).hexdigest() != record["abi_hash"]:

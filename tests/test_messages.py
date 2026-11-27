@@ -4,6 +4,7 @@ import re
 import unittest
 from unittest.mock import patch
 
+from ffbuild.markdown import render_template, TEMPLATE_DIR
 from ffbuild.messages import release_message, proposal_message, proposal_status, proposal_pending, repair_title
 from ffbuild.autoheal import pr_history
 from ffbuild.autoheal.ledger import RepairRound, RepairEvent
@@ -13,6 +14,19 @@ SIG = "b" * 64
 REPO = "example/ffmpeg"
 
 class MessageTests(unittest.TestCase):
+    def test_template_substitution_is_strict_and_single_pass(self):
+        values = {"round": 1, "label": "$commit", "commit": "actual", "ci": "pending"}
+        text = render_template("repair-event.md", **values)
+        self.assertIn("$commit", text)
+        with self.assertRaises(ValueError):
+            render_template("repair-event.md", round=1)
+        with self.assertRaises(ValueError):
+            render_template("repair-event.md", **values, unknown="x")
+        with self.assertRaises(ValueError):
+            render_template("../messages.py")
+        self.assertEqual({"proposal-pr.md", "repair-pr.md", "repair-report.md", "audit-report.md",
+                          "repair-event.md", "release.md"}, {p.name for p in TEMPLATE_DIR.glob("*.md")})
+
     def test_release_uses_actual_matrix_and_batch_title(self):
         rows = [{"triplet":a+"-windows","linkage":link,"license":lic,
                  "assets":{"binary":{}, **({"debug":{}} if link=="shared" else {})}}

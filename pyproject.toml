@@ -22,4 +22,4 @@ include = ["ffbuild", "ffbuild.*", "ffvcpkg"]
 namespaces = false
 
 [tool.setuptools.package-data]
-ffbuild = ["*.yaml", "autoheal/prompts/*.md", "autoheal/extensions/*.ts"]
+ffbuild = ["*.yaml", "autoheal/prompts/*.md", "autoheal/extensions/*.ts", "templates/*.md"]

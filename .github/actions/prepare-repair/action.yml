@@ -1,0 +1,137 @@
+name: Prepare native repair environment
+description: Bind the original source, restore exact native ABI dependencies and verify preparation
+inputs:
+  target:
+    description: Authenticated failed FFmpeg version
+    required: true
+outputs:
+  base:
+    description: Bound original commit
+    value: ${{ steps.source.outputs.base }}
+  context_sha256:
+    description: Bound incident context digest
+    value: ${{ steps.source.outputs.context_sha256 }}
+  contract_sha256:
+    description: Baseline feature and dependency contract digest
+    value: ${{ steps.source.outputs.contract_sha256 }}
+runs:
+  using: composite
+  steps:
+    - name: Initialize native repair paths
+      shell: pwsh
+      env:
+        VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        FFBUILD_REPAIR_DIR: ${{ runner.temp }}/ffheal
+        FFBUILD_REPAIR_CACHE: ${{ runner.temp }}/ffbuild/vcpkg-cache
+      run: |
+        "VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+        "FFBUILD_REPAIR_DIR=$env:FFBUILD_REPAIR_DIR" >> $env:GITHUB_ENV
+        "FFBUILD_REPAIR_CACHE=$env:FFBUILD_REPAIR_CACHE" >> $env:GITHUB_ENV
+    - name: Bind failed source and generate baseline ports
+      id: source
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TARGET_YAML: ${{ inputs.target }}
+      shell: pwsh
+      run: |
+        python -m ffbuild autoheal prepare --triage autoheal-triage.json --yaml $env:TARGET_YAML --github-output
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - uses: ./.github/actions/vcpkg-bootstrap
+      with:
+        tag: 2026.06.01
+        vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+    - name: Restore shared dependency downloads
+      id: downloads
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+        key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+        restore-keys: |
+          ffbuild-downloads-2026.06.01-
+    - name: Reuse legacy dependency downloads
+      if: steps.downloads.outputs.cache-matched-key == ''
+      uses: ./.github/actions/restore-legacy-cache
+      with:
+        legacy-path: ${{ runner.temp }}/vcpkg/downloads
+        path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+        prefix: vcpkg-dl-all-2026.06.01-
+    # Restore into the production cache path (part of the Actions cache version).
+    # The ABI-addressed archives from all required triplets form one cache.
+    - name: Restore x64-windows dependency Seed
+      id: seed-x64
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        restore-keys: |
+          ffbuild-seed-2026.06.01-x64-windows-
+          ffbuild-native-2026.06.01-x64-windows-
+    - name: Reuse legacy x64-windows dependency Seed
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x64-windows') && steps.seed-x64.outputs.cache-matched-key == '' }}
+      uses: ./.github/actions/restore-legacy-cache
+      with:
+        legacy-path: ${{ runner.temp }}/vcpkg-cache
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        prefix: vcpkg-seed-2026.06.01-x64-windows-
+    - name: Restore x86-windows dependency Seed
+      id: seed-x86
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        restore-keys: |
+          ffbuild-seed-2026.06.01-x86-windows-
+          ffbuild-native-2026.06.01-x86-windows-
+    - name: Reuse legacy x86-windows dependency Seed
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'x86-windows') && steps.seed-x86.outputs.cache-matched-key == '' }}
+      uses: ./.github/actions/restore-legacy-cache
+      with:
+        legacy-path: ${{ runner.temp }}/vcpkg-cache
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        prefix: vcpkg-seed-2026.06.01-x86-windows-
+    - name: Restore arm64-windows dependency Seed
+      id: seed-arm64
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        restore-keys: |
+          ffbuild-seed-2026.06.01-arm64-windows-
+          ffbuild-native-2026.06.01-arm64-windows-
+    - name: Reuse legacy arm64-windows dependency Seed
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm64-windows') && steps.seed-arm64.outputs.cache-matched-key == '' }}
+      uses: ./.github/actions/restore-legacy-cache
+      with:
+        legacy-path: ${{ runner.temp }}/vcpkg-cache
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        prefix: vcpkg-seed-2026.06.01-arm64-windows-
+    - name: Restore arm-windows dependency Seed
+      id: seed-arm
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        restore-keys: |
+          ffbuild-seed-2026.06.01-arm-windows-
+          ffbuild-native-2026.06.01-arm-windows-
+    - name: Reuse legacy arm-windows dependency Seed
+      if: ${{ contains(fromJSON(steps.source.outputs.triplets), 'arm-windows') && steps.seed-arm.outputs.cache-matched-key == '' }}
+      uses: ./.github/actions/restore-legacy-cache
+      with:
+        legacy-path: ${{ runner.temp }}/vcpkg-cache
+        path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+        prefix: vcpkg-seed-2026.06.01-arm-windows-
+    - name: Prepare MSVC and verify exact dependency cache coverage
+      env:
+        FFBUILD_REPAIR_TARGET: ${{ inputs.target }}
+        FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
+        FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
+        FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
+      shell: pwsh
+      run: |
+        python -m ffbuild autoheal preflight
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
