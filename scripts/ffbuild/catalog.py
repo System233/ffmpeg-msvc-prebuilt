@@ -13,6 +13,7 @@ import yaml
 from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds, is_lts, PACKAGE_FORMAT_VERSION
 
 SCHEMA = 2
+LEGACY_LGPL_NOTE = "legacy-lgpl-licensing"
 VERSION = re.compile(r"\d+\.\d+(?:\.\d+)?")
 SLOT = re.compile(r"(x64|x86|arm|arm64)-windows-(static|shared)-(lgpl|gpl|nonfree)")
 HASH = re.compile(r"[0-9a-f]{64}")
@@ -130,6 +131,8 @@ def _variant(record: dict, release_date: str, *, native: bool) -> dict:
         raise ValueError("Incomplete native asset set")
     if not native and ("debug" in kinds or (record["linkage"] == "static" and kinds != {"binary"})):
         raise ValueError("Invalid historical asset set")
+    if not native and record["license"] == "lgpl":
+        result["note"] = LEGACY_LGPL_NOTE
     return result
 
 
@@ -196,7 +199,7 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
         if "commit" in r and not re.fullmatch(r"[0-9a-f]{40}", r["commit"]):
             raise ValueError("Invalid master commit")
         for slot, v in r["variants"].items():
-            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", *ASSET_KINDS}:
+            if not SLOT.fullmatch(slot) or set(v) - {"abi", "format", "date", "note", *ASSET_KINDS}:
                 raise ValueError("Invalid catalog variant")
             if ("abi" in v) != ("format" in v) or ("abi" in v and (
                     not HASH.fullmatch(v["abi"]) or type(v["format"]) is not int or v["format"] != PACKAGE_FORMAT_VERSION)):
@@ -209,6 +212,8 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
                     raise ValueError("Native master requires full commit")
             if "date" in v and ("abi" not in v or _date(v["date"]) > r["date"]):
                 raise ValueError("Invalid original asset date")
+            if "note" in v and (v["note"] != LEGACY_LGPL_NOTE or "abi" in v or not slot.endswith("-lgpl")):
+                raise ValueError("Invalid historical LGPL notice")
             if "binary" not in v:
                 raise ValueError("Missing binary asset")
             kinds = set(v).intersection(ASSET_KINDS)

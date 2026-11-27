@@ -15,3 +15,5 @@ The catalog schema changes only for incompatible storage changes. Adding fields 
 `v2/index.schema.json` validates root `index.json`; `v2/shard.schema.json` validates `releases/<version>.json` and `master/<year>.json`. Root contains only shard discovery keys. A release and its asset records exist in one shard only. Stable shards contain explicit boolean `lts` (release-family classification, not a current support guarantee); snapshot shards use false. Migration writes this metadata directly. Run `python -m ffbuild refresh-lts --data-dir data` to refresh classifications without changing ZIPs, digests, tags or ABIs.
 
 Legacy v1 YAML schemas are retained for historical interpretation. The legacy and current indexes must not coexist after cutover.
+
+Optional variant `note: "legacy-lgpl-licensing"` identifies the historical LGPL licensing notice. Migration sets it only on historical LGPL variants, never on native ABI-qualified or GPL variants. The website resolves the note to localized text and the corresponding update-history section; it does not affect archive identity, digest or ABI reuse.

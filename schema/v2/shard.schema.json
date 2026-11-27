@@ -137,6 +137,10 @@
         },
         "debug": {
           "$ref": "#/$defs/asset"
+        },
+        "note": {
+          "const": "legacy-lgpl-licensing",
+          "description": "Historical LGPL licensing notice; localized explanation and update-history link."
         }
       },
       "dependentRequired": {
@@ -182,6 +186,20 @@
             "not": {
               "required": [
                 "develop"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "note"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "abi"
               ]
             }
           }

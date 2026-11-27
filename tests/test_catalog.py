@@ -89,6 +89,49 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(row["assets"], PublishedState(directory=root).find_abi(
                 "9.1", row["triplet"], row["abi_hash"])["assets"])
 
+    def test_legacy_lgpl_notice_scope_and_validation(self):
+        import copy
+        from ffbuild.versions import ROOT
+        schema = json.loads((ROOT / "schema/v2/shard.schema.json").read_text())
+        self.assertEqual(catalog.LEGACY_LGPL_NOTE, schema["$defs"]["variant"]["properties"]["note"]["const"])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source, dest = root / "old", root / "new"
+            old = record()
+            del old["abi_hash"], old["package_format"]
+            gpl = dict(old, license="gpl")
+            rows = [old, gpl]
+            folder = source / "9.x/9.1-r1"
+            (folder / "variants").mkdir(parents=True)
+            for row in rows:
+                (folder / "variants" / (catalog._slot(row)+".yaml")).write_text(yaml.safe_dump(row))
+            (folder / "version.yaml").write_text(yaml.safe_dump({
+                "version": "9.1", "release_tag": "ffmpeg-9.1-r1",
+                "release_date": old["release_date"], "channel": "release", "variants": rows}))
+            catalog.migrate(source, dest)
+            path = dest / "releases/9.1.json"
+            shard = catalog.load_shard(dest, "releases", "9.1")
+            variants = shard["releases"][0]["variants"]
+            self.assertEqual(catalog.LEGACY_LGPL_NOTE, variants["x64-windows-static-lgpl"]["note"])
+            self.assertNotIn("note", variants["x64-windows-static-gpl"])
+            catalog.register_release(dest, [record(when="2026-11-26")])
+            current = catalog.load_shard(dest, "releases", "9.1")
+            self.assertNotIn("note", current["releases"][0]["variants"]["x64-windows-static-lgpl"])
+            self.assertIn(shard["releases"][0], current["releases"])
+            for index, slot, note in (
+                (0, "x64-windows-static-lgpl", catalog.LEGACY_LGPL_NOTE),
+                (1, "x64-windows-static-gpl", catalog.LEGACY_LGPL_NOTE),
+                (1, "x64-windows-static-lgpl", "unknown"),
+            ):
+                invalid = copy.deepcopy(current)
+                invalid["releases"][index]["variants"][slot]["note"] = note
+                catalog.write_json(path, invalid)
+                with self.assertRaisesRegex(ValueError, "historical LGPL notice"):
+                    catalog.load_shard(dest, "releases", "9.1")
+            catalog.write_json(path, current)
+            self.assertIsNotNone(PublishedState(directory=dest).find_abi(
+                "9.1", "x64-windows", "a" * 64))
+
     def test_lookup_reads_only_requested_shard_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
