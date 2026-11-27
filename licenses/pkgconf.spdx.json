@@ -1,0 +1,69 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "pkgconf-2.5.1#4 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/pkgconf/2.5.1-port-4/1",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "pkgconf",
+      "versionInfo": "2.5.1#4",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-Pkgconf-2.5.1",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING",
+      "licenseComments": "Custom permissive copyright; previously reviewed against installed copyright."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-copyright"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Pkgconf-2.5.1",
+      "extractedText": "Copyright (c) 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018\n    pkgconf authors (see AUTHORS file in source directory).\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nThis software is provided 'as is' and without any warranty, express or\nimplied.  In no event shall the authors be liable for any damages arising\nfrom the use of this software.\n",
+      "seeAlsos": [
+        "https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "SPDXID": "SPDXRef-copyright",
+      "fileName": "./copyright",
+      "checksums": [
+        {
+          "algorithm": "SHA1",
+          "checksumValue": "a8f3f302ab9f09a35914db53eb3fc9cb72810dac"
+        },
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04"
+        }
+      ],
+      "licenseConcluded": "NOASSERTION",
+      "licenseInfoInFiles": [
+        "LicenseRef-Pkgconf-2.5.1"
+      ],
+      "copyrightText": "NOASSERTION"
+    }
+  ]
+}

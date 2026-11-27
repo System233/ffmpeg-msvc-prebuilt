@@ -1,1 +1,2 @@
 pyyaml
+license-expression==30.4.4

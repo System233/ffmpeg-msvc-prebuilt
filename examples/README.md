@@ -17,6 +17,8 @@ Extract the `.zip` — the resulting directory contains `bin/`, `lib/`,
 
 > **Note**: The static variant does not include headers or libraries
 > and cannot be used for development. Use a shared variant instead.
+> The shared SDK supports dynamic linking only. Its import libraries are not
+> static libraries, and `pkg-config --static` does not provide a static SDK.
 
 ## How It Works
 

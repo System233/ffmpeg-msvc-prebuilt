@@ -24,3 +24,12 @@ the release YAML files under `data/`.
 Increment `schema_version` when making **backward-incompatible** structural
 changes to the release YAML files (adding optional fields does not require a
 bump). Create a new subdirectory `v<N>/` for the new version.
+
+
+## Release catalog v2
+
+`v2/index.schema.json` validates the root `index.json`; `v2/shard.schema.json`
+validates `releases/<version>.json` and `master/<year>.json`.
+The root contains only shard discovery keys. Each release and its asset records
+exist in one shard only. Legacy v1 YAML remains readable for migration; v2 is
+an explicit format cutover, not an additional index alongside v1.

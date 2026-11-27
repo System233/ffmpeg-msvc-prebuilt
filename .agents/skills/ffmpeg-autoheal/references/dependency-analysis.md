@@ -1,0 +1,11 @@
+# Investigate dependency/API compatibility
+
+A detection error does not mean a dependency is absent. Find the exact required FFmpeg check and its compile/link test in configure and config.log. Determine whether the header, symbol, pkg-config module, required version, linkage or configure option is wrong.
+
+1. Read the registry baseline from vcpkg-configuration.json and the pinned bootstrap tag in the failed checkout's workflow. Inspect the selected generated Port manifest and the relevant Feature closure. Follow its dependencies (including host vs target and platform expressions) and the local overlay priority. A local ports/<name>/vcpkg.json and portfile.cmake may override the registry recipe.
+2. Inspect the pinned registry Port manifest, version database/baseline and recipe from the exact checkout/tag, not the latest registry. Resolve the actual source ref/version, source checksum, patch list, and feature selection. Read any available installed status/ABI/license evidence from the failed run. If not available, distinguish the expected dependency version from an observed installed one. Do not assume a dependency is present just because it appears in the manifest.
+3. Read the dependency headers, source, exported functions and build metadata at the actual version. Check its upstream history and compatibility notes if needed. Compare those declarations and link contracts with the FFmpeg call site or configure probe. A renamed pkg-config module, static import naming, removed API and missing library are different causes.
+4. Prefer a compatible source adaptation or precise configuration correction that preserves functionality. A version threshold may be changed only if the actual API/ABI requirements are shown to hold. Never relax a minimum version just because detection failed. Do not edit a shared dependency Port, disable a required feature, or alter license modes to avoid the problem.
+5. Re-evaluate all affected target configurations, including conditional features and release/debug differences. Record the dependency revision/source, evidence and limits of the local check. If correction requires a change to shared toolchain/dependency policy, report that explicitly and decline the automatic version-scoped fix.
+
+No full dependency build or install is needed. Use read-only source, manifests, log excerpts and upstream history.

@@ -1,5 +1,4 @@
 extends: "7.1"
-revision: 2
 
 patches:
   - 7.x/0001-create-lib-libraries-6.1.patch

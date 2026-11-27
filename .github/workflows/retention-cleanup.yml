@@ -2,7 +2,7 @@
 # retention-cleanup.yml — Enforce retention policy on old builds
 #
 # Runs weekly (Sunday midnight UTC) or manually via workflow_dispatch.
-# Deletes old version YAMLs, GitHub Releases, and git tags according to
+# Deletes old Master GitHub Releases and their index entries; preserves every tag, according to
 # the retention policy defined in ci/SPEC.md §5.
 #
 # SPEC: ci/SPEC.md §7.5
@@ -28,6 +28,7 @@ env:
 
 jobs:
   cleanup:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -43,7 +44,7 @@ jobs:
           private-key: ${{ secrets.CI_BOT_PRIVATE_KEY }}
           permission-contents: write
 
-      # Checkout data branch (stores build metadata)
+      # Checkout data branch (Release catalog)
       - name: Checkout data branch
         id: checkout-data
         uses: actions/checkout@v6
@@ -52,42 +53,20 @@ jobs:
           path: data
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-        continue-on-error: true
-
-      - name: Exit gracefully if data branch does not exist
-        if: steps.checkout-data.outcome == 'failure'
-        run: |
-          echo "Data branch does not exist yet — nothing to clean up."
-          exit 0
-        shell: bash
 
       - uses: ./.github/actions/setup-python
         with:
           requirements: 'requirements.txt'
 
-      # Run retention policy script.
-      # The script reads data from data/ and prints DELETE_RELEASE:
-      # and DELETE_TAG: lines for each version that should be removed.
-      - name: Run retention policy
-        run: |
-          python scripts/ops/retention_policy.py data > cleanup_output.txt
-          echo "=== Cleanup output ==="
-          cat cleanup_output.txt
-        shell: bash
-
-      - name: Delete GitHub Releases
+      - name: Delete expired Master Releases and confirm before changing Data
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: python scripts/ci/cleanup_releases.py releases --file cleanup_output.txt
+        run: python -m ffbuild.retention data --apply-remote
 
-      - name: Delete git tags
-        run: python scripts/ci/cleanup_releases.py tags --file ../cleanup_output.txt --directory data
-
-      # Commit and push the updated data branch (version YAML deletions +
-      # build-index updates performed by retention_policy.py).
+      # Commit and push the updated Release index after retention.
       - name: Commit and push data branch
         run: |
-          python scripts/ci/push_data_branch.py \
+          python -m ffbuild.data_git \
             --message 'retention: cleanup old builds' \
             --directory data
 

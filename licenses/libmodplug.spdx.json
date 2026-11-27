@@ -1,0 +1,43 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "libmodplug-0.8.9.0#15 supplemental license",
+  "documentNamespace": "https://github.com/System233/ffmpeg-msvc-prebuilt/spdx/licenses/libmodplug/0.8.9.0-port-15/1",
+  "creationInfo": {
+    "creators": [
+      "Tool: ffbuild-license-declarations"
+    ],
+    "created": "2026-11-25T00:00:00Z"
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-port",
+      "name": "libmodplug",
+      "versionInfo": "0.8.9.0#15",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "LicenseRef-Libmodplug-Public-Domain",
+      "copyrightText": "NOASSERTION",
+      "sourceInfo": "https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING",
+      "licenseComments": "Upstream public-domain dedication; do not relabel as MIT."
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-port"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Libmodplug-Public-Domain",
+      "extractedText": "ModPlug-XMMS and libmodplug are now in the public domain.",
+      "seeAlsos": [
+        "https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+"""Catalog migration, lookup isolation and retention with native release identities."""
+from __future__ import annotations
+
+import json
+import tempfile
+import subprocess
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import yaml
+
+from ffbuild import catalog
+from ffbuild.identity import archive_name, variant_name
+from ffbuild.state import PublishedState
+from ffbuild.identity import record_release_tag
+
+
+def record(version="9.1", when="2026-11-25", arch="x64", channel="release", commit=None):
+    row = {"version": version, "release_date": when, "channel": channel,
+           "triplet": arch + "-windows", "linkage": "static", "license": "lgpl",
+           "abi_hash": "a" * 64, "package_format": 3, "expected_variants": 1,
+           "features": ["base"], "dependencies": ["zlib"], "compliance": {"private": True}}
+    if commit:
+        row["source_commit"] = commit
+    row["variant_id"] = variant_name(version, 0, row["triplet"], "static", "lgpl", abi_hash=row["abi_hash"])
+    row["assets"] = {"binary": {"file": archive_name(row), "size": 100, "digest": "sha256:" + "b" * 64}}
+    return row
+
+
+class CatalogTests(unittest.TestCase):
+    def test_lookup_reads_only_requested_shard_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for version in ("9.1", "8.1.3", "7.1.5"):
+                catalog.register_release(root, [record(version)])
+            state = PublishedState(directory=root)
+            with patch("ffbuild.catalog.load_shard", wraps=catalog.load_shard) as load,                  patch.object(Path, "rglob", side_effect=AssertionError("Global scan forbidden")):
+                for _ in range(20):
+                    self.assertEqual("a" * 64, state.find_abi("9.1", "x64-windows", "a" * 64)["abi_hash"])
+                self.assertEqual(1, load.call_count)
+                self.assertEqual(("releases", "9.1"), load.call_args.args[1:])
+                self.assertIsNone(state.find_abi("6.0", "x64-windows", "a" * 64))
+                self.assertEqual(1, load.call_count)
+            self.assertEqual(4, len(list(root.rglob("*.json"))))
+            self.assertNotIn("features", (root / "releases/9.1.json").read_text())
+            self.assertNotIn("compliance", (root / "releases/9.1.json").read_text())
+
+    def test_master_reuse_across_years_and_pinned_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old = record("9.2-dev-42-gabcdef", "2026-12-31", channel="master", commit="a" * 40)
+            catalog.register_release(root, [old])
+            newer = dict(old, publication_date="2027-01-01")
+            catalog.register_release(root, [newer])
+            self.assertEqual([2027, 2026], catalog.manifest(root)["master"])
+            state = PublishedState(directory=root)
+            found = state.find_abi(old["version"], old["triplet"], old["abi_hash"],
+                                   channel="master", source_commit="a" * 40)
+            self.assertEqual("2026-12-31", found["release_date"])
+            self.assertEqual("2027-01-01", found["publication_date"])
+            self.assertEqual(old["assets"], found["assets"])
+            self.assertIsNone(state.find_abi(old["version"], old["triplet"], old["abi_hash"],
+                                             channel="master", source_commit="b" * 40))
+
+    def test_migration_is_lossless_and_source_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source, dest = root / "old", root / "new"
+            row = record()
+            # Build a legacy dated v1 record for migration compatibility.
+            path = source / "9.x/9.1-261125/variants/x64-windows-static-lgpl.yaml"
+            path.parent.mkdir(parents=True)
+            path.write_text(yaml.safe_dump(row), encoding="utf-8")
+            (path.parent.parent / "version.yaml").write_text(yaml.safe_dump({
+                "version": row["version"], "release_tag": record_release_tag(row),
+                "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
+            before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
+            self.assertEqual((1, 1, 1), catalog.migrate(source, dest))
+            self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
+            self.assertEqual(row["assets"], PublishedState(directory=dest).find_abi(
+                "9.1", row["triplet"], row["abi_hash"])["assets"])
+            # Disagreeing duplicate records must stop migration.
+            broken = yaml.safe_load(path.read_text())
+            broken["assets"]["binary"]["size"] += 1
+            path.write_text(yaml.safe_dump(broken), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Legacy asset copies differ"):
+                catalog.migrate(source, root / "broken")
+            self.assertFalse((root / "broken").exists())
+            with self.assertRaisesRegex(ValueError, "explicit catalog migration"):
+                catalog.register_release(source, [row])
+
+    def test_reject_mixed_index_and_duplicate_json_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog.register_release(root, [record()])
+            path = root / "9.x/9.1/variants/stale.yaml"
+            path.parent.mkdir(parents=True)
+            path.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Remove legacy YAML"):
+                catalog.register_release(root, [record()])
+            (root / "index.json").write_text('{"schema":2,"releases":[],"master":[],"master":[]}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Duplicate catalog key"):
+                catalog.manifest(root)
+
+    def test_git_staging_is_index_only_even_without_master_shard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
+            git("init", "-q")
+            catalog.register_release(root, [record()])
+            (root / "unrelated.audit.zip").write_bytes(b"not an index")
+            catalog.stage_index(root)
+            self.assertEqual({"index.json", "releases/9.1.json"}, set(git("diff", "--cached", "--name-only").splitlines()))
+            git("-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", "test index")
+            # Git tracks removal of the last shard even though its directory vanishes.
+            (root / "releases/9.1.json").unlink()
+            (root / "releases").rmdir()
+            catalog.write_json(root / "index.json", {"schema": 2, "releases": [], "master": []})
+            catalog.stage_index(root)
+            self.assertEqual({"index.json", "releases/9.1.json"}, set(git("diff", "--cached", "--name-only").splitlines()))
+            git("add", "unrelated.audit.zip")
+            with self.assertRaisesRegex(ValueError, "Unrelated files already staged"):
+                catalog.stage_index(root)
+
+    def test_retention_only_removes_master_rows(self):
+        import sys
+        from ffbuild.retention import process_snapshots
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            catalog.register_release(root, [record()])
+            stable = (root / "releases/9.1.json").read_bytes()
+            catalog.register_release(root, [record("9.0-dev-1-gabcdef", "2024-01-01", channel="master", commit="a"*40)])
+            catalog.register_release(root, [record("9.0-dev-2-gabcdef", "2024-02-01", channel="master", commit="b"*40)])
+            before = (root / "master/2024.json").read_bytes()
+            self.assertEqual((1, 1), process_snapshots(root, dry_run=True))
+            self.assertEqual(before, (root / "master/2024.json").read_bytes())
+            self.assertEqual((1, 1), process_snapshots(root))
+            self.assertEqual(stable, (root / "releases/9.1.json").read_bytes())
+            self.assertEqual(["ffmpeg-master-240201"], [r["tag"] for r in catalog.load_shard(root, "master", 2024)["releases"]])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,289 @@
+reviews:
+- id: pkgconf-2.5.1-LGPL-2.1-or-later-static
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: LGPL-2.1-or-later
+  linkage: static
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-LGPL-2.1-or-later-shared
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: LGPL-2.1-or-later
+  linkage: shared
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-LGPL-3.0-or-later-static
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: LGPL-3.0-or-later
+  linkage: static
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-LGPL-3.0-or-later-shared
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: LGPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-GPL-2.0-or-later-static
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: GPL-2.0-or-later
+  linkage: static
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-GPL-2.0-or-later-shared
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: GPL-2.0-or-later
+  linkage: shared
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-GPL-3.0-or-later-static
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: GPL-3.0-or-later
+  linkage: static
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: pkgconf-2.5.1-GPL-3.0-or-later-shared
+  package: pkgconf
+  version: 2.5.1
+  port_revision: 4
+  copyright_sha256: 07ee94b50a41ee3fc4e13a9b9c60b26fc28488494c465639f7e5f07a3952ec04
+  expression: LicenseRef-Pkgconf-2.5.1
+  term: LicenseRef-Pkgconf-2.5.1
+  profile: GPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/pkgconf/pkgconf/blob/pkgconf-2.5.1/COPYING
+  reason: Previously verified permissive grant, exact installed copyright required.
+- id: libarchive-3.8.7-LGPL-3.0-or-later-static
+  package: libarchive
+  version: 3.8.7
+  port_revision: 0
+  copyright_sha256: 30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229
+  expression: BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND LicenseRef-Libarchive-Public-Domain
+  term: LicenseRef-Libarchive-Public-Domain
+  profile: LGPL-3.0-or-later
+  linkage: static
+  source: https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libarchive-3.8.7-LGPL-3.0-or-later-shared
+  package: libarchive
+  version: 3.8.7
+  port_revision: 0
+  copyright_sha256: 30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229
+  expression: BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND LicenseRef-Libarchive-Public-Domain
+  term: LicenseRef-Libarchive-Public-Domain
+  profile: LGPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libarchive-3.8.7-GPL-3.0-or-later-static
+  package: libarchive
+  version: 3.8.7
+  port_revision: 0
+  copyright_sha256: 30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229
+  expression: BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND LicenseRef-Libarchive-Public-Domain
+  term: LicenseRef-Libarchive-Public-Domain
+  profile: GPL-3.0-or-later
+  linkage: static
+  source: https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libarchive-3.8.7-GPL-3.0-or-later-shared
+  package: libarchive
+  version: 3.8.7
+  port_revision: 0
+  copyright_sha256: 30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229
+  expression: BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND LicenseRef-Libarchive-Public-Domain
+  term: LicenseRef-Libarchive-Public-Domain
+  profile: GPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/libarchive/libarchive/blob/v3.8.7/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libmodplug-0.8.9.0-LGPL-3.0-or-later-static
+  package: libmodplug
+  version: 0.8.9.0
+  port_revision: 15
+  copyright_sha256: 49942e7b3b175f549e751feb08b5270ca6f6c5fb7a1be9f9517db275ec32c92e
+  expression: LicenseRef-Libmodplug-Public-Domain
+  term: LicenseRef-Libmodplug-Public-Domain
+  profile: LGPL-3.0-or-later
+  linkage: static
+  source: https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libmodplug-0.8.9.0-LGPL-3.0-or-later-shared
+  package: libmodplug
+  version: 0.8.9.0
+  port_revision: 15
+  copyright_sha256: 49942e7b3b175f549e751feb08b5270ca6f6c5fb7a1be9f9517db275ec32c92e
+  expression: LicenseRef-Libmodplug-Public-Domain
+  term: LicenseRef-Libmodplug-Public-Domain
+  profile: LGPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libmodplug-0.8.9.0-GPL-3.0-or-later-static
+  package: libmodplug
+  version: 0.8.9.0
+  port_revision: 15
+  copyright_sha256: 49942e7b3b175f549e751feb08b5270ca6f6c5fb7a1be9f9517db275ec32c92e
+  expression: LicenseRef-Libmodplug-Public-Domain
+  term: LicenseRef-Libmodplug-Public-Domain
+  profile: GPL-3.0-or-later
+  linkage: static
+  source: https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: libmodplug-0.8.9.0-GPL-3.0-or-later-shared
+  package: libmodplug
+  version: 0.8.9.0
+  port_revision: 15
+  copyright_sha256: 49942e7b3b175f549e751feb08b5270ca6f6c5fb7a1be9f9517db275ec32c92e
+  expression: LicenseRef-Libmodplug-Public-Domain
+  term: LicenseRef-Libmodplug-Public-Domain
+  profile: GPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/Konstanty/libmodplug/blob/5a39f5913d07ba3e61d8d5afdba00b70165da81d/COPYING
+  reason: Upstream explicit public-domain dedication for the identified library code;
+    exact installed COPYING required. No other licensing terms are waived.
+- id: glslang-16.3.0-LGPL-3.0-or-later-static-bison
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: GPL-3.0-or-later WITH Bison-exception-2.2
+  profile: LGPL-3.0-or-later
+  linkage: static
+  source: https://github.com/KhronosGroup/glslang/blob/16.3.0/glslang/MachineIndependent/glslang_tab.cpp
+  reason: Generated parser skeleton retains the exception; FFmpeg is not a parser
+    generator.
+- id: glslang-16.3.0-LGPL-3.0-or-later-static-aml
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: AML-glslang
+  profile: LGPL-3.0-or-later
+  linkage: static
+  source: https://spdx.org/licenses/AML-glslang.html
+  reason: Copyright grant expressly permits use, modification and source/binary redistribution
+    with notices. Patent rights are not granted. Retain upstream notices.
+- id: glslang-16.3.0-LGPL-3.0-or-later-shared-bison
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: GPL-3.0-or-later WITH Bison-exception-2.2
+  profile: LGPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/KhronosGroup/glslang/blob/16.3.0/glslang/MachineIndependent/glslang_tab.cpp
+  reason: Generated parser skeleton retains the exception; FFmpeg is not a parser
+    generator.
+- id: glslang-16.3.0-LGPL-3.0-or-later-shared-aml
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: AML-glslang
+  profile: LGPL-3.0-or-later
+  linkage: shared
+  source: https://spdx.org/licenses/AML-glslang.html
+  reason: Copyright grant expressly permits use, modification and source/binary redistribution
+    with notices. Patent rights are not granted. Retain upstream notices.
+- id: glslang-16.3.0-GPL-3.0-or-later-static-bison
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: GPL-3.0-or-later WITH Bison-exception-2.2
+  profile: GPL-3.0-or-later
+  linkage: static
+  source: https://github.com/KhronosGroup/glslang/blob/16.3.0/glslang/MachineIndependent/glslang_tab.cpp
+  reason: Generated parser skeleton retains the exception; FFmpeg is not a parser
+    generator.
+- id: glslang-16.3.0-GPL-3.0-or-later-static-aml
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: AML-glslang
+  profile: GPL-3.0-or-later
+  linkage: static
+  source: https://spdx.org/licenses/AML-glslang.html
+  reason: Copyright grant expressly permits use, modification and source/binary redistribution
+    with notices. Patent rights are not granted. Retain upstream notices.
+- id: glslang-16.3.0-GPL-3.0-or-later-shared-bison
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: GPL-3.0-or-later WITH Bison-exception-2.2
+  profile: GPL-3.0-or-later
+  linkage: shared
+  source: https://github.com/KhronosGroup/glslang/blob/16.3.0/glslang/MachineIndependent/glslang_tab.cpp
+  reason: Generated parser skeleton retains the exception; FFmpeg is not a parser
+    generator.
+- id: glslang-16.3.0-GPL-3.0-or-later-shared-aml
+  package: glslang
+  version: 16.3.0
+  port_revision: 1
+  copyright_sha256: 17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677
+  expression: Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-Khronos-old
+    AND AML-glslang AND (GPL-3.0-or-later WITH Bison-exception-2.2)
+  term: AML-glslang
+  profile: GPL-3.0-or-later
+  linkage: shared
+  source: https://spdx.org/licenses/AML-glslang.html
+  reason: Copyright grant expressly permits use, modification and source/binary redistribution
+    with notices. Patent rights are not granted. Retain upstream notices.
