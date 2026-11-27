@@ -28,6 +28,7 @@ machine. A skipped cross-architecture runtime is not a runtime pass.
 Write an untracked fix_report.md in English. Successful candidate report:
 
     Decision: candidate
+    Title: fix(<target>): <concise concrete English correction>
     Root cause: <concise evidence-based hypothesis>
     Source: <resolved ref/commit and SHA512>
     Failed variants: <job/variant and first causal diagnostic; include log references>
@@ -36,7 +37,7 @@ Write an untracked fix_report.md in English. Successful candidate report:
     Verification: <actual commands and results, patch/feature evidence and checklist conclusions>
     Remaining: complete remote MSVC CI
 
-The worker extracts Root cause (300 characters) and Repair rationale (1200 characters) for the repair manifest and public PR. Keep both on a single line each; do not include credentials, private environment information, or raw logs. The public native validation summary comes from supervisor evidence, not from Agent claims. It does not interpret Decision: candidate as proof. If no authorized repair exists, leave HEAD and tracked files at base_sha, with no candidate commit, and write:
+The worker requires Decision, Title (120 characters), Root cause (300 characters) and Repair rationale (1200 characters). Use one nonempty line per field; do not include credentials, private environment information or raw logs. The public native validation summary comes from the separate Verify Runner, not from Agent claims. It does not interpret Decision: candidate as proof. If no authorized repair exists, leave HEAD and tracked files at base_sha, with no candidate commit, and write:
 
     Decision: no_safe_fix
     Root cause: <observed blocker or insufficient evidence>

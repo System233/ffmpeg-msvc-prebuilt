@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
 from .versions import ROOT, GENERATED_PORTS, config
 from .spec import resolve_features
@@ -662,6 +664,7 @@ def compliance_files(installed_root: Path, job: dict, *,
         "features": sorted(job["features"]),
         "source": _source_provenance(job),
         "ci_commit": os.environ.get("GITHUB_SHA"),
+        "ci_repository": os.environ.get("GITHUB_REPOSITORY"),
         "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "installed_packages": summary,
         "license_policy": POLICY_VERSION,
@@ -687,6 +690,49 @@ def compliance_files(installed_root: Path, job: dict, *,
 
 PUBLIC_COPYRIGHT = "share/ffmpeg/copyright"
 PUBLIC_SPDX = "share/ffmpeg/sbom.spdx.json"
+
+
+def _public_source_url(value: object) -> str | None:
+    """Preserve public native source locations, not private/local/signed URLs."""
+    if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() for c in value) or "\\" in value:
+        return None
+    try:
+        parsed = urlsplit(value.removeprefix("git+"))
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query:
+        return None
+    host = parsed.hostname.rstrip(".").lower()
+    if "." not in host or host.endswith((".local", ".internal", ".localhost")):
+        return None
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return None
+    return value
+
+
+def source_references(native: dict) -> list[str]:
+    """Extract pinned resources from native vcpkg SPDX; these are source pointers, not a source bundle."""
+    result = []
+    for resource in native.get("packages", []):
+        identifier = resource.get("SPDXID", "")
+        if identifier != "SPDXRef-port" and not re.fullmatch(r"SPDXRef-resource-[0-9]+", identifier):
+            continue
+        url = _public_source_url(resource.get("downloadLocation"))
+        if url is None:
+            continue
+        digests = []
+        for row in resource.get("checksums") or []:
+            algorithm, digest = row.get("algorithm"), row.get("checksumValue")
+            size = {"SHA256": 64, "SHA512": 128}.get(algorithm)
+            if size and isinstance(digest, str) and re.fullmatch(r"[0-9a-fA-F]{%d}" % size, digest):
+                digests.append(f"{algorithm}: {digest.lower()}")
+        result.append(("Recipe: " if identifier == "SPDXRef-port" else "Source resource: ") + url
+                      + (" (" + "; ".join(sorted(digests)) + ")" if digests else ""))
+    return list(dict.fromkeys(result))
 
 
 def distribution_evidence(read: Callable[[str], bytes], provenance: dict) -> dict[str, bytes]:
@@ -749,11 +795,20 @@ def distribution_evidence(read: Callable[[str], bytes], provenance: dict) -> dic
                          "licenseDeclared": declared, "licenseConcluded": concluded,
                          "copyrightText": binary.get("copyrightText") or "NOASSERTION",
                          "comment": f"Triplet: {p['triplet']}; scope: {p['scope']}. Installed dependency graph, not a link map."})
+        refs = source_references(native)
         if key == root:
             source = provenance["source"]
-            packages[-1]["sourceInfo"] = f"Upstream: {source['upstream_repository']} @ {source['upstream_ref']}"
-        elif local and local["packages"][0].get("sourceInfo"):
-            packages[-1]["sourceInfo"] = local["packages"][0]["sourceInfo"]
+            refs.insert(0, f"Upstream: {source['upstream_repository']} @ {source['upstream_ref']}")
+            if re.fullmatch(r"[0-9a-fA-F]{128}", source.get("source_sha512", "")):
+                refs.append("Upstream source SHA512: " + source["source_sha512"].lower())
+            repo, commit = provenance.get("ci_repository"), provenance.get("ci_commit")
+            if (isinstance(repo, str) and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
+                    and isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+                refs.append(f"Exact build recipes, patches and instructions: https://github.com/{repo}/tree/{commit}")
+        if local and local["packages"][0].get("sourceInfo"):
+            refs.append(local["packages"][0]["sourceInfo"])
+        if refs:
+            packages[-1]["sourceInfo"] = "\n".join(dict.fromkeys(refs))
         for edge in sorted(p["dependency_keys"]):
             child = tuple(edge.split(":", 1))
             if child not in ids:

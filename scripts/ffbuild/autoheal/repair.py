@@ -121,6 +121,47 @@ def redact(text: str) -> str:
     return text.replace(key, "[redacted]") if key else text
 
 
+def candidate_report(path: Path, target: str) -> dict[str, str]:
+    """Validate only the public report contract, not the semantic checklist."""
+    from ..messages import repair_title
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > 65536:
+        raise ValueError("Missing bounded fix_report.md")
+    report = redact(path.read_text(encoding="utf-8"))
+    result = {}
+    fields = {"Decision": ("decision", 20), "Title": ("subject", 120),
+              "Root cause": ("root_cause_hypothesis", 300), "Repair rationale": ("repair_rationale", 1200)}
+    for label, (key, limit) in fields.items():
+        values = re.findall(r"(?m)^" + re.escape(label) + r":[ \t]*([^\r\n]*)$", report)
+        if len(values) != 1 or not values[0].strip() or len(values[0].strip()) > limit:
+            raise ValueError(f"Report must include one bounded {label} field")
+        result[key] = values[0].strip()
+    if result.pop("decision") != "candidate":
+        raise ValueError("Candidate report must declare Decision: candidate")
+    if repair_title(target, result["subject"]) != result["subject"]:
+        raise ValueError("Report title must be a valid target-specific fix commit subject")
+    return result
+
+
+def write_candidate(output: Path, manifest: dict, patch: bytes, report: dict, yaml: str) -> None:
+    """Write a report based on the validation evidence supplied by its controller."""
+    incident = validate_triage(report, yaml)
+    source = report["source"]
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "repair.patch").write_bytes(patch)
+    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    validation = "\n".join(f"- {line}" for line in native_validation_summary(manifest["validation"]))
+    if origin := manifest.get("verification_origin"):
+        validation = (f"Fresh Windows Verify Runner: run {origin['run_id']}, attempt {origin['run_attempt']}.\n\n" + validation)
+    else:
+        validation = "In-session supervisor results; isolated verification is pending.\n\n" + validation
+    markdown = render_template("repair-report.md", target=incident.yaml, source_run=source.get("url", source["run_id"]),
+                               failed_units="\n".join(f"- {job['triplet']} / {job['variant_id']}" for job in incident.jobs),
+                               hypothesis=manifest["root_cause_hypothesis"], rationale=manifest["repair_rationale"],
+                               changes="\n".join(f"- {path}" for path in manifest["paths"]),
+                               validation=validation)
+    (output / "repair-report.md").write_text(markdown + "\n", encoding="utf-8")
+
+
 def repair(report: dict, yaml: str, output: Path) -> None:
     """Run the Pi session after preflight, then export only verified changes."""
     from . import build as native
@@ -178,32 +219,62 @@ def repair(report: dict, yaml: str, output: Path) -> None:
     for check in evidence["checks"]:
         check["reason"] = redact(check["reason"])
     paths = [path for _, path in changes]
-    agent_report = Path("fix_report.md")
-    hypothesis = "Agent did not provide a root-cause summary"
-    rationale = ""
-    if agent_report.is_file() and not agent_report.is_symlink() and agent_report.stat().st_size <= 65536:
-        assessment = redact(agent_report.read_text(encoding="utf-8", errors="replace"))
-        match = re.search(r"(?im)^\s*[-*]?\s*Root cause:\s*(.+)$", assessment)
-        if match:
-            hypothesis = match.group(1).strip()[:300]
-        match = re.search(r"(?im)^\s*[-*]?\s*Repair rationale:[ \t]*(.+)$", assessment)
-        if match:
-            rationale = match.group(1).strip()[:1200]
-    from ..messages import repair_title
-    subject = repair_title(incident.yaml, _git("show", "-s", "--format=%s", "HEAD"))
+    fields = candidate_report(Path("fix_report.md"), incident.yaml)
+    if fields["subject"] != _git("show", "-s", "--format=%s", "HEAD"):
+        raise ValueError("Report title differs from verified candidate commit")
     manifest = {
         "schema": 2, "yaml": incident.yaml, "signature": incident.signature,
         "run_id": source["run_id"], "run_attempt": source["run_attempt"],
         "base_sha": base_sha, "patch_sha256": hashlib.sha256(patch).hexdigest(),
-        "paths": paths, "root_cause_hypothesis": hypothesis, "repair_rationale": rationale, "subject": subject,
-        "validation": evidence,
+        "paths": paths, **fields, "validation": evidence,
     }
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "repair.patch").write_bytes(patch)
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    markdown = render_template("repair-report.md", target=incident.yaml, source_run=source.get("url", source["run_id"]),
-                               failed_units="\n".join(f"- {job['triplet']} / {job['variant_id']}" for job in incident.jobs),
-                               hypothesis=hypothesis, rationale=rationale or "Not provided.",
-                               changes="\n".join(f"- {path}" for path in paths),
-                               validation="\n".join(f"- {line}" for line in native_validation_summary(evidence)))
-    (output / "repair-report.md").write_text(markdown + "\n", encoding="utf-8")
+    write_candidate(output, manifest, patch, report, yaml)
+
+
+def verify_proposal(report: dict, yaml: str, proposal: Path, output: Path, *, inspect: bool = False) -> bool:
+    """Fresh Runner gate: replay only the patch and regenerate native evidence.
+
+    The input manifest and original validation claims are untrusted. A decline
+    is a no-op. A candidate must build in this separately prepared checkout.
+    """
+    from .audit import candidate_identity
+    from . import build as native
+    binding, manifest, patch = candidate_identity(report, yaml, proposal, require_independent=False)
+    if patch is None:
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        return False
+    if inspect:
+        return True
+    data = incident_context(report, yaml)
+    require_ready(data)
+    plan = native.validate_plan({"checks": [{key: item[key] for key in ("spec", "jobs", "reason")}
+                                               for item in manifest["validation"]["checks"]]}, data)
+    # Replay a private copy of the exact authenticated input bytes, never the
+    # Agent's working directory, generated ports, binaries, or dependency cache.
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="ffbuild-verify-") as tmp:
+        patch_path = Path(tmp) / "candidate.patch"
+        patch_path.write_bytes(patch)
+        _git("apply", "--index", "--check", str(patch_path))
+        _git("apply", "--index", str(patch_path))
+    base = binding["base_sha"]
+    tree = _git("write-tree")
+    paths = check_worktree(yaml, base, Path.cwd())
+    if tree != binding["candidate_tree"] or set(paths) != set(manifest["paths"]):
+        raise ValueError("Proposal tree/scope differs from declared candidate")
+    checks = []
+    for item in plan:
+        result = native.build(item["spec"], clean=True)
+        checks.append(dict(result, jobs=item["jobs"], reason=item["reason"]))
+    if (_git("write-tree") != tree or _git("diff", "--name-only") or
+            _git("rev-parse", "HEAD") != base or
+            set(check_worktree(yaml, base, Path.cwd())) != set(paths)):
+        raise ValueError("Candidate changed during isolated verification")
+    evidence = {"schema": 1, "candidate": manifest["validation"]["candidate"], "tree": tree, "checks": checks}
+    native.validate_evidence(evidence, data)
+    origin = {"kind": "isolated_runner", "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"])}
+    verified = dict(manifest, validation=evidence, verification_origin=origin)
+    write_candidate(output, verified, patch, report, yaml)
+    return True

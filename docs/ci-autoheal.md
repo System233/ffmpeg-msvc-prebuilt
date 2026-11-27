@@ -4,7 +4,7 @@
 
 FFmpeg's normal build remains owned by the existing ffbuild planner, native vcpkg
 ABI scanner, central dependency Seed, and native MSVC build workers. The new
-ffbuild.autoheal Python package **consumes CI evidence**; it reuses native vcpkg ABI and verifies representative FFmpeg builds in the same repair Runner, not the full production matrix.
+ffbuild.autoheal Python package **consumes CI evidence**; it reuses native vcpkg ABI and verifies representative FFmpeg builds in the repair Runner for feedback and in a fresh Windows Verify Runner for delivery, not the full production matrix.
 
 GitHub workflows are maintained as repository code. The autonomous repair
 worker may change only the exact failed version YAML and newly added,
@@ -31,13 +31,14 @@ build script, third-party Port, data branch content, or another version YAML.
    each chosen representative from a clean install root before committing.
    The worker produces repair.patch, manifest.json, and repair-report.md;
    it receives no GitHub write permission or GitHub App token.
-5. An independent read-only Audit job reviews the exact native-verified patch.
+5. Verify starts on a fresh Windows Runner with the same trusted workflow commit, restores dependencies independently, applies only the proposal patch and clean-builds the selected representatives. It emits a new manifest with its own validation evidence and provenance. It has no model API key or GitHub App write credentials. A declined proposal is a no-op.
+6. An independent read-only Audit job reviews only the freshly native-verified patch.
    Only a matching approval receipt permits delivery.
-6. An independent privileged Delivery job verifies the source run identity,
+7. An independent privileged Delivery job verifies the source run identity,
    exact source SHA, target YAML, patch checksum, path additions/changes,
    patch ownership, staged modes, and branch ancestry **again**. Fail closed
    if any material is missing, ambiguous, or out of scope.
-7. The bot pushes without force, creates or updates only its own repair PR,
+8. The bot pushes without force, creates or updates only its own repair PR,
    synchronizes the PR description and comments. Only verified complete
    single-version CI success permits GitHub native squash Auto-merge.
    The repair lifecycle ends at merge. Neither successful CI nor merging
@@ -234,7 +235,7 @@ an OS sandbox.
 Preparation binds the exact failed commit, pinned source and dependency
 contract, generates the Seed key, restores the required architecture caches
 and verifies every external native ABI before Pi starts. Cache restoration also supports the historical runner paths; a legacy hit is moved into the current cache before native ABI validation. Missing cache entries
-may be prepared in preflight; no external dependency may be built during
+may be prepared in preflight; cache-only external dependency installation and the remaining native target plan are checked before execution; no external dependency may be built during
 repair. Incompatible historical tool layouts must be rebuilt first.
 
 The repository-owned skill guides diagnosis, source changes and variant selection.
@@ -254,8 +255,11 @@ run only on compatible Windows hosts. A cross-target runtime skip is explicit.
 
 Supervisor feedback returns to the same session until clean verification
 passes or the budget/environment fails. The supervisor commits the exact
-verified tree; manifest schema 2 binds the patch, candidate commit/tree and
-representative ABI/test evidence. Delivery independently checks those bindings
+proposal tree; a fresh Verify Runner replays the exact patch and replaces the
+original manifest validation with its own clean-build evidence. Only its attempt-scoped
+artifact is eligible for audit and delivery. Manifest schema 2 binds the patch,
+candidate commit/tree, verifier run/attempt and representative ABI/test evidence.
+Delivery independently checks those bindings
 and scope before any write. Normal full-matrix CI is still mandatory for merge.
 
 A separate Ubuntu audit job replays the candidate Git tree without executing
@@ -268,7 +272,7 @@ incident and candidate tree. Missing, rejected, inconclusive, invalid or mismatc
 audit results block GitHub App credentials and delivery. Artifacts are scoped to the workflow attempt; rerun all jobs rather than only failed jobs to regenerate the entire chain. An approved audit is
 not a proof of security; production CI remains mandatory. Audit rejection ends
 the incident without automatic delivery; no candidate code is executed in audit.
-The audit reviews existing build/test evidence, never repeats native builds.
+The audit reviews the fresh Verify Runner build/test evidence, never repeats native builds. Runner separation protects against reuse of Agent-writable local state; candidate code itself is still executed during verification, so this is not a sandbox for malicious native code.
 `audit.json` and the human-readable `audit-report.md` are uploaded together
 for approved, rejected and inconclusive verdicts (7-day artifact retention).
 

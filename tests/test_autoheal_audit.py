@@ -44,7 +44,9 @@ def write_candidate(directory, report, patch=None, candidate="d"*40, tree="e"*40
     manifest = {"schema": 2, "yaml": "8.1.1", "signature": group["signature"],
         "run_id": report["source"]["run_id"], "run_attempt": 1,
         "base_sha": report["source"]["head_sha"], "patch_sha256": hashlib.sha256(patch).hexdigest(),
-        "paths": ["ffmpeg/8.1.1.yaml"], "validation": {"schema": 1, "candidate": candidate, "tree": tree,
+        "paths": ["ffmpeg/8.1.1.yaml"], "subject": "fix(8.1.1): restore declaration",
+        "root_cause_hypothesis": "Missing declaration", "repair_rationale": "Restore declaration without removing features",
+        "verification_origin": {"kind": "isolated_runner", "run_id": 6789, "run_attempt": 2}, "validation": {"schema": 1, "candidate": candidate, "tree": tree,
         "checks": [{"spec":"ffmpeg[all-gpl]:x64-windows", "jobs":[group["jobs"][0]["job_id"]],
                    "reason":"same diagnostic", "abi_hash":ABI, "ffmpeg_build":"passed",
                    "consumer_compile_link":"passed", "binary_inspection":"passed",
@@ -170,6 +172,67 @@ class AuditGate(unittest.TestCase):
         self.assertIn("runtime passed (78 Tester, 2 CLI executions)", details.validation[0])
         self.assertIn(rationale, bodies[0])
         self.assertIn("39 Release + 39 Debug", bodies[0])
+
+    def test_unverified_proposal_and_wrong_workflow_attempt_cannot_authorize_audit(self):
+        path = self.candidate / "manifest.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value.pop("verification_origin")
+        path.write_text(json.dumps(value), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Missing isolated Runner"):
+            audit.candidate_identity(self.report, "8.1.1", self.candidate)
+        audit.candidate_identity(self.report, "8.1.1", self.candidate, require_independent=False)
+        value["verification_origin"] = {"kind": "isolated_runner", "run_id": 1, "run_attempt": 1}
+        path.write_text(json.dumps(value), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"GITHUB_JOB": "audit", "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "2"}):
+            with self.assertRaisesRegex(ValueError, "different workflow attempt"):
+                audit.candidate_identity(self.report, "8.1.1", self.candidate)
+
+    def test_fresh_verifier_replays_exact_tree_and_replaces_agent_evidence(self):
+        from ffbuild.autoheal import repair, build
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp); repo = folder / "repo"; repo.mkdir()
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=repo, text=True, encoding="utf-8").strip()
+            git("init", "-q"); git("config", "user.name", "Test"); git("config", "user.email", "test@example.invalid")
+            git("config", "commit.gpgsign", "false")
+            shutil.copytree(ROOT / "ffmpeg", repo / "ffmpeg")
+            shutil.copytree(ROOT / "patches", repo / "patches")
+            git("add", "."); git("commit", "-qm", "baseline")
+            base = git("rev-parse", "HEAD")
+            with (repo / "ffmpeg/8.1.1.yaml").open("a", encoding="utf-8") as stream:
+                stream.write("\n# verified regression fixture\n")
+            git("add", "."); git("commit", "-qm", "fix(8.1.1): restore declaration")
+            candidate, tree = git("rev-parse", "HEAD"), git("rev-parse", "HEAD^{tree}")
+            patch = subprocess.check_output(["git", "format-patch", "-1", "--stdout", "--binary"], cwd=repo)
+            git("reset", "--hard", base)
+            report = report_for(base); proposal = folder / "proposal"; verified = folder / "verified"
+            manifest = write_candidate(proposal, report, patch, candidate, tree)
+            manifest.pop("verification_origin")
+            (proposal / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            result = dict(manifest["validation"]["checks"][0], abi_hash="9" * 64)
+            old = Path.cwd(); os.chdir(repo)
+            try:
+                with mock.patch.object(repair, "require_ready"), mock.patch.object(build, "build", return_value=result) as worker, \
+                        mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "6789", "GITHUB_RUN_ATTEMPT": "2"}):
+                    self.assertTrue(repair.verify_proposal(report, "8.1.1", proposal, verified, inspect=True))
+                    worker.assert_not_called()
+                    self.assertTrue(repair.verify_proposal(report, "8.1.1", proposal, verified))
+                    worker.assert_called_once_with("ffmpeg[all-gpl]:x64-windows", clean=True)
+                    _, actual, actual_patch = audit.candidate_identity(report, "8.1.1", verified)
+                    self.assertEqual(patch, actual_patch)
+                    self.assertEqual(tree, actual["validation"]["tree"])
+                    self.assertEqual("9" * 64, actual["validation"]["checks"][0]["abi_hash"])
+                    self.assertEqual("isolated_runner", actual["verification_origin"]["kind"])
+                    self.assertEqual(base, git("rev-parse", "HEAD"))
+                    self.assertEqual(tree, git("write-tree"))
+                    git("reset", "--hard", base)
+                    worker.reset_mock(); worker.side_effect = build.BuildFailure("fresh build failed")
+                    rejected = folder / "rejected"
+                    with self.assertRaisesRegex(build.BuildFailure, "fresh build failed"):
+                        repair.verify_proposal(report, "8.1.1", proposal, rejected)
+                    self.assertFalse((rejected / "manifest.json").exists())
+            finally:
+                os.chdir(old)
 
     def test_modified_patch_rejected(self):
         write_verdict(self.output,self.binding,APPROVE)
@@ -315,6 +378,16 @@ class WorkflowAudit(unittest.TestCase):
         import yaml
         jobs=yaml.safe_load((ROOT/".github/workflows/auto-heal.yml").read_text(encoding="utf-8"))["jobs"]
         self.assertEqual("ubuntu-latest",jobs["audit"]["runs-on"])
+        self.assertEqual("windows-2022", jobs["verify"]["runs-on"])
+        self.assertIn("verify", jobs["audit"]["needs"])
+        self.assertIn("needs.verify.result == 'success'", jobs["audit"]["if"])
+        self.assertIn("needs.verify.result == 'success'", jobs["deliver"]["if"])
+        self.assertNotIn("OPENAI_API_KEY", json.dumps(jobs["verify"]))
+        self.assertNotIn("create-github-app-token", json.dumps(jobs["verify"]))
+        repair_upload = next(s for s in jobs["repair"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+        verify_upload = next(s for s in jobs["verify"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+        self.assertTrue(repair_upload["with"]["name"].startswith("autoheal-proposal-"))
+        self.assertTrue(verify_upload["with"]["name"].startswith("autoheal-patch-"))
         self.assertEqual("read",jobs["audit"]["permissions"]["contents"])
         self.assertIn("audit",jobs["deliver"]["needs"])
         self.assertIn("needs.audit.result == 'success'",jobs["deliver"]["if"])

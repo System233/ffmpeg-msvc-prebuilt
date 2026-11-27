@@ -365,7 +365,7 @@ jobs:
           FFBUILD_JOB: ${{ toJSON(matrix) }}
           VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
         run: |
-          python -m ffbuild.ci verify-cache --job-env FFBUILD_JOB "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+          python -m ffbuild.ci restore-dependencies --job-env FFBUILD_JOB "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and test via native vcpkg
         env:
@@ -381,7 +381,7 @@ jobs:
           # still names the native vcpkg package "ffmpeg".
           $versionPort = "_work/ffbuild/generated-ports/ffmpeg-$($job.yaml.Replace('.', '-'))"
           python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" `
-            "--overlay-ports=$versionPort" "--overlay-ports=ports" --recurse
+            "--overlay-ports=$versionPort" "--overlay-ports=ports"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify no external dependencies were compiled by Worker
         shell: pwsh

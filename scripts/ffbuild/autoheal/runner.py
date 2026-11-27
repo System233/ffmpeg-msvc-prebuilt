@@ -136,6 +136,8 @@ def supervise(*, budget: float) -> int:
                 raise ValueError("Missing bounded validation-plan.json")
             raw = json.loads(plan_file.read_text(encoding="utf-8"))
             plan = native.validate_plan(raw, data)
+            from .repair import candidate_report
+            fields = candidate_report(Path("fix_report.md"), target)
             # Keep the candidate available to the Agent on failure. The final commit
             # is made only after independently rebuilding its exact staged tree.
             if git("rev-parse", "HEAD") != base:
@@ -156,15 +158,11 @@ def supervise(*, budget: float) -> int:
             if (git("write-tree") != tree or git("diff", "--name-only")
                     or set(check_worktree(target, base, root)) != set(paths)):
                 raise ValueError("Candidate changed during independent verification")
-            report = Path("fix_report.md")
-            if not report.is_file() or report.is_symlink() or report.stat().st_size > 65536:
-                raise ValueError("Missing bounded fix_report.md")
-            summary = report.read_text(encoding="utf-8")
-            if not re.search(r"(?m)^Root cause:\s*\S", summary):
-                raise ValueError("Report must include Root cause")
+            if candidate_report(Path("fix_report.md"), target) != fields:
+                raise ValueError("Repair report changed during verification")
             native.validate_evidence({"schema": 1, "candidate": base, "tree": tree, "checks": results}, data)
             git("-c", "user.name=ffmpeg-dev[bot]", "-c", "user.email=ffmpeg-dev@users.noreply.github.com",
-                "-c", "commit.gpgsign=false", "commit", "-m", f"fix({target}): repair native FFmpeg build")
+                "-c", "commit.gpgsign=false", "commit", "-m", fields["subject"])
             candidate = git("rev-parse", "HEAD")
             evidence = {"schema": 1, "candidate": candidate, "tree": tree, "checks": results}
             (directory / "verification.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")

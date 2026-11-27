@@ -5,6 +5,8 @@ import json
 import hashlib
 import tempfile
 import unittest
+import os
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -84,6 +86,26 @@ class InstalledLicenseEvidenceTests(unittest.TestCase):
             manifest = json.loads(files["metadata/BUILD_PROVENANCE.json"])
             self.assertTrue(manifest["not_a_link_map"])
             self.assertEqual("c" * 64, manifest["abi_hash"])
+
+    def test_public_sbom_preserves_exact_source_pointers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); copyright = root / "copyright"
+            copyright.write_text("GNU LESSER GENERAL PUBLIC LICENSE\nVersion 3\n", encoding="utf-8")
+            job = fake_job(); installed, source = make_compliance_fixture(root, job, copyright)
+            native_file = installed / job["triplet"] / "share/zlib/vcpkg.spdx.json"
+            native = json.loads(native_file.read_text(encoding="utf-8"))
+            native["packages"][-1].update(downloadLocation="https://example.org/zlib.tar.gz",
+                                          checksums=[{"algorithm": "SHA512", "checksumValue": "a" * 128}])
+            native["packages"].append({"SPDXID": "SPDXRef-resource-1", "downloadLocation": "https://example.org/private?token=secret"})
+            native_file.write_text(json.dumps(native), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "test/repo", "GITHUB_SHA": "b" * 40}):
+                public, raw, _ = compliance_files(installed, job, ffmpeg_copyright=copyright, source_tree=source)
+            sbom = json.loads(public[PUBLIC_SPDX]); packages = {p["name"]: p for p in sbom["packages"]}
+            self.assertIn("https://github.com/test/repo/tree/" + "b" * 40, packages["ffmpeg"]["sourceInfo"])
+            self.assertIn("https://example.org/zlib.tar.gz", packages["zlib"]["sourceInfo"])
+            self.assertIn("SHA512: " + "a" * 128, packages["zlib"]["sourceInfo"])
+            self.assertNotIn(b"token=secret", public[PUBLIC_SPDX])
+            self.assertEqual(public, distribution_evidence(raw.__getitem__, json.loads(raw["metadata/BUILD_PROVENANCE.json"])))
 
     def test_missing_copyright_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:

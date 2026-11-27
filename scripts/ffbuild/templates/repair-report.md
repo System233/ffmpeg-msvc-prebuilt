@@ -18,7 +18,7 @@ $rationale
 
 $changes
 
-## Independent in-runner validation
+## Native validation
 
 $validation
 

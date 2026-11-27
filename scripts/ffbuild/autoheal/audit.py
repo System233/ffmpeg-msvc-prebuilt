@@ -56,7 +56,7 @@ def bounded(path: Path, limit: int) -> bytes:
     return data
 
 
-def candidate_identity(report: dict, yaml: str, output: Path) -> tuple[dict, dict, bytes | None]:
+def candidate_identity(report: dict, yaml: str, output: Path, *, require_independent: bool = True) -> tuple[dict, dict, bytes | None]:
     """Use original triage and immutable artifact bytes, never model-supplied identity."""
     incident = validate_triage(report, yaml)
     if not (output / "manifest.json").is_file():
@@ -83,6 +83,26 @@ def candidate_identity(report: dict, yaml: str, output: Path) -> tuple[dict, dic
     digest = hashlib.sha256(patch).hexdigest()
     if manifest.get("schema") != 2 or manifest.get("patch_sha256") != digest:
         raise ValueError("Invalid candidate patch identity")
+    from ..messages import repair_title
+    subject = manifest.get("subject")
+    if not isinstance(subject, str) or repair_title(yaml, subject) != subject:
+        raise ValueError("Invalid candidate repair title")
+    for key, limit in (("root_cause_hypothesis", 300), ("repair_rationale", 1200)):
+        value = manifest.get(key)
+        if not isinstance(value, str) or not value.strip() or len(value) > limit or any(c in value for c in "\r\n"):
+            raise ValueError("Missing or invalid candidate report field: " + key)
+    if require_independent:
+        origin = manifest.get("verification_origin")
+        if (not isinstance(origin, dict) or set(origin) != {"kind", "run_id", "run_attempt"}
+                or origin["kind"] != "isolated_runner" or any(type(origin[k]) is not int or origin[k] < 1
+                                                               for k in ("run_id", "run_attempt"))):
+            raise ValueError("Missing isolated Runner verification provenance")
+        # The workflow downloads only the verifier's attempt-scoped artifact.
+        # Also reject any receipt carrying a different run/attempt identity.
+        if os.environ.get("GITHUB_JOB") in ("audit", "deliver"):
+            if (origin["run_id"] != int(os.environ["GITHUB_RUN_ID"]) or
+                    origin["run_attempt"] != int(os.environ["GITHUB_RUN_ATTEMPT"])):
+                raise ValueError("Isolated verification belongs to a different workflow attempt")
     evidence = manifest.get("validation")
     try:
         data = incident_context(report, yaml)
@@ -364,7 +384,8 @@ def audit(report: dict, yaml: str, candidate: Path, output: Path, *, root: Path 
                 {"job_id": j["job_id"], "diagnostic": j.get("diagnostic"), "build_plan": j.get("build_plan")}
                 for j in incident.jobs], "native_validation": manifest["validation"],
                 "root_cause_hypothesis": manifest.get("root_cause_hypothesis"),
-                "repair_rationale": manifest.get("repair_rationale", ""),
+                "repair_rationale": manifest["repair_rationale"],
+                "verification_origin": manifest["verification_origin"],
                 "baseline_config": original, "candidate_config": modified,
                 "patch": patch.decode("utf-8")}, ensure_ascii=False)
             if len(prompt.encode("utf-8")) > 1024 * 1024:

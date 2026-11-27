@@ -19,6 +19,9 @@ def main(argv: list[str] | None = None) -> None:
     cache = command.add_parser("verify-cache")
     cache.add_argument("--job-env", required=True)
     cache.add_argument("--cache-dir", required=True, type=Path)
+    restore = command.add_parser("restore-dependencies")
+    restore.add_argument("--job-env", required=True)
+    restore.add_argument("--cache-dir", required=True, type=Path)
     audit = command.add_parser("audit-worker")
     audit.add_argument("--job-env", required=True)
     audit.add_argument("--buildtrees", required=True, type=Path)
@@ -35,6 +38,15 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "verify-cache":
         from .cache_guard import verify_from_environment
         verify_from_environment(job_env=args.job_env, cache_dir=args.cache_dir)
+    elif args.command == "restore-dependencies":
+        from .cache_guard import load_job, restore_dependencies
+        from .port import ffmpeg_port_name
+        from .versions import GENERATED_PORTS
+        job = load_job(args.job_env)
+        root = Path(os.environ["VCPKG_ROOT"])
+        env = dict(os.environ, VCPKG_BINARY_SOURCES=f"clear;files,{args.cache_dir.resolve()},read")
+        restore_dependencies(job, args.cache_dir, port=GENERATED_PORTS / ffmpeg_port_name(job["yaml"]),
+                             installed=root / "installed", paths=[f"--x-install-root={root / 'installed'}"], env=env)
     elif args.command == "audit-worker":
         from .cache_guard import load_job, verify_no_dependency_builds
         verify_no_dependency_builds(load_job(args.job_env), args.buildtrees)

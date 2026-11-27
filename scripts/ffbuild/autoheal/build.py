@@ -12,7 +12,8 @@ import subprocess
 from pathlib import Path
 
 from ffvcpkg import command as vcpkg_command
-from ..cache_guard import verify_dependency_cache, verify_no_dependency_builds
+from ..cache_guard import (verify_dependency_cache, verify_no_dependency_builds, restore_dependencies,
+                           installed_abis, require_target_plan)
 from ..native_abi import native_abi_query
 from ..package import _layout, _read_control, _verify_native_package_abi
 from ..targets import Target, compile_target, parse_package
@@ -258,9 +259,13 @@ def _run(args: list[str], *, env: dict, log: Path, cwd: Path = ROOT, timeout: fl
         raise BuildFailure(f"Command failed ({code}); log: {log}")
 
 
+_PRIVATE_RUNNER_ENV = frozenset({"OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"})
+
+
 def build_env(triplet: str) -> dict:
-    env = {key: value for key, value in os.environ.items()
-           if key.upper() not in {"OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN"}}
+    env = {key: value for key, value in os.environ.items() if key.upper() not in _PRIVATE_RUNNER_ENV}
     env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache_dir(triplet)},read"
     return env
 
@@ -422,7 +427,7 @@ def verify_outputs(job: dict, abi: str) -> dict:
         from ..sdk_validation import _runtime_env
         def isolated(bin_dir: Path) -> dict:
             return {k: v for k, v in _runtime_env(bin_dir).items()
-                    if k.upper() not in {"OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN"}}
+                    if k.upper() not in _PRIVATE_RUNNER_ENV}
         smoke = runtime_dir() / "smoke"
         _remove(smoke)
         smoke.mkdir(parents=True)
@@ -478,10 +483,18 @@ def build(value: str, *, clean: bool = False) -> dict:
         _remove(packages / f"{name}_{triplet}")
     state.write_text(current, encoding="utf-8")
     log = root / "build.log"
+    try:
+        restored = restore_dependencies(job, cache_dir(triplet), port=port, installed=installed,
+                                        paths=_native_paths(), env=env,
+                                        run=lambda args: _run(args, env=env, log=root / "restore-dependencies.log"))
+        if restored != abis:
+            raise RuntimeError("Native dependency graph changed during restore")
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+        raise EnvironmentFailure(str(exc)) from exc
     error = None
     try:
         _run(vcpkg_command(["install", job["package"], "ffmpeg-tester", f"--triplet={triplet}",
-                            f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}", "--recurse",
+                            f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}",
                             *_native_paths()]), env=env, log=log)
     except BuildFailure as exc:
         error = exc
@@ -506,23 +519,31 @@ def test(value: str, *, rebuild_tester: bool = True) -> dict:
     job = job_for(value, data)
     port = prepare_port(data)
     triplet = job["triplet"]
-    abi = cached_abis(job, port)[f"ffmpeg_{triplet}"]
+    abis = cached_abis(job, port)
+    abi = abis[f"ffmpeg_{triplet}"]
     current = spec_string(job["package"], triplet)
     root = runtime_dir()
     state = root / "active-spec.txt"
     if not state.is_file() or state.read_text(encoding="utf-8") != current:
         raise BuildFailure("Build the selected variant first")
-    _, buildtrees, packages = _layout_paths()
+    installed, buildtrees, packages = _layout_paths()
     _verify_native_package_abi(packages / f"ffmpeg_{triplet}", "ffmpeg", abi)
     if rebuild_tester:
         env = build_env(triplet)
         _remove_targets(triplet, env, ("ffmpeg-tester",))
         _remove(buildtrees / "ffmpeg-tester")
         _remove(packages / f"ffmpeg-tester_{triplet}")
+        tester = f"ffmpeg-tester_{triplet}"
+        if installed_abis(installed) != {key: value for key, value in abis.items() if key != tester}:
+            raise EnvironmentFailure("Installed dependency/FFmpeg ABI graph differs before Tester rebuild")
+        try:
+            require_target_plan(job, port=port, paths=_native_paths(), env=env, expected={tester})
+        except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+            raise EnvironmentFailure(str(exc)) from exc
         try:
             _run(vcpkg_command(["install", job["package"], "ffmpeg-tester", f"--triplet={triplet}",
                                 f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}",
-                                "--recurse", *_native_paths()]), env=env, log=root / "tester.log")
+                                *_native_paths()]), env=env, log=root / "tester.log")
         finally:
             try:
                 verify_no_dependency_builds(job, buildtrees)

@@ -43,10 +43,39 @@ def read_nuget_abis(path: Path) -> dict[str, str]:
     return result
 
 
+_PLAN_SPEC = re.compile(r"^\s*(?:\*\s+)?([a-z0-9][a-z0-9-]*)(?:\[([a-z0-9,-]+)\])?:([a-z0-9-]+)@[^\s]+(?:\s.*)?$")
+
+
+def planned_specs(transcript: str) -> dict[str, str]:
+    """Read the pinned native classic install plan, not dependency metadata guesses."""
+    result = {}
+    active = False
+    for line in transcript.splitlines():
+        if line == "The following packages will be built and installed:":
+            active = True
+            continue
+        if active and not line.startswith((" ", "\t")):
+            active = False
+        if not active:
+            continue
+        match = _PLAN_SPEC.fullmatch(line)
+        if not match:
+            raise ValueError("Unrecognized native vcpkg installation plan row")
+        name, features, triplet = match.groups()
+        roots = sorted({"core", *((features or "").split(",") if features else [])})
+        key = f"{name}_{triplet}"
+        if key in result:
+            raise ValueError("Duplicate native vcpkg installation plan row")
+        result[key] = f"{name}[{','.join(roots)}]:{triplet}"
+    if not result:
+        raise ValueError("Missing native vcpkg installation plan")
+    return result
+
+
 def native_abi_query(packages: list[str], triplet: str, *,
                      port_overlay: Path,
                      binary: Path | None = None,
-                     env: dict[str, str] | None = None) -> dict[str, str]:
+                     env: dict[str, str] | None = None, specs: dict[str, str] | None = None) -> dict[str, str]:
     """Scan one dependency graph using one explicitly selected FFmpeg Port.
 
     Never supply the generated-ports parent: multiple version directories all
@@ -79,7 +108,13 @@ def native_abi_query(packages: list[str], triplet: str, *,
                                f"{(finished.stderr + finished.stdout)[-4500:]}")
         if not output.is_file():
             raise RuntimeError("Pinned vcpkg did not emit NuGet ABI information")
-        return read_nuget_abis(output)
+        abis = read_nuget_abis(output)
+        if specs is not None:
+            selected = planned_specs(finished.stdout)
+            if set(selected) != set(abis):
+                raise ValueError("Native vcpkg plan and ABI graph differ")
+            specs.update(selected)
+        return abis
 
 
 def build_requests(*, version: str = "", history: bool = False,

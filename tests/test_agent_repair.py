@@ -86,7 +86,7 @@ class Supervisor(unittest.TestCase):
 
     def candidate(self, *args, **kwargs):
         self.target.write_text("fixed\n")
-        Path("fix_report.md").write_text("Root cause: compile error\n")
+        Path("fix_report.md").write_text("Decision: candidate\nTitle: fix(8.1.1): preserve Windows macro\nRoot cause: compile error\nRepair rationale: restore the missing macro\n")
         Path("validation-plan.json").write_text(json.dumps({"checks": [CHECK]}))
         return 0
 
@@ -102,6 +102,21 @@ class Supervisor(unittest.TestCase):
         self.assertEqual(runner.git("rev-parse", "HEAD^{tree}"), evidence["tree"])
         self.assertEqual(runner.git("rev-parse", "HEAD"), evidence["candidate"])
         self.assertEqual("1", runner.git("rev-list", "--count", self.base+"..HEAD"))
+        self.assertEqual("fix(8.1.1): preserve Windows macro", runner.git("show", "-s", "--format=%s", "HEAD"))
+
+    def test_report_missing_rationale_never_builds_or_commits(self):
+        def incomplete(*args, **kwargs):
+            self.candidate()
+            Path("fix_report.md").write_text("Decision: candidate\nTitle: fix(8.1.1): restore macro\nRoot cause: compile error\n")
+            return 0
+        with mock.patch.object(runner, "run_pi", side_effect=[0, 1, 1, 1]) as pi, mock.patch.object(native, "build") as worker:
+            def first(*args, **kwargs):
+                return incomplete() if pi.call_count == 1 else 1
+            pi.side_effect = first
+            self.assertEqual(6, runner.supervise(budget=30))
+        worker.assert_not_called()
+        self.assertEqual(self.base, runner.git("rev-parse", "HEAD"))
+        self.assertFalse((self.directory / "verification.json").exists())
 
     def test_failed_build_resumes_same_session(self):
         with mock.patch.object(runner, "run_pi", side_effect=self.candidate) as pi, mock.patch.object(native, "build", side_effect=[native.BuildFailure("compile"), RESULT]):

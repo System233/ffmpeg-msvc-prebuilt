@@ -160,10 +160,12 @@ CI's work order is:
    writes on a space-constrained Windows Runner. **Before building, the Worker
    queries vcpkg's native ABI graph including the FFmpeg Consumer Tester and
    requires a nonempty files-provider ZIP for every third-party ABI**; missing
-   dependency packages are fatal rather than locally compiled. **After building,
-   the Worker checks buildtree logs**, failing if any third-party Port was
-   compiled despite the preflight. Only the selected FFmpeg Port and its Tester
-   may build in the Worker.
+   dependency packages are fatal rather than locally compiled. Before the target
+   install, the Worker restores exact native external feature specifications
+   using `--only-binarycaching`, compares installed ABIs and verifies the
+   remaining native plan contains only FFmpeg and Tester. The target install
+   does not allow recursive replacement. **After building, the Worker checks
+   buildtree logs** as defense in depth. Only FFmpeg and Tester may build.
 
 The cache namespace is scoped by pinned vcpkg version, Triplet and the
 generated Seed plus authored Port and Triplet inputs. Old `ffbuild-seed`,
@@ -409,3 +411,9 @@ names and hashes remain in GitHub asset metadata and the Data catalog.
   Every downloaded archive still passes the normal publisher checks.
 - Same-day R2 through R99 are compared numerically throughout the catalog,
   reuse selection, and snapshot retention.
+
+Public SPDX source information includes the pinned FFmpeg upstream identity and
+checksum, CI recipe commit when available, and public dependency resource URLs
+and checksums from native vcpkg SPDX. These durable pointers improve source
+traceability without adding new ZIP members. They are not a corresponding
+source delivery mechanism or certification of LGPL relinking obligations.

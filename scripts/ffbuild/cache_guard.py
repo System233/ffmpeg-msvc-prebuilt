@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
-from .native_abi import native_abi_query
+from .native_abi import native_abi_query, planned_specs
+from ffvcpkg import command as vcpkg_command
 from .port import ffmpeg_port_name
-from .versions import GENERATED_PORTS
+from .versions import GENERATED_PORTS, ROOT
 
 
 def verify_dependency_cache(job: dict, cache_dir: Path, *, abi_map: dict[str, str] | None = None) -> int:
@@ -97,3 +99,57 @@ def load_job(job_env: str) -> dict:
 
 def verify_from_environment(*, job_env: str, cache_dir: Path) -> int:
     return verify_dependency_cache(load_job(job_env), cache_dir)
+
+
+def installed_abis(installed: Path) -> dict[str, str]:
+    from .compliance import installed_status
+    if not (installed / "vcpkg" / "status").is_file():
+        return {}
+    return {f"{name}_{arch}": value.abi for (name, arch), value in installed_status(installed).items()}
+
+
+def require_target_plan(job: dict, *, port: Path, paths: list[str], env: dict,
+                        expected: set[str]) -> None:
+    """Require that native vcpkg plans only the explicitly allowed target actions."""
+    args = ["install", job["package"], job["tester_port"], f"--triplet={job['triplet']}",
+            f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}", *paths,
+            "--no-print-usage", "--dry-run"]
+    result = subprocess.run(vcpkg_command(args), cwd=ROOT, env=env, capture_output=True, text=True, check=True)
+    if (any(line.startswith(("The following packages will be removed", "The following packages will be rebuilt"))
+            for line in result.stdout.splitlines()) or set(planned_specs(result.stdout)) != expected):
+        raise RuntimeError("Native target plan would install or rebuild an external dependency")
+
+
+def restore_dependencies(job: dict, cache: Path, *, port: Path, installed: Path,
+                         paths: list[str], env: dict, run=None) -> dict[str, str]:
+    """Install exactly the external native feature graph, cache-only, before any target build.
+
+    A failed binary restore cannot invoke the dependency's build. Then check
+    actual installed ABIs and the remaining native install plan; never allow
+    vcpkg to silently rebuild or replace an external package in the target run.
+    """
+    specs: dict[str, str] = {}
+    triplet = job["triplet"]
+    packages = [job["package"], job["tester_port"]]
+    abis = native_abi_query(packages, triplet, port_overlay=port, env=env, specs=specs)
+    verify_dependency_cache(job, cache, abi_map=abis)
+    targets = {f"{job['port']}_{triplet}", f"{job['tester_port']}_{triplet}"}
+    if job.get("abi_hash") and abis[f"{job['port']}_{triplet}"] != job["abi_hash"]:
+        raise RuntimeError("Native target ABI differs from the Build Plan")
+    external = {key: abi for key, abi in abis.items() if key not in targets}
+    options = [f"--triplet={triplet}", f"--overlay-ports={port}",
+               f"--overlay-ports={ROOT / 'ports'}", *paths, "--no-print-usage"]
+    def invoke(args):
+        command = vcpkg_command(args)
+        if run is not None:
+            run(command)
+        else:
+            subprocess.run(command, cwd=ROOT, env=env, check=True)
+    if installed_abis(installed) != external:
+        invoke(["install", *(specs[key] for key in sorted(external)), *options,
+                "--only-binarycaching", "--recurse"])
+    if installed_abis(installed) != external:
+        raise RuntimeError("Restored dependencies differ from the exact native ABI graph")
+    # In the real install root only target and Tester may remain to be built.
+    require_target_plan(job, port=port, paths=paths, env=env, expected=targets)
+    return abis
