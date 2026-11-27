@@ -29,6 +29,30 @@ def record(version="9.1", when="2026-11-25", arch="x64", channel="release", comm
 
 
 class CatalogTests(unittest.TestCase):
+    def test_asset_urls_are_required_and_excluded_from_build_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            row = record()
+            _, _, identity = catalog.release_from_records([row])
+            file = row["assets"]["binary"]["file"]
+            url = "https://downloads.example.org/custom/" + file
+            path = catalog.register_release(root, [row], urls={file: url})
+            shard = catalog.load_shard(root, "releases", "9.1")
+            release = shard["releases"][0]
+            self.assertEqual(identity, catalog.without_download_urls(release))
+            self.assertEqual(url, next(catalog.release_assets(release))["url"])
+            self.assertEqual(path, catalog.register_release(root, [row], urls={file: url}))
+            for invalid in ("javascript:alert(1)", "http://example.org/a.zip", "https://user@example.org/a.zip"):
+                with self.assertRaisesRegex(ValueError, "download URL"):
+                    catalog.with_download_urls(identity, {file: invalid})
+            with self.assertRaisesRegex(ValueError, "URL set"):
+                catalog.with_download_urls(identity, {})
+            with self.assertRaisesRegex(ValueError, "download URLs differ"):
+                catalog.register_release(root, [row], urls={file: "https://example.org/other.zip"})
+            catalog.write_json(path, dict(shard, releases=[identity]))
+            with self.assertRaisesRegex(ValueError, "asset fields"):
+                catalog.load_shard(root, "releases", "9.1")
+
     def test_lts_metadata_and_refresh(self):
         from ffbuild.identity import is_lts
         with tempfile.TemporaryDirectory() as tmp:

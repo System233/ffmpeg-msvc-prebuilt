@@ -81,6 +81,15 @@ def _release_asset_list(release_id: int) -> dict[str, dict]:
     raise ValueError("GitHub Release asset pagination limit exceeded")
 
 
+def _download_urls(assets: dict[str, dict], expected: set[str]) -> dict[str, str]:
+    if set(assets) != expected:
+        raise ValueError("Download URL asset set differs from verified release")
+    urls = {name: info.get("browser_download_url") for name, info in assets.items()}
+    for url in urls.values():
+        catalog.validate_asset_url(url)
+    return urls
+
+
 def _confirm_asset(tag: str, file: Path, existing: dict) -> None:
     """Never trust an existing same-name release archive without equality."""
     if file.stat().st_size != existing.get("size"):
@@ -102,7 +111,7 @@ def _confirm_asset(tag: str, file: Path, existing: dict) -> None:
 
 def _release_assets(tag: str, files: list[Path], *, upstream_version: str,
                     snapshot: bool = False, strict_batch: bool = False,
-                    records: list[dict] | None = None) -> None:
+                    records: list[dict] | None = None) -> dict[str, str] | None:
     """Idempotent incremental publication with remote content verification."""
     flags = ["--prerelease", "--latest=false"] if snapshot else []
     if not files:
@@ -149,6 +158,16 @@ def _release_assets(tag: str, files: list[Path], *, upstream_version: str,
         _run("gh", "release", "edit", tag, "--draft=false", *flags)
     elif snapshot:
         _run("gh", "release", "edit", tag, *flags)
+    if strict_batch:
+        # Read the public asset URLs after the final tag and draft state are settled.
+        public = _release_api(tag)
+        if public is None or public.get("draft") is not False or public.get("tag_name") != tag:
+            raise ValueError("Release is not public after upload")
+        final = _release_asset_list(public["id"])
+        urls = _download_urls(final, {file.name for file in files})
+        for file in files:
+            _confirm_asset(tag, file, final[file.name])
+        return urls
 
 
 def _push_data(checkout: Path) -> None:
@@ -562,17 +581,20 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
                 write_publication_tag(tag, commit, batch, release_record=batch_record)
             groups = {tag: group}
         # Never record success before GitHub accepted all release assets.
+        urls_by_tag = {}
         for tag, group in sorted(groups.items()):
             paths = []
             for record in group:
                 directory = reused_dir if any(record is target for _, target in reused) else artifacts_dir
                 paths.extend(directory / asset["file"] for asset in record["assets"].values())
             first = group[0]
-            _release_assets(tag, sorted(paths), upstream_version=first["version"],
+            urls_by_tag[tag] = _release_assets(tag, sorted(paths), upstream_version=first["version"],
                             snapshot=first.get("channel") == "master" or "-g" in str(first.get("ffmpeg_ref", "")),
                             strict_batch=True, records=group)
-        for group in groups.values():
-            catalog.register_release(data_dir, group)
+        for tag, group in groups.items():
+            if not isinstance(urls_by_tag[tag], dict):
+                raise ValueError("Missing verified release download URLs")
+            catalog.register_release(data_dir, group, urls=urls_by_tag[tag])
     _push_data(data_dir)
     return sorted(groups)
 
@@ -584,7 +606,7 @@ def recover_index(tag: str, data_dir: Path) -> None:
     if os.environ.get("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Index recovery is restricted to main")
     if not (data_dir / ".git").exists() or not (data_dir / "index.json").is_file():
-        raise ValueError("Recovery requires an authenticated v2 Data checkout")
+        raise ValueError("Recovery requires an authenticated Data checkout")
     ref = f"refs/tags/{tag}"
     git("fetch", "--no-tags", "origin", f"{ref}:{ref}")
     annotation = json.loads(git("for-each-ref", "--format=%(contents)", ref))
@@ -640,5 +662,5 @@ def recover_index(tag: str, data_dir: Path) -> None:
                 digest = "sha256:" + _digest(downloaded)
         if digest != a["digest"]:
             raise ValueError("Recovery asset digest mismatch")
-    catalog.register_release(data_dir, rows)
+    catalog.register_release(data_dir, rows, urls=_download_urls(found, set(expected)))
     _push_data(data_dir)

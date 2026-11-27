@@ -8,7 +8,7 @@ import argparse
 import re
 import yaml
 
-from .catalog import SCHEMA, TAG, _date, _slot, _variant, shard_path, write_json, load_shard
+from .catalog import SCHEMA, TAG, _date, _slot, _variant, shard_path, write_json, load_shard, with_download_urls, release_assets, github_asset_url
 from .identity import ASSET_KINDS, is_lts, release_order
 
 def migration_plan(source: Path) -> tuple[dict, dict, list[Path]]:
@@ -67,6 +67,8 @@ def migration_plan(source: Path) -> tuple[dict, dict, list[Path]]:
             if value != project(embedded[slot]):
                 raise ValueError(f"Legacy asset copies differ: {tag}/{slot}")
             release["variants"][slot] = value
+        release = with_download_urls(release, {a["file"]: github_asset_url(tag, a["file"])
+                                              for a in release_assets(release)})
         identity = (kind, key)
         if identity not in shards:
             shards[identity] = {("version" if kind == "releases" else "year"): key,

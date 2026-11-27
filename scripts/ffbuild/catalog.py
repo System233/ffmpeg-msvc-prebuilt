@@ -7,6 +7,8 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from copy import deepcopy
+from urllib.parse import quote, urlsplit
 
 
 from .identity import archive_name, date_suffix, record_release_tag, variant_name, release_order, ASSET_KINDS, expected_asset_kinds, is_lts, PACKAGE_FORMAT_VERSION
@@ -133,6 +135,48 @@ def _asset(value: dict) -> dict:
     return {"file": name, "size": size, "sha256": digest[7:]}
 
 
+def validate_asset_url(url: str) -> None:
+    if (not isinstance(url, str) or not re.fullmatch(r"https://[^/\s?#@]+/[^\s#]+", url)):
+        raise ValueError("Invalid asset download URL")
+    parsed = urlsplit(url)
+    if not parsed.hostname or parsed.username or parsed.password or "\\" in url:
+        raise ValueError("Invalid asset download URL")
+
+
+def github_asset_url(tag: str, file: str, *, repository: str = "System233/ffmpeg-msvc-prebuilt") -> str:
+    """Canonical historical URL, also used for offline catalog generation."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Invalid download repository")
+    return f"https://github.com/{repository}/releases/download/{quote(tag, safe='')}/{quote(file, safe='')}"
+
+
+def release_assets(release: dict):
+    for variant in release["variants"].values():
+        for kind in ASSET_KINDS:
+            if kind in variant:
+                yield variant[kind]
+
+
+def with_download_urls(release: dict, urls: dict[str, str]) -> dict:
+    """Attach verified publication locations without changing build identity."""
+    result = deepcopy(release)
+    assets = list(release_assets(result))
+    if set(urls) != {a["file"] for a in assets}:
+        raise ValueError("Download URL set differs from release assets")
+    for asset in assets:
+        url = urls[asset["file"]]
+        validate_asset_url(url)
+        asset["url"] = url
+    return result
+
+
+def without_download_urls(release: dict) -> dict:
+    result = deepcopy(release)
+    for asset in release_assets(result):
+        asset.pop("url", None)
+    return result
+
+
 def _variant(record: dict, release_date: str, *, native: bool) -> dict:
     result = {}
     if native:
@@ -253,8 +297,9 @@ def load_shard(root: Path, kind: str, key: str | int) -> dict:
             if linkage == "static" and kinds != {"binary"}:
                 raise ValueError("Static variant has unexpected add-on")
             for asset in (v[k] for k in ASSET_KINDS if k in v):
-                if set(asset) != {"file", "size", "sha256"}:
+                if set(asset) != {"file", "size", "sha256", "url"}:
                     raise ValueError("Invalid catalog asset fields")
+                validate_asset_url(asset["url"])
                 _asset({"file": asset["file"], "size": asset["size"], "digest": "sha256:" + asset["sha256"]})
     return result
 
@@ -294,13 +339,19 @@ def preflight(root: Path, records: list[dict], *, require_complete: bool = True)
         raise ValueError("Catalog manifest references missing shard")
     shard = load_shard(root, kind, key)
     old = next((r for r in shard["releases"] if r["tag"] == release["tag"]), None)
-    if old is not None and old != release:
+    if old is not None and without_download_urls(old) != release:
         raise ValueError(f"Dated release already contains a different build: {release['tag']}")
     return m, kind, key, shard, release, old
 
 
-def register_release(root: Path, records: list[dict]) -> Path:
+def register_release(root: Path, records: list[dict], *, urls: dict[str, str] | None = None) -> Path:
     m, kind, key, shard, release, old = preflight(root, records)
+    if urls is None:
+        # Offline generation only; verified publication and recovery supply API URLs.
+        urls = {a["file"]: github_asset_url(release["tag"], a["file"]) for a in release_assets(release)}
+    release = with_download_urls(release, urls)
+    if old is not None and old != release:
+        raise ValueError("Published download URLs differ from catalog")
     if old is None:
         shard["releases"].append(release)
         shard["releases"].sort(key=lambda r: release_order(r["date"], r["tag"]), reverse=True)

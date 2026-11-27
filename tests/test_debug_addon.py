@@ -60,6 +60,7 @@ class CatalogCompatibilityTests(unittest.TestCase):
             row["assets"] = assets(row, "develop")
             old = {"tag": "ffmpeg-9.1-r1", "date": "2026-11-25",
                    "variants": {"x64-windows-shared-lgpl": catalog._variant(row, "2026-11-25", native=False)}}
+            old = catalog.with_download_urls(old, {a["file"]: catalog.github_asset_url(old["tag"], a["file"]) for a in catalog.release_assets(old)})
             catalog.write_json(root / "index.json", {"schema": 1, "releases": ["9.1"], "master": []})
             catalog.write_json(root / "releases/9.1.json", {"version": "9.1", "lts": False, "releases": [old]})
             self.assertIn("develop", old["variants"]["x64-windows-shared-lgpl"])
