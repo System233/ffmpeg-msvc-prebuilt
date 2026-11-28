@@ -13,8 +13,10 @@ SPEC = "ffmpeg[all-gpl]:x64-windows"
 CHECK = {"spec": SPEC, "jobs": [1], "reason": "reproduces failure"}
 RESULT = {"spec": SPEC, "abi_hash": "a"*64, "ffmpeg_build": "passed",
           "consumer_compile_link": "passed", "binary_inspection": "passed",
-          "tester_targets": {"release": 39, "debug": 39},
-          "runtime": {"status": "passed", "tester_executions": 78, "cli_executions": 2},
+          "tester_targets": {"release": 9, "debug": 9},
+          "tester_modules": ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"],
+          "tester_cases": {cfg: ["check-avcodec", "check-avdevice", "check-avfilter", "check-avformat", "check-avutil", "check-full", "check-full-cpp", "check-swresample", "check-swscale"] for cfg in ("release", "debug")},
+          "runtime": {"status": "passed", "tester_executions": 18, "cli_executions": 2},
           "external_dependency_builds": 0}
 
 

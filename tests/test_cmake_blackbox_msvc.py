@@ -523,6 +523,27 @@ target_link_libraries(pc-consumer PRIVATE PkgConfig::FFMPEG)
         self.checked(args)
         self.check_runtime(f, "Release", "Release")
 
+    def test_native_tester_mode_discovery_is_independent(self):
+        f = SDKFixture(self.root, "dynamic")
+        for name, version in (("avdevice", "58.1.0"), ("avfilter", "7.1.0"),
+                              ("swresample", "3.1.0"), ("swscale", "5.1.0")):
+            f.add_module(name, version, ("avutil",))
+        p = f.generate()
+        self.assertEqual(0, p.returncode, output(p))
+        # A complete installed vcpkg prefix has third-party pkg-config files.
+        f.touch(f.sdk / "lib/pkgconfig/libvendor-example.pc")
+        args = ["cmake", "-S", ROOT / "ports/ffmpeg-tester", *self.generator,
+                "-DFFBUILD_TESTER_PREFIX=" + f.sdk.as_posix()]
+        self.checked(args + ["-B", f.build / "config", "-DFFBUILD_TESTER_MODE=CONFIG",
+                             "-DCMAKE_PREFIX_PATH=" + f.sdk.as_posix()])
+        config = f.sdk / "share/ffmpeg/FFmpegConfig.cmake"
+        config.unlink()
+        self.checked(args + ["-B", f.build / "module", "-DFFBUILD_TESTER_MODE=MODULE"])
+        p = run(args + ["-B", f.build / "missing-config", "-DFFBUILD_TESTER_MODE=CONFIG",
+                        "-DCMAKE_PREFIX_PATH=" + f.sdk.as_posix()])
+        self.assertNotEqual(0, p.returncode, "Config silently used Module discovery")
+        self.assertIn("FFmpegConfig.cmake", output(p))
+
     def test_native_tester_cannot_silently_link_release_for_debug(self):
         # Configure the actual authored Native Tester, not a test copy.
         # CMake File API codemodel exposes the generated native link command.

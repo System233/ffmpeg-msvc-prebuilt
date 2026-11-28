@@ -45,7 +45,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-        key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+        key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
         restore-keys: |
           ffbuild-downloads-2026.06.01-
     - name: Reuse legacy dependency downloads
@@ -63,7 +63,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
         restore-keys: |
           ffbuild-seed-2026.06.01-x64-windows-
           ffbuild-native-2026.06.01-x64-windows-
@@ -80,7 +80,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
         restore-keys: |
           ffbuild-seed-2026.06.01-x86-windows-
           ffbuild-native-2026.06.01-x86-windows-
@@ -97,7 +97,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
         restore-keys: |
           ffbuild-seed-2026.06.01-arm64-windows-
           ffbuild-native-2026.06.01-arm64-windows-
@@ -114,7 +114,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
         restore-keys: |
           ffbuild-seed-2026.06.01-arm-windows-
           ffbuild-native-2026.06.01-arm-windows-

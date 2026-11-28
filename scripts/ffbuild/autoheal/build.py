@@ -17,6 +17,7 @@ from ..cache_guard import (verify_dependency_cache, verify_no_dependency_builds,
 from ..native_abi import native_abi_query
 from ..package import _layout, _read_control, _verify_native_package_abi
 from ..targets import Target, compile_target, parse_package
+from ..sdk_validation import _sdk_modules, expected_modules, tester_targets
 from ..versions import GENERATED_PORTS, ROOT, TRIPLETS, config, generate
 from .models import version_name
 from .scope import check_worktree
@@ -389,14 +390,10 @@ def verify_outputs(job: dict, abi: str) -> dict:
     prefix = installed / triplet
     _verify_native_package_abi(prefix, "ffmpeg", abi)
     tools = prefix / "tools" / "ffmpeg"
-    libs = ["avutil", "avcodec", "avformat", "avdevice", "avfilter", "swresample", "swscale"]
-    for optional in ("postproc", "avresample"):
-        if (prefix / "lib" / (optional + ".lib")).is_file():
-            libs.append(optional)
-    expected = {f"check-{mode}{lib}.exe" for lib in libs for mode in ("", "full-", "legacy-")}
-    expected.update(f"check-{mode}transitive-{lib}.exe"
-                    for lib in libs if lib not in ("avutil", "postproc", "avresample")
-                    for mode in ("", "full-", "legacy-"))
+    libs = sorted(_sdk_modules(prefix, required=job["features"], installed=True))
+    if _sdk_modules(prefix / "debug", required=job["features"], installed=True) != set(libs):
+        raise BuildFailure("Release/Debug Tester module inventory differs")
+    expected = {name + ".exe" for name in tester_targets(libs)}
     testers = {}
     for cfg, suffix in (("release", "rel"), ("debug", "dbg")):
         folder = buildtrees / "ffmpeg-tester" / f"{triplet}-{suffix}"
@@ -458,6 +455,8 @@ def verify_outputs(job: dict, abi: str) -> dict:
     return {"spec": spec_string(job["package"], triplet), "abi_hash": abi,
             "ffmpeg_build": "passed", "consumer_compile_link": "passed",
             "binary_inspection": "passed", "tester_targets": {k: len(v) for k, v in testers.items()},
+            "tester_modules": libs,
+            "tester_cases": {k: sorted(p.stem for p in v) for k, v in testers.items()},
             "runtime": runtime, "external_dependency_builds": 0}
 
 
@@ -574,9 +573,25 @@ def validate_evidence(evidence: dict, data: dict) -> None:
             raise ValueError("Unverified FFmpeg/Tester build")
         if type(check.get("external_dependency_builds")) is not int or check["external_dependency_builds"] != 0:
             raise ValueError("External dependencies may not be rebuilt during repair")
+        modules = check.get("tester_modules")
+        if not isinstance(modules, list) or not all(isinstance(m, str) for m in modules) or modules != sorted(set(modules)):
+            raise ValueError("Invalid Tester module evidence")
+        # Reconstruct the required modules independently of the built SDK.
+        # The incident's pinned version and feature contract determines
+        # historical optional modules; actual extra upstream modules are
+        # allowed only if the same explicit probe plan covers them.
+        required = expected_modules()
+        if "target_yaml" in data:
+            selected = compile_target(config(version_name(data["target_yaml"])), version_for(data),
+                                      parse_spec(check["spec"]))
+            required = expected_modules(selected["features"])
+        if not required <= set(modules):
+            raise ValueError("Required Tester module omitted")
+        expected = sorted(tester_targets(modules))
+        cases = check.get("tester_cases")
         counts = check.get("tester_targets")
-        if (not isinstance(counts, dict) or set(counts) != {"release", "debug"}
-                or counts["release"] not in (39, 42, 45) or counts["debug"] != counts["release"]):
+        if (cases != {"release": expected, "debug": expected}
+                or counts != {"release": len(expected), "debug": len(expected)}):
             raise ValueError("Incomplete Tester verification")
         runtime = check.get("runtime")
         if not isinstance(runtime, dict):

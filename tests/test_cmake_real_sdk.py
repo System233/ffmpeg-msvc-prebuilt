@@ -97,119 +97,34 @@ class RealFFmpegSDKContract(unittest.TestCase):
 
     def test_actual_native_tester_compiles_and_executes_every_module(self):
         modules = {pc.stem[3:] for pc in (self.sdk / "lib/pkgconfig").glob("lib*.pc")}
-        expected = {f"check-{mode}{m}.exe" for m in modules for mode in ("", "full-", "legacy-")}
-        expected.update(f"check-{mode}transitive-{m}.exe" for m in
-                        ("avcodec", "avdevice", "avformat", "avfilter", "swresample", "swscale")
-                        for mode in ("", "full-", "legacy-"))
+        from ffbuild.sdk_validation import tester_targets
+        expected = {name + ".exe" for name in tester_targets(modules)}
         build = self.root / "native-tester"
         self.checked(["cmake", "-S", ROOT / "ports/ffmpeg-tester", "-B", build,
                       *self.generator, "-DCMAKE_PREFIX_PATH=" + self.sdk.as_posix(),
-                      "-DCMAKE_MODULE_PATH=" + (self.sdk / "share/ffmpeg").as_posix(),
                       "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>"])
         for config, folder in (("Release", ""), ("Debug", "debug")):
             with self.subTest(config=config):
                 self.checked(["cmake", "--build", build, "--config", config, "--parallel", "4"])
-                executables = sorted((build / config).glob("check-*.exe"))
+                executables = sorted((build / config).rglob("check-*.exe"))
                 self.assertEqual(expected, {p.name for p in executables})
                 for exe in executables:
-                    self.checked([exe], env=self.runtime_env(self.sdk / folder), cwd=build / config)
+                    self.checked([exe], env=self.runtime_env(self.sdk / folder), cwd=exe.parent)
                 print(f"Real FFmpeg {self.version} {config}: {len(executables)} Native Tester executions", flush=True)
 
     def test_real_shared_sdk_accepts_all_consumer_crts(self):
-        src = self.root / "crt-consumer"
-        src.mkdir()
-        (src / "probe.c").write_text(r"""
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include <libavutil/mem.h>
-#include <libavcodec/avcodec.h>
-#ifdef __cplusplus
-}
-#include <vector>
-#endif
-#include <stdlib.h>
-#include <string.h>
-#if !defined(_MT) || (defined(_DLL) != EXPECT_DLL_CRT) || (defined(_DEBUG) != EXPECT_DEBUG_CRT)
-#error Consumer CRT does not match its requested runtime
-#endif
-int main(void) {
-    void *p=av_malloc(128), *q=malloc(128);
-    AVCodecContext *c=avcodec_alloc_context3(NULL);
-    if(!p || !q || !c) return 1;
-    memset(p,7,128); memset(q,8,128);
-#ifdef __cplusplus
-    std::vector<int> v{7,8};
-    if(v.at(0)!=7) return 2;
-#endif
-    av_free(p); free(q); avcodec_free_context(&c);
-    return c!=NULL;
-}
-""", encoding="utf-8")
-        shutil.copyfile(src / "probe.c", src / "probe.cpp")
-        (src / "CMakeLists.txt").write_text(r"""
-cmake_minimum_required(VERSION 3.21)
-project(crt_consumer C CXX)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
-find_package(FFmpeg CONFIG REQUIRED)
-if(NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreaded")
-  message(FATAL_ERROR "Package discovery changed consumer CRT")
-endif()
-foreach(lang c cpp)
-  foreach(rt MT MD MTd MDd)
-    set(runtime MultiThreaded)
-    set(dll 0)
-    set(debug 0)
-    if(rt MATCHES "d$")
-      string(APPEND runtime Debug)
-      set(debug 1)
-    endif()
-    if(rt MATCHES "^MD")
-      string(APPEND runtime DLL)
-      set(dll 1)
-    endif()
-    add_executable(probe-${lang}-${rt} probe.${lang})
-    set_property(TARGET probe-${lang}-${rt} PROPERTY MSVC_RUNTIME_LIBRARY "${runtime}")
-    target_compile_definitions(probe-${lang}-${rt} PRIVATE EXPECT_DLL_CRT=${dll} EXPECT_DEBUG_CRT=${debug})
-    target_link_libraries(probe-${lang}-${rt} PRIVATE FFmpeg::avcodec FFmpeg::avutil)
-  endforeach()
-endforeach()
-""", encoding="utf-8")
-        build = self.root / "crt-build"
-        self.checked(["cmake", "-S", src, "-B", build, *self.generator,
-                      "-DCMAKE_PREFIX_PATH=" + self.sdk.as_posix()])
-        for config, folder in (("Release", ""), ("Debug", "debug")):
-            self.checked(["cmake", "--build", build, "--config", config, "--parallel", "4"])
-            for lang in ("c", "cpp"):
-                for rt in ("MT", "MD", "MTd", "MDd"):
-                    with self.subTest(config=config, lang=lang, runtime=rt):
-                        self.checked([build / config / f"probe-{lang}-{rt}.exe"],
-                                     env=self.runtime_env(self.sdk / folder), cwd=build / config)
+        from ffbuild.sdk_validation import validate_installed
+        report = validate_installed(self.sdk, triplet=TRIPLET, linkage="shared",
+                                    generator=self.generator[1], pkgconf=Path(PKGCONF),
+                                    modes=("CONFIG",))
+        self.assertEqual(8, sum(".check-crt-" in row["id"] for row in report))
 
     def test_real_pkgconfig_consumer_links_and_runs(self):
+        from ffbuild.sdk_validation import validate_installed
         moved = self.root / "real sdk with spaces"
         self.sdk.rename(moved)
         self.sdk = moved
-        src = self.root / "pc-consumer"
-        src.mkdir()
-        shutil.copy2(ROOT / "tests/sdk_consumer/main.c", src)
-        (src / "CMakeLists.txt").write_text(r"""
-cmake_minimum_required(VERSION 3.21)
-project(pc_consumer C)
-set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH FALSE)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavutil)
-add_executable(pc-consumer main.c)
-target_link_libraries(pc-consumer PRIVATE PkgConfig::FFMPEG)
-""")
-        for config, folder in (("Release", ""), ("Debug", "debug")):
-            with self.subTest(config=config):
-                build = self.root / ("pc-build-" + config)
-                prefix = self.sdk / folder
-                env = dict(os.environ, PKG_CONFIG_PATH="", PKG_CONFIG_LIBDIR=str(prefix / "lib/pkgconfig"))
-                env.pop("PKG_CONFIG_SYSROOT_DIR", None)
-                self.checked(["cmake", "-S", src, "-B", build, *self.generator,
-                              "-DPKG_CONFIG_EXECUTABLE=" + Path(PKGCONF).as_posix()], env=env)
-                self.checked(["cmake", "--build", build, "--config", config, "--parallel", "2"], env=env)
-                self.checked([build / config / "pc-consumer.exe"], env=self.runtime_env(prefix), cwd=build)
+        report = validate_installed(self.sdk, triplet=TRIPLET, linkage="shared",
+                                    generator=self.generator[1], pkgconf=Path(PKGCONF),
+                                    modes=("PKGCONFIG",))
+        self.assertTrue(report)

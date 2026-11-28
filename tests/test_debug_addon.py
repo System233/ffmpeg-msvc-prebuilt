@@ -10,7 +10,8 @@ from ffbuild import catalog
 from ffbuild.identity import archive_name, variant_name
 from ffbuild.state import PublishedState
 from ffbuild.symbols import pe_identity, pdb_identity, verify_symbols, verify_debug_layout
-from ffbuild.sdk_validation import _assert_selection, _CORE_MODULES
+from ffbuild.sdk_validation import (_assert_selection, _CORE_MODULES, _sdk_modules,
+                                     _assert_pkgconfig_selection, tester_targets)
 from symbol_fixture import GUID, pe, pdb
 
 
@@ -165,3 +166,44 @@ class PublicSDKModuleTests(unittest.TestCase):
             selected.write_text("\n".join(rows + [rows[0]]))
             with self.assertRaisesRegex(ValueError, "Incorrect Release"):
                 _assert_selection(build, "Release", sdk)
+
+    def test_required_historical_modules_are_not_optional_by_discovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pc = root / "lib/pkgconfig"
+            pc.mkdir(parents=True)
+            for module in _CORE_MODULES | {"zlib", "vendor-name"}:
+                (pc / f"lib{module}.pc").touch()
+            self.assertEqual(_CORE_MODULES, _sdk_modules(root, installed=True))
+            with self.assertRaisesRegex(ValueError, "postproc"):
+                _sdk_modules(root, required=("postproc",), installed=True)
+            (pc / "libpostproc.pc").touch()
+            self.assertEqual(_CORE_MODULES | {"postproc"}, _sdk_modules(root, required=("postproc",), installed=True))
+            with self.assertRaisesRegex(ValueError, "unknown"):
+                _sdk_modules(root)
+            cases = tester_targets(_CORE_MODULES | {"postproc"})
+            self.assertIn("check-postproc", cases)
+            self.assertEqual(10, len(cases))
+            self.assertEqual({"check-full", "check-full-cpp"},
+                             tester_targets(_CORE_MODULES, "LEGACY"))
+
+    def test_pkgconfig_requires_actual_config_specific_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            build = root / "build"
+            build.mkdir()
+            sdk = root / "sdk"
+            for config in ("lib", "debug/lib"):
+                for module in _CORE_MODULES:
+                    p = sdk / config / f"{module}.lib"
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.touch()
+            evidence = build / "pkgconfig-Debug.txt"
+            libs = [str(sdk / "debug/lib" / f"{m}.lib") for m in sorted(_CORE_MODULES)]
+            evidence.write_text("full|" + ";".join(libs), encoding="utf-8")
+            _assert_pkgconfig_selection(build, "Debug", sdk / "debug", _CORE_MODULES, True)
+            for wrong in (str(sdk / "lib/avutil.lib"), "avutil.lib", str(root / "missing/avutil.lib")):
+                rows = [wrong if Path(p).stem == "avutil" else p for p in libs]
+                evidence.write_text("full|" + ";".join(rows), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Incorrect Debug pkg-config"):
+                    _assert_pkgconfig_selection(build, "Debug", sdk / "debug", _CORE_MODULES, True)

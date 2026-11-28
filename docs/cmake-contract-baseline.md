@@ -414,3 +414,61 @@ SDK, missing and relative library paths. The production CMake builder,
 SDK templates, licensing rules and dependency cache keys are unchanged.
 All 73 methods across the three affected modules passed in an actual
 8.3 TEMP/TMP environment, with no skips.
+
+## Unified external SDK Tester (consumer-only)
+
+The authored vcpkg Port remains `ffmpeg-tester`. It compiles C and C++
+against a single Config-only discovery in each native Release/Debug build;
+a missing Debug artifact is fatal. The seven core libraries plus historical
+modules independently required by the build plan are mandatory. Additional
+upstream FFmpeg modules found in the installed pkg-config inventory must
+also have a probe. Vendor .pc files are not FFmpeg modules.
+
+`ports/ffmpeg-tester/CMakeLists.txt` is also the sole real SDK consumer
+project. It exposes independent CONFIG, MODULE, LEGACY and PKGCONFIG
+entry points. Each mode has its own configure/build tree; Config receives
+only CMAKE_PREFIX_PATH as a discovery hint, Module/Legacy locate the
+selected Find module, and PkgConfig uses an explicit native pkgconf and
+isolated per-stage, per-configuration .pc directories. The metadata-only
+contract fixtures remain independent test oracles.
+
+Stable public version functions, allocation/release and registry symbol
+references exercise headers, exported symbols and linker dependency
+closure. No codec, media, device, network, or GPU functionality is
+required. Legacy registration calls are selected by library version
+macros. C++ compiles all public module headers while the lightweight
+full-target probe calls avutil; one comprehensive C program references
+all modules. Native Port targets are per-module demand links plus those
+two full-target probes (nine for seven libraries). Optional historical
+modules add one demand case each.
+
+Public shared SDK acceptance covers Binary-only, complete Debug overlay
+and removal using separate Config/Module/Legacy/PkgConfig projects.
+The overlay executes per-module demand links and the two full probes;
+Config also exercises C and C++ /MT, /MD, /MTd, /MDd in their normal
+Release/Debug configurations. The Binary-only Debug consumers must load
+Release DLLs, while full native builds may never silently fall back.
+Consumer builds do not unpack PDBs (publication verifies PDB identities).
+Selected imported files and pkg-config library paths are checked against
+real configuration-specific SDK paths; runtime deployment is isolated.
+The static installation is tested outside the vcpkg toolchain using all
+four modes with /MT and /MTd. Static releases remain CLI-only.
+
+Worker reports are separate from published assets. Autoheal reconstructs
+the exact native Tester case IDs from the selected module set and
+independently checks requested historical modules against the pinned
+feature plan, rather than accepting fixed target counts. Old repair
+evidence without case identities must be regenerated. ARM/ARM64 retain
+native toolchain compile/link coverage; this Windows x64/x86 public
+runtime gate does not claim ARM execution. Test-only source changes are
+excluded from dependency Seed cache keys; real native ABI coverage is
+still mandatory.
+
+Production SDK commands:
+
+```
+python -m ffbuild.ci verify-installed-sdk --job-env FFBUILD_JOB --installed-root <installed> --pkgconf <pkgconf.exe> --report installed-sdk-tests.json
+python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf <pkgconf.exe> --report public-sdk-tests.json
+```
+
+Local implementation validation: real Windows x64 shared SDK archives for 4.4.8 LGPL and 8.1.3 GPL each passed 99 distinct CLI/consumer cases (24 Binary-only, 66 overlay, 6 overlay-removed, 3 CLI). Quick contracts passed 117/117 with no skips; the two targeted native Tester contracts passed. Full source-built static SDK validation and historical optional-module coverage remain CI acceptance requirements.
