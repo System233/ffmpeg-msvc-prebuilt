@@ -63,11 +63,13 @@ class NativeValidation(unittest.TestCase):
             prefix = installed/triplet
             machine = 0xaa64
             libs = ["avutil","avcodec","avformat","avdevice","avfilter","swresample","swscale"]
-            names = {f"check-{mode}{lib}.exe" for lib in libs for mode in ("","full-","legacy-")}
-            names |= {f"check-{mode}transitive-{lib}.exe" for lib in libs if lib!="avutil" for mode in ("","full-","legacy-")}
+            names = {"check-full.exe", "check-full-cpp.exe"} | {f"check-{lib}.exe" for lib in libs}
             for config, suffix in ((prefix,"rel"),(prefix/"debug","dbg")):
                 for lib in libs:
                     archive(config/"lib"/(lib+".lib"),machine)
+                    pc = config/"lib/pkgconfig"/("lib"+lib+".pc")
+                    pc.parent.mkdir(parents=True,exist_ok=True)
+                    pc.touch()
                     pe(config/"bin"/(lib+"-1.dll"),machine)
                 for name in names:
                     pe(trees/"ffmpeg-tester"/f"{triplet}-{suffix}"/name,machine)
@@ -81,12 +83,18 @@ class NativeValidation(unittest.TestCase):
                  mock.patch.object(build,"_run") as run:
                 result=build.verify_outputs(job,"a"*64)
                 self.assertEqual("skipped",result["runtime"]["status"])
-                self.assertEqual({"release":39,"debug":39},result["tester_targets"])
+                self.assertEqual({"release":9,"debug":9},result["tester_targets"])
                 run.assert_not_called()
                 data=plan((triplet,"gpl","shared"))
                 evidence={"schema":1,"candidate":"b"*40,"tree":"c"*40,
                           "checks":[dict(result,jobs=[1],reason="same error")]}
                 build.validate_evidence(evidence,data)
+                for replacement in (result["tester_cases"]["release"][:-1],
+                                    result["tester_cases"]["release"][:-1] + [result["tester_cases"]["release"][0]]):
+                    bad = copy.deepcopy(evidence)
+                    bad["checks"][0]["tester_cases"]["release"] = replacement
+                    with self.assertRaisesRegex(ValueError, "Incomplete Tester"):
+                        build.validate_evidence(bad, data)
                 bad=copy.deepcopy(evidence)
                 bad["checks"][0]["runtime"]={"status":"passed"}
                 with self.assertRaises(ValueError):
@@ -97,17 +105,18 @@ class NativeValidation(unittest.TestCase):
                 pe(prefix/"bin/avcodec-1.dll",machine)
                 with mock.patch.object(build,"can_execute",return_value=True), mock.patch.object(build,"runtime_dir",return_value=root), mock.patch("ffbuild.sdk_validation._runtime_env",return_value={}):
                     result=build.verify_outputs(job,"a"*64)
-                    self.assertEqual(78,result["runtime"]["tester_executions"])
-                    self.assertEqual(79,run.call_count)
+                    self.assertEqual(18,result["runtime"]["tester_executions"])
+                    self.assertEqual(19,run.call_count)
                 for selected, suffix in ((prefix, "rel"), (prefix / "debug", "dbg")):
                     for lib in ("postproc", "avresample"):
                         archive(selected / "lib" / (lib + ".lib"), machine)
                         pe(selected / "bin" / (lib + "-1.dll"), machine)
-                        for mode in ("", "full-", "legacy-"):
-                            pe(trees / "ffmpeg-tester" / f"{triplet}-{suffix}" /
-                               f"check-{mode}{lib}.exe", machine)
+                        pc = selected / "lib/pkgconfig" / f"lib{lib}.pc"
+                        pc.touch()
+                        pe(trees / "ffmpeg-tester" / f"{triplet}-{suffix}" /
+                           f"check-{lib}.exe", machine)
                 result = build.verify_outputs(job, "a" * 64)
-                self.assertEqual({"release": 45, "debug": 45}, result["tester_targets"])
+                self.assertEqual({"release": 11, "debug": 11}, result["tester_targets"])
                 build.validate_evidence(dict(evidence, checks=[dict(result, jobs=[1], reason="same error")]), data)
 
     def test_invalid_binary(self):

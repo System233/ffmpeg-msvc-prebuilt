@@ -53,6 +53,25 @@ class IsolatedE2ETests(unittest.TestCase):
         self.assertTrue(any(step.get("name") == "Upload distribution and internal audit evidence"
                             for step in steps[idx+1:]))
 
+    def test_installed_sdk_is_validated_even_without_release_packaging(self):
+        steps = workflow("build-release.yml")["jobs"]["build"]["steps"]
+        idx = next(i for i, step in enumerate(steps)
+                   if step.get("name") == "Validate independent installed SDK consumers")
+        self.assertEqual("Verify no external dependencies were compiled by Worker", steps[idx-1]["name"])
+        self.assertIn("matrix.linkage == 'static' || inputs.skip_release", steps[idx]["if"])
+        self.assertIn("verify-installed-sdk", steps[idx]["run"])
+        self.assertIn("--report installed-sdk-tests.json", steps[idx]["run"])
+        self.assertEqual("Verify and package installed vcpkg result", steps[idx+1]["name"])
+
+    def test_seed_cache_keys_do_not_depend_on_consumer_source(self):
+        for relative in (".github/workflows/build-release.yml", ".github/actions/prepare-repair/action.yml"):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            keys = [line for line in text.splitlines()
+                    if "key:" in line and "hashFiles(" in line and "'ports/**'" in line]
+            self.assertTrue(keys)
+            for line in keys:
+                self.assertIn("'!ports/ffmpeg-tester/**'", line)
+
     def test_workers_select_only_one_version_port_for_stable_ffmpeg(self):
         ci = workflow("build-release.yml")
         for name in ("build",):

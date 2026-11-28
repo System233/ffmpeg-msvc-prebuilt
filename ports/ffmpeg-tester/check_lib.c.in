@@ -1,6 +1,0 @@
-/* Generated. Test: @TEST_NAME@ */
-#include <@INCLUDE_HEADER@>
-int main(void) {
-    @API_CHECK@
-    return @API_FUNC@() > 0 ? 0 : 1;
-}

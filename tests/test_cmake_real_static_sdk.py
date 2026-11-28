@@ -63,21 +63,18 @@ class RealStaticSDKContract(unittest.TestCase):
         build = self.root / "native-tester"
         self.checked(["cmake", "-S", ROOT / "ports/ffmpeg-tester", "-B", build,
                       *self.generator, "-DCMAKE_PREFIX_PATH=" + self.sdk.as_posix(),
-                      "-DCMAKE_MODULE_PATH=" + (self.sdk / "share/ffmpeg").as_posix(),
                       "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>"])
-        # Full static archives may produce very large executables. Test all
-        # three interfaces with a filter that pulls the actual filter graph,
-        # and exercise a module-only transitive link. The native CI tester
-        # still runs its full target set.
-        targets = ("check-avfilter", "check-full-avfilter", "check-legacy-avfilter",
-                   "check-transitive-avformat")
+        # Full static archives may produce very large executables. Exercise
+        # the comprehensive C probe, the smaller C++ probe and two demand
+        # links. The independent suite below covers the other discovery modes.
+        targets = ("check-avfilter", "check-full", "check-full-cpp", "check-avformat")
         for config in ("Release", "Debug"):
             with self.subTest(config=config):
                 for target in targets:
                     with self.subTest(target=target):
                         self.checked(["cmake", "--build", build, "--config", config,
                                       "--target", target, "--parallel", "2"], timeout=240)
-                        exe = build / config / (target + ".exe")
+                        exe = build / config / target / (target + ".exe")
                         self.checked([exe], env=self.runtime_env(), cwd=exe.parent)
                         # Avoid accumulating repeated copies of the static
                         # dependency closure and its linker-generated symbols.
@@ -87,56 +84,10 @@ class RealStaticSDKContract(unittest.TestCase):
                 print(f"Real locally built static SDK {config}: {len(targets)} Native Tester targets", flush=True)
 
     def test_locally_built_static_port_links_through_pkgconfig(self):
-        src = self.root / "consumer"
-        src.mkdir()
-        (src / "main.c").write_text(r"""
-#include <libavutil/avutil.h>
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavfilter/avfilter.h>
-int main(void) {
-#if LIBAVCODEC_VERSION_MAJOR < 58
-    avcodec_register_all();
-#endif
-#if LIBAVFORMAT_VERSION_MAJOR < 58
-    av_register_all();
-#endif
-#if LIBAVFILTER_VERSION_MAJOR < 7
-    avfilter_register_all();
-#endif
-    return (!avutil_version() || !avcodec_find_decoder(AV_CODEC_ID_H264)
-            || !av_find_input_format("matroska") || !avfilter_get_by_name("null"));
-}
-""", encoding="utf-8")
-        (src / "CMakeLists.txt").write_text(r"""
-cmake_minimum_required(VERSION 3.21)
-project(real_static_consumer C)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-find_package(FFmpeg CONFIG REQUIRED)
-get_target_property(kind FFmpeg::avformat TYPE)
-if(NOT kind STREQUAL "STATIC_LIBRARY")
-  message(FATAL_ERROR "Expected a locally built static FFmpeg installation")
-endif()
-set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH FALSE)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavfilter libavutil)
-add_executable(check-pkgconfig main.c)
-target_link_libraries(check-pkgconfig PRIVATE PkgConfig::FFMPEG)
-""", encoding="utf-8")
-        for config, folder in (("Release", ""), ("Debug", "debug")):
-            with self.subTest(config=config):
-                pc_dirs = (self.sdk / folder / "lib/pkgconfig", self.sdk / "share/pkgconfig")
-                paths = os.pathsep.join(map(str, pc_dirs))
-                env = dict(os.environ, PKG_CONFIG_PATH=paths, PKG_CONFIG_LIBDIR=paths)
-                env.pop("PKG_CONFIG_SYSROOT_DIR", None)
-                # vcpkg folds private dependencies into the public fields of
-                # static packages. Both forms must resolve; ordinary --libs
-                # must be sufficient for an actual consumer link.
-                for flags in ([], ["--static"]):
-                    self.checked([PKGCONF, *flags, "--cflags", "--libs", "libavformat", "libavcodec", "libavfilter", "libavutil"], env=env)
-                build = self.root / ("build-" + config)
-                self.checked(["cmake", "-S", src, "-B", build, *self.generator,
-                              "-DCMAKE_PREFIX_PATH=" + self.sdk.as_posix(),
-                              "-DPKG_CONFIG_EXECUTABLE=" + Path(PKGCONF).as_posix(), "-DPKG_CONFIG_ARGN="], env=env)
-                self.checked(["cmake", "--build", build, "--config", config, "--parallel", "2"], env=env)
-                self.checked([build / config / "check-pkgconfig.exe"], env=self.runtime_env(), cwd=build / config)
+        from ffbuild.sdk_validation import validate_installed
+        report = validate_installed(self.sdk, triplet=TRIPLET, linkage="static",
+                                    generator=self.generator[1], pkgconf=Path(PKGCONF),
+                                    modes=("MODULE", "LEGACY", "PKGCONFIG"))
+        self.assertTrue(report)
+        self.assertEqual({"module", "legacy", "pkgconfig"},
+                         {row["id"].split(".")[1] for row in report})

@@ -1,4 +1,0 @@
-/* Generated. Test: @TEST_NAME@ */
-#include <libavutil/avutil.h>
-#include <@INCLUDE_HEADER@>
-int main(void) { return avutil_version() > 0 && @API_FUNC@() > 0 ? 0 : 1; }

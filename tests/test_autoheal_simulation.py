@@ -168,8 +168,10 @@ class SimulatedSafetyCases(unittest.TestCase):
                                 "reason": "same diagnostic", "abi_hash": ABI,
                                 "ffmpeg_build": "passed", "consumer_compile_link": "passed",
                                 "binary_inspection": "passed", "external_dependency_builds": 0,
-                                "tester_targets": {"release": 39, "debug": 39},
-                                "runtime": {"status": "passed", "tester_executions": 78, "cli_executions": 1}}]},
+                                "tester_targets": {"release": 9, "debug": 9},
+                                "tester_modules": ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"],
+                                "tester_cases": {cfg: ["check-avcodec", "check-avdevice", "check-avfilter", "check-avformat", "check-avutil", "check-full", "check-full-cpp", "check-swresample", "check-swscale"] for cfg in ("release", "debug")},
+                                "runtime": {"status": "passed", "tester_executions": 18, "cli_executions": 1}}]},
             }), encoding="utf-8")
             from ffbuild.autoheal.audit import candidate_identity
             binding, _, _ = candidate_identity(value, "8.1.1", folder)

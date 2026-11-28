@@ -205,7 +205,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
           restore-keys: |
             ffbuild-downloads-2026.06.01-
       - name: Reuse legacy dependency source downloads
@@ -230,7 +230,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
 
   prepare:
     name: prepare-${{ matrix.triplet }}
@@ -263,7 +263,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
           restore-keys: |
             ffbuild-seed-2026.06.01-${{ matrix.triplet }}-
             ffbuild-native-2026.06.01-${{ matrix.triplet }}-
@@ -279,7 +279,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'vcpkg-configuration.json') }}
+          key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
           fail-on-cache-miss: true
       - name: Prepare architecture-specific MSVC host
         if: steps.seed-cache.outputs.cache-hit != 'true'
@@ -301,7 +301,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
       - uses: actions/upload-artifact@v6
         if: failure()
         with:
@@ -342,7 +342,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
           fail-on-cache-miss: true
       - name: Prepare architecture-specific MSVC host
         env:
@@ -390,6 +390,11 @@ jobs:
         run: |
           python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate independent installed SDK consumers
+        if: ${{ (matrix.triplet == 'x64-windows' || matrix.triplet == 'x86-windows') && (matrix.linkage == 'static' || inputs.skip_release) }}
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: python -m ffbuild.ci verify-installed-sdk --job-env FFBUILD_JOB --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report installed-sdk-tests.json
       - name: Verify and package installed vcpkg result
         if: ${{ !inputs.skip_release }}
         env:
@@ -400,7 +405,17 @@ jobs:
         run: python -m ffbuild publish --artifacts-dir Release --dry-run
       - name: Validate extracted public SDK and CLI
         if: ${{ !inputs.skip_release && (matrix.triplet == 'x64-windows' || matrix.triplet == 'x86-windows') }}
-        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe"
+        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report public-sdk-tests.json
+      - name: Upload independent SDK acceptance evidence
+        if: ${{ always() && (matrix.triplet == 'x64-windows' || matrix.triplet == 'x86-windows') }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: sdk-consumer-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            installed-sdk-tests.json
+            public-sdk-tests.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload installed license evidence on packaging failure
         if: ${{ failure() && !inputs.skip_release }}
         uses: actions/upload-artifact@v6

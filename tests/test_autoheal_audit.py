@@ -50,8 +50,10 @@ def write_candidate(directory, report, patch=None, candidate="d"*40, tree="e"*40
         "checks": [{"spec":"ffmpeg[all-gpl]:x64-windows", "jobs":[group["jobs"][0]["job_id"]],
                    "reason":"same diagnostic", "abi_hash":ABI, "ffmpeg_build":"passed",
                    "consumer_compile_link":"passed", "binary_inspection":"passed",
-                   "external_dependency_builds":0, "tester_targets":{"release":39,"debug":39},
-                   "runtime":{"status":"passed","tester_executions":78,"cli_executions":2}}]}}
+                   "external_dependency_builds":0, "tester_targets": {"release": 9, "debug": 9},
+                                "tester_modules": ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"],
+                                "tester_cases": {cfg: ["check-avcodec", "check-avdevice", "check-avfilter", "check-avformat", "check-avutil", "check-full", "check-full-cpp", "check-swresample", "check-swscale"] for cfg in ("release", "debug")},
+                   "runtime":{"status":"passed","tester_executions":18,"cli_executions":2}}]}}
     (directory/"manifest.json").write_text(json.dumps(manifest),encoding="utf-8")
     return manifest
 
@@ -168,10 +170,10 @@ class AuditGate(unittest.TestCase):
         details = RepairDetails.from_trailer(next(line.split(": ", 1)[1] for line in commits[0][-1].splitlines()
                                                    if line.startswith("Autoheal-Details: ")))
         self.assertEqual(rationale, details.rationale)
-        self.assertIn("39 Release + 39 Debug", details.validation[0])
-        self.assertIn("runtime passed (78 Tester, 2 CLI executions)", details.validation[0])
+        self.assertIn("9 Release + 9 Debug", details.validation[0])
+        self.assertIn("runtime passed (18 Tester, 2 CLI executions)", details.validation[0])
         self.assertIn(rationale, bodies[0])
-        self.assertIn("39 Release + 39 Debug", bodies[0])
+        self.assertIn("9 Release + 9 Debug", bodies[0])
 
     def test_unverified_proposal_and_wrong_workflow_attempt_cannot_authorize_audit(self):
         path = self.candidate / "manifest.json"

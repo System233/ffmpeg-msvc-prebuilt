@@ -2,6 +2,8 @@ set(VCPKG_POLICY_EMPTY_PACKAGE enabled)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${CMAKE_CURRENT_LIST_DIR}"
+    OPTIONS "-DFFBUILD_TESTER_PREFIX=${CURRENT_INSTALLED_DIR}"
+            "-DFFBUILD_TESTER_MODE=CONFIG"
 )
 vcpkg_cmake_build()
 
