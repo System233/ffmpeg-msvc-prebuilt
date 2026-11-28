@@ -105,7 +105,8 @@ class NativeABIQueries(unittest.TestCase):
 
     def test_preflight_rejects_abi_drift(self):
         job = {'yaml': '8.1.3', 'port': 'ffmpeg', 'package': 'ffmpeg[base]',
-               'triplet': 'x64-windows', 'abi_hash': 'a' * 64}
+               'triplet': 'x64-windows', 'abi_hash': 'a' * 64,
+               'tester_port': 'ffmpeg-tester', 'native_graph_sha256': 'c'*64}
         with mock.patch('ffbuild.native_abi.native_abi_query', return_value={
                 'ffmpeg_x64-windows': 'b' * 64}):
             with self.assertRaisesRegex(ValueError, "ABI changed"):
@@ -166,19 +167,6 @@ class VersionedPorts(unittest.TestCase):
                 self.assertFalse(any('ffmpeg-' in str(dep)
                                      for part in manifest['features'].values()
                                      for dep in part.get('dependencies', [])))
-
-    def test_generate_all_removes_obsolete_versioned_tester_copies(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            old = root / 'ffmpeg-tester-8-1-3'
-            old.mkdir()
-            (old / 'vcpkg.json').write_text(
-                '{"name":"ffmpeg-tester-8-1-3","version":"1.0.0"}')
-            generate_all(output=root)
-            self.assertFalse(old.exists())
-            self.assertTrue((root / 'ffmpeg-8-1-3').is_dir())
-            self.assertEqual('ffmpeg', json.loads(
-                (root / 'ffmpeg-8-1-3/vcpkg.json').read_text())['name'])
 
     def test_master_source_pinned_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:

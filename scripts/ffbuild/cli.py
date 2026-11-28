@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .targets import DEFAULT_TARGETS, load_targets
+from .targets import select_targets
 from .versions import GENERATED_PORTS, ROOT, TRIPLETS, config, generate, generate_all, has_source, versions
 
 
@@ -34,7 +34,6 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--abi-evidence", type=Path, help="Retain all native ABI input files")
     scan.add_argument("--job-env", default="", help="Preflight one planned vcpkg job's ABI")
     scan.add_argument("--generated-root", type=Path, default=GENERATED_PORTS)
-    scan.add_argument("--targets-file", type=Path, default=DEFAULT_TARGETS)
     scan.add_argument("--vcpkg-bin", type=Path)
     scan.add_argument("--output", type=Path, default=Path("ffbuild-abi.json"))
 
@@ -212,13 +211,7 @@ def main(argv: list[str] | None = None) -> None:
                     if snapshot is not None and pinned != snapshot:
                         raise ValueError("Master snapshot disagrees with explicit build inputs")
                     snapshot = pinned
-                targets = load_targets(args.targets_file)
-                if args.target_arch:
-                    targets = tuple(t for t in targets if t.triplet == args.target_arch)
-                if args.target_license:
-                    targets = tuple(t for t in targets if "all-" + args.target_license in t.roots)
-                if not targets:
-                    raise ValueError("No matching native targets")
+                targets = select_targets(arch=args.target_arch, license_=args.target_license)
                 requests, blocked = build_requests(version=args.version, history=args.history,
                                                    targets=targets,
                                                    snapshot=snapshot,

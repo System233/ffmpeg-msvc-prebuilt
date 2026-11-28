@@ -11,8 +11,9 @@ import json
 import os
 import re
 import subprocess
-import sys
 import tempfile
+import zipfile
+import zlib
 from pathlib import Path
 
 from ffvcpkg import command as vcpkg_command, environment
@@ -22,7 +23,7 @@ from .port import ffmpeg_port_name
 from .targets import load_targets
 from .versions import GENERATED_PORTS, ROOT, TRIPLETS, has_source, versions
 
-TARGET_PORTS = frozenset({"ffmpeg", "ffmpeg-tester", "ffmpeg-deps"})
+TARGET_PORTS = frozenset({"ffmpeg", "ffmpeg-tester"})
 DEFAULT_PLAN = GENERATED_PORTS / "seed-plan.json"
 _SPEC = re.compile(r"([a-z0-9][a-z0-9-]*)\[([a-z0-9,-]+)\]:([a-z0-9][a-z0-9-]*)")
 _ABI = re.compile(r"[0-9a-f]{64}")
@@ -75,23 +76,33 @@ def _unique(batches: list[dict]) -> list[dict]:
     return list({graph_digest(batch): batch for batch in batches}.values())
 
 
-def merge_batches(batches: list[dict]) -> list[dict]:
-    """Pack compatible graphs, retaining every incompatible ABI in its own batch."""
-    result: list[dict] = []
-    for batch in sorted(_unique(batches), key=lambda b: (-len(b["abis"]), graph_digest(b))):
+def select_batches(batches: list[dict]) -> list[dict]:
+    """Cover all external ABIs using only observed native target graphs.
+
+    Equal package ABI/specs do not imply co-installability: unrelated Ports
+    can own identical installed files. A synthetic union can pass dry-run
+    but fail during installation. Never create such a union. Choose original
+    graphs that cover the complete package/ABI/spec set instead.
+    """
+    candidates = _unique(batches)
+    for batch in candidates:
         validate_batch(batch)
-        for current in result:
-            shared = current["abis"].keys() & batch["abis"].keys()
-            if all(current["abis"][k] == batch["abis"][k] and
-                   current["specs"][k] == batch["specs"][k] for k in shared):
-                current["abis"].update(batch["abis"])
-                current["specs"].update(batch["specs"])
-                break
-        else:
-            result.append({key: dict(batch[key]) for key in ("abis", "specs")})
-    if _pairs(result) != _pairs(batches):
-        raise RuntimeError("Dependency batch merge lost native ABI coverage")
-    return result
+    def entries(batch):
+        return {(key, abi, batch["specs"][key]) for key, abi in batch["abis"].items()}
+    remaining = set().union(*(entries(batch) for batch in candidates))
+    selected = []
+    while remaining:
+        best = min(candidates, key=lambda batch: (-len(entries(batch) & remaining),
+                                                  len(batch["abis"]), graph_digest(batch)))
+        covered = entries(best) & remaining
+        if not covered:
+            raise RuntimeError("Native dependency batch selection lost ABI coverage")
+        remaining -= covered
+        selected.append(best)
+        candidates.remove(best)
+    if _pairs(selected) != _pairs(batches):
+        raise RuntimeError("Dependency batch selection lost native ABI coverage")
+    return selected
 
 
 def verify_batch(batch: dict, triplet: str, *, binary: Path | None = None,
@@ -142,7 +153,6 @@ def seed_identity(*, triplet: str, overlay: Path = GENERATED_PORTS,
             signature = _manifest_signature(manifest, target.roots)
             groups.setdefault(signature, []).append((name, target.package))
     original = []
-    coverage = []
     for index, group in enumerate(groups.values()):
         name, package = group[0]
         specs: dict[str, str] = {}
@@ -151,29 +161,14 @@ def seed_identity(*, triplet: str, overlay: Path = GENERATED_PORTS,
                                  specs=specs, evidence=evidence / f"target-{index}" if evidence else None)
         batch = external_batch(graph, specs, triplet)
         original.append(batch)
-        coverage.append({"targets": [list(t) for t in group], "batch": graph_digest(batch)})
-    batches = merge_batches(original)
-    # Prove that requesting the direct package specs (without FFmpeg overlay)
-    # preserves every ABI. If an optimized merge fails, use exact original
-    # batches, never silently accept a different dependency graph.
-    try:
-        for index, batch in enumerate(batches):
-            verify_batch(batch, triplet, binary=binary,
-                         evidence=evidence / f"direct-{index}" if evidence else None)
-    except RuntimeError as error:
-        print(f"Seed batch merge rejected; verifying original graphs: {error}", file=sys.stderr)
-        batches = _unique(original)
-        for index, batch in enumerate(batches):
-            verify_batch(batch, triplet, binary=binary,
-                         evidence=evidence / f"unmerged-{index}" if evidence else None)
+    batches = select_batches(original)
+    # A direct native request must preserve the original graph exactly.
+    for index, batch in enumerate(batches):
+        verify_batch(batch, triplet, binary=binary,
+                     evidence=evidence / f"direct-{index}" if evidence else None)
     if _pairs(batches) != _pairs(original):
         raise RuntimeError("Seed plan does not cover all required ABI pairs")
-    expected_targets = {(name, t.package) for name in names for t in targets}
-    covered_targets = [tuple(t) for entry in coverage for t in entry["targets"]]
-    if set(covered_targets) != expected_targets or len(covered_targets) != len(expected_targets):
-        raise RuntimeError("Incomplete or duplicate dependency target coverage")
-    result = {"triplet": triplet, "batches": batches, "coverage": coverage,
-              "required": [list(pair) for pair in sorted(_pairs(original))]}
+    result = {"triplet": triplet, "batches": batches}
     result["key"] = seed_hash(batches)
     return result["key"], result
 
@@ -181,12 +176,12 @@ def seed_identity(*, triplet: str, overlay: Path = GENERATED_PORTS,
 def validate_plan(plan: dict, triplet: str, expected: str | None = None) -> dict:
     if triplet not in TRIPLETS:
         raise ValueError(f"Unsupported FFmpeg Triplet: {triplet}")
+    if not isinstance(plan, dict) or set(plan) != {"triplet", "batches", "key"}:
+        raise ValueError("Invalid dependency plan")
     if plan["triplet"] != triplet or seed_hash(plan["batches"]) != plan["key"]:
         raise ValueError("Invalid dependency plan identity")
-    if set(tuple(pair) for pair in plan["required"]) != _pairs(plan["batches"]):
-        raise ValueError("Dependency plan does not cover required ABI pairs")
     if expected is not None and plan["key"] != expected:
-        raise RuntimeError(f"Seed native ABI drift for {triplet}: planned {expected}, actual {plan['key']}")
+        raise RuntimeError(f"Seed plan identity mismatch for {triplet}: planned {expected}, actual {plan['key']}")
     return plan
 
 
@@ -207,7 +202,7 @@ def verify_target_coverage(plans: dict, evidence: Path) -> int:
             raise ValueError("Missing Tester ABI evidence")
         targets = {f"ffmpeg_{triplet}", f"ffmpeg-tester_{triplet}"}
         if {k for k in graph if abi_identifier(k)[0] in TARGET_PORTS} != targets:
-            raise ValueError("Unexpected target or virtual package in ABI evidence")
+            raise ValueError("Unexpected target package in ABI evidence")
         external = {(k, v) for k, v in graph.items() if k not in targets}
         if not external or external - _pairs(plan["batches"]):
             raise RuntimeError(f"Seed missing actual target ABI coverage: {path}: "
@@ -221,6 +216,14 @@ def load_seed_plan(path: Path, triplet: str, expected: str | None = None) -> dic
     return validate_plan(data[triplet], triplet, expected)
 
 
+class CacheUnavailable(RuntimeError):
+    """The native cache cannot supply the current dependency graph."""
+
+    def __init__(self, message: str, abis=()):
+        super().__init__(message)
+        self.abis = set(abis)
+
+
 def require_seed_archives(plan: dict, cache: Path) -> None:
     missing = []
     for abi in sorted(abi_set(plan["batches"])):
@@ -228,8 +231,8 @@ def require_seed_archives(plan: dict, cache: Path) -> None:
         if not archive.is_file() or not archive.stat().st_size:
             missing.append(abi)
     if missing:
-        raise RuntimeError(f"Seed cache incomplete: {len(missing)} native ABI archives absent\n" +
-                           "\n".join(missing))
+        raise CacheUnavailable(f"Seed cache incomplete: {len(missing)} native ABI archives absent\n" +
+                           "\n".join(missing), missing)
 
 
 
@@ -254,13 +257,15 @@ def prepare_seed(*, triplet: str, overlay: Path = GENERATED_PORTS,
                  binary: Path | None = None, install_root: Path | None = None,
                  only_downloads: bool = False, plan: dict | None = None,
                  cache_only: bool = False, cache_dir: Path | None = None,
-                 evidence: Path | None = None) -> tuple[str, ...]:
+                 evidence: Path | None = None, verify_after: bool = False) -> tuple[str, ...]:
     """Execute validated external-only batches in isolated installation roots."""
     from .cache_guard import installed_abis
     if triplet not in TRIPLETS:
         raise ValueError(f"Unsupported FFmpeg Triplet: {triplet}")
     if only_downloads and cache_only:
         raise ValueError("Download-only and cache-only are mutually exclusive")
+    if verify_after and (only_downloads or cache_only or cache_dir is None):
+        raise ValueError("Verified population requires a writable binary cache")
     if plan is None:
         _, plan = seed_identity(triplet=triplet, overlay=overlay, binary=binary, evidence=evidence)
     validate_plan(plan, triplet)
@@ -276,23 +281,93 @@ def prepare_seed(*, triplet: str, overlay: Path = GENERATED_PORTS,
     completed = []
     for index, batch in enumerate(plan["batches"]):
         # Native resolver must match before any package may compile.
-        verify_batch(batch, triplet, binary=binary,
-                     evidence=evidence / f"batch-{index}" if evidence else None)
-        with tempfile.TemporaryDirectory(prefix=f"seed-{index}-", dir=root) as temporary:
-            arguments = ["install", *sorted(batch["specs"].values()), f"--triplet={triplet}",
-                         "--recurse", f"--x-install-root={temporary}",
-                         f"--overlay-ports={(ROOT / 'ports').resolve()}",
-                         f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
-                         "--no-print-usage"]
-            if only_downloads:
-                arguments.append("--only-downloads")
-            elif cache_only:
-                arguments.extend(("--only-binarycaching", "--clean-packages-after-build"))
-            else:
-                arguments.extend(("--clean-buildtrees-after-build", "--clean-packages-after-build"))
-            print(f"vcpkg Seed {triplet}: batch {index + 1}/{len(plan['batches'])}", flush=True)
-            subprocess.run(vcpkg_command(arguments, binary=binary), cwd=ROOT, env=env, check=True)
-            if not only_downloads and installed_abis(Path(temporary)) != batch["abis"]:
-                raise RuntimeError(f"Installed dependency ABIs differ from batch {index + 1}")
-            completed.append(graph_digest(batch))
+        if not only_downloads:
+            verify_batch(batch, triplet, binary=binary,
+                         evidence=evidence / f"batch-{index}" if evidence else None)
+        for read_only in ((False, True) if verify_after else (cache_only,)):
+            with tempfile.TemporaryDirectory(prefix=f"seed-{index}-", dir=root) as temporary:
+                arguments = ["install", *sorted(batch["specs"].values()), f"--triplet={triplet}",
+                             "--recurse", f"--x-install-root={temporary}",
+                             f"--overlay-ports={(ROOT / 'ports').resolve()}",
+                             f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
+                             "--no-print-usage"]
+                if only_downloads:
+                    arguments.append("--only-downloads")
+                elif read_only:
+                    arguments.extend(("--only-binarycaching", "--clean-packages-after-build"))
+                else:
+                    arguments.extend(("--clean-buildtrees-after-build", "--clean-packages-after-build"))
+                phase = "download" if only_downloads else ("verify" if read_only else "populate")
+                print(f"vcpkg Seed {triplet}: {phase} batch {index + 1}/{len(plan['batches'])}", flush=True)
+                batch_env = dict(env)
+                if read_only:
+                    batch_env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache_dir.resolve()},read"
+                try:
+                    subprocess.run(vcpkg_command(arguments, binary=binary, env=batch_env),
+                                   cwd=ROOT, env=batch_env, check=True)
+                except subprocess.CalledProcessError as exc:
+                    if read_only:
+                        raise CacheUnavailable(f"Native cache restore failed for batch {index + 1}", batch["abis"].values()) from exc
+                    raise
+                if not only_downloads and installed_abis(Path(temporary)) != batch["abis"]:
+                    raise CacheUnavailable(f"Installed dependency ABIs differ from batch {index + 1}", batch["abis"].values())
+
+        completed.append(graph_digest(batch))
     return tuple(completed)
+
+
+def discard_damaged_archives(plan: dict, cache: Path, affected: set[str]) -> int:
+    """Remove only demonstrably damaged local files after a failed restore.
+
+    The native files provider deliberately does not replace an existing ZIP.
+    Normal cache hits and successful population never run this recovery scan.
+    """
+    removed = 0
+    packages = {abi: abi_identifier(key)[0] for batch in plan["batches"]
+                for key, abi in batch["abis"].items() if abi in affected}
+    for abi, package in packages.items():
+        if not _ABI.fullmatch(abi):
+            raise ValueError("Invalid cache archive identity")
+        archive = cache / abi[:2] / (abi + ".zip")
+        if not archive.is_file() or archive.is_symlink() or archive.parent.is_symlink():
+            continue
+        try:
+            with zipfile.ZipFile(archive) as z:
+                info = z.read(f"share/{package}/vcpkg_abi_info.txt")
+                damaged = hashlib.sha256(info).hexdigest() != abi or z.testzip() is not None
+        except (zipfile.BadZipFile, KeyError, EOFError, zlib.error):
+            damaged = True
+        if damaged:
+            archive.unlink()
+            removed += 1
+            print(f"Removed damaged local dependency archive: {package} {abi}", flush=True)
+    return removed
+
+
+def populate_cache(*, triplet: str, plan: dict, cache_dir: Path,
+                   prefer_cache: bool = True, evidence: Path | None = None,
+                   binary: Path | None = None, install_root: Path | None = None) -> bool:
+    """Reuse existing archives, fill missing/unusable entries, then verify.
+
+    Returns True only if the cache required population. A dependency ABI
+    change is handled by the current plan, never by comparison with old ZIPs.
+    Native graph or build errors are not swallowed.
+    """
+    options = dict(triplet=triplet, plan=plan, cache_dir=cache_dir,
+                   evidence=evidence, binary=binary, install_root=install_root)
+    if prefer_cache:
+        try:
+            prepare_seed(**options, cache_only=True)
+            return False
+        except CacheUnavailable as exc:
+            print(f"Refreshing native dependency cache: {exc}", flush=True)
+            discard_damaged_archives(plan, cache_dir, exc.abis)
+    try:
+        prepare_seed(**options, verify_after=True)
+    except CacheUnavailable as exc:
+        # A fallback cache from an earlier ABI set can also contain damaged
+        # unchanged archives. Retry only if we actually removed a bad ZIP.
+        if not discard_damaged_archives(plan, cache_dir, exc.abis):
+            raise
+        prepare_seed(**options, verify_after=True)
+    return True

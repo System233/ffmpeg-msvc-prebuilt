@@ -95,16 +95,8 @@ def _confirm_asset(tag: str, file: Path, existing: dict) -> None:
     if file.stat().st_size != existing.get("size"):
         raise ValueError(f"Immutable Release asset has different size: {file.name}")
     digest = existing.get("digest")
-    if not isinstance(digest, str) or not digest.startswith("sha256:"):
-        # Old GitHub assets may have no digest. Download only for this fallback.
-        with tempfile.TemporaryDirectory(prefix="ffbuild-release-verify-") as scratch:
-            _run("gh", "release", "download", tag, "--repo",
-                 os.environ["GITHUB_REPOSITORY"], "--pattern", file.name,
-                 "--dir", scratch)
-            fetched = Path(scratch) / file.name
-            if not fetched.is_file():
-                raise ValueError("Release download omitted existing archive")
-            digest = "sha256:" + _digest(fetched)
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError(f"Missing or invalid Release asset digest: {file.name}")
     if digest != "sha256:" + _digest(file):
         raise ValueError(f"Immutable Release asset content differs: {file.name}")
 
@@ -530,7 +522,7 @@ def publish(*, artifacts_dir: Path, data_dir: Path,
         if ({(r["triplet"], r["linkage"], r["license"]) for r in group} != expected_slots or
                 len(group) != len(expected_slots)) or any(public_version(r) != request["yaml"] or
                 r.get("publication_date", r["release_date"]) != request["date"] for r in group):
-            raise ValueError("Production requires all 16 variants of the selected version")
+            raise ValueError("Production requires the complete configured target matrix")
         if request["yaml"] == "master":
             pin = snapshot({k: request[k] for k in ("ref", "commit", "sha512")})
             if any(r.get("source_commit") != pin["commit"] for r in group):
@@ -631,9 +623,13 @@ def recover_index(tag: str, data_dir: Path) -> None:
     kind, key = ("master", int(day[:4])) if version == "master" else ("releases", version)
     release = dict(batch_record, tag=tag)
     rows = catalog.expanded(kind, key, release)
-    from .targets import load_targets
+    # Recover against the immutable tag's source configuration, not the
+    # current CI matrix (which may have changed since publication).
+    from .targets import load_targets, parse_ci_env
+    declared = parse_ci_env(git("show", f"{commit}:.github/ci.env"))
+    targets = load_targets(environ=declared)
     wanted = {(t.triplet, "static" if "static" in t.roots else "shared",
-               "gpl" if "all-gpl" in t.roots else "lgpl") for t in load_targets()}
+               "gpl" if "all-gpl" in t.roots else "lgpl") for t in targets}
     if len(rows) != len(wanted) or {(r["triplet"],r["linkage"],r["license"]) for r in rows} != wanted:
         raise ValueError("Incomplete recovery matrix")
     if any(r.get("package_format") != PACKAGE_FORMAT_VERSION for r in rows):

@@ -312,7 +312,8 @@ def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
             if generator.startswith("Visual Studio"):
                 args += ["-A", _ARCH[triplet]]
                 if triplet == "arm-windows":
-                    args += ["-DCMAKE_SYSTEM_VERSION=10.0.22621.0"]
+                    from .targets import ci_setting
+                    args += ["-DCMAKE_SYSTEM_VERSION=" + ci_setting("ARM_WINDOWS_SDK")]
             if mode in ("CONFIG", "COMPONENT"):
                 args += ["-DCMAKE_PREFIX_PATH=" + prefix.as_posix()]
             if mode == "PKGCONFIG":

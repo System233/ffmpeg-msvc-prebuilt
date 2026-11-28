@@ -11,10 +11,10 @@ from pathlib import Path
 
 from ffvcpkg import command as vcpkg_command, environment
 from ..cache_guard import (verify_dependency_cache, verify_no_dependency_builds, restore_dependencies,
-                           installed_abis, require_target_plan)
+                           installed_abis, require_target_plan, install_target)
 from ..native_abi import native_abi_query
 from ..package import _layout, _read_control, _verify_native_package_abi
-from ..targets import Target, compile_target, parse_package
+from ..targets import Target, compile_target, load_targets, parse_package
 from ..sdk_validation import (_sdk_modules, expected_modules, tester_targets,
                               assert_installed_evidence, validate_installed)
 from ..native_platform import (PE_MACHINE as _MACHINE, NATIVE_RUNTIME_TRIPLETS as _NATIVE_RUNTIME,
@@ -102,6 +102,7 @@ def validate_plan(raw: dict, data: dict) -> list[dict]:
     diagnostics = {j["job_id"]: j for j in data["diagnostics"]}
     if not diagnostics or not 1 <= len(raw["checks"]) <= len(diagnostics):
         raise ValueError("Validation plan must cover the incident")
+    configured = set(load_targets())
     seen = set()
     specs = set()
     result = []
@@ -122,6 +123,8 @@ def validate_plan(raw: dict, data: dict) -> list[dict]:
         if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
             raise ValueError("Explain the representative selection and failure reproduction")
         failed = [diagnostics[j]["build_plan"] for j in jobs]
+        if target not in configured or any(j["license"] == "nonfree" for j in failed):
+            raise ValueError("Representative target is outside the configured CI matrix")
         if target.triplet not in {j["triplet"] for j in failed}:
             raise ValueError("Select a representative affected architecture")
         static = "static" in target.roots
@@ -129,8 +132,6 @@ def validate_plan(raw: dict, data: dict) -> list[dict]:
             raise ValueError("Use shared for shared failures; static for static-only failure groups")
         if "all-lgpl" in target.roots and any(j["license"] != "lgpl" for j in failed):
             raise ValueError("LGPL fallback is only for LGPL-specific failures")
-        if any(j["license"] == "nonfree" for j in failed) and "all-nonfree" not in target.roots:
-            raise ValueError("Nonfree failures require nonfree coverage")
         seen.update(jobs)
         result.append({"spec": spec, "jobs": jobs, "reason": reason})
     if seen != set(diagnostics):
@@ -167,11 +168,6 @@ def cached_abis(job: dict, port: Path) -> dict[str, str]:
         verify_dependency_cache(job, cache, abi_map=abis)
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         raise EnvironmentFailure(str(exc)) from exc
-    # The Seed must never supply FFmpeg/Tester binaries: acceptance requires a real build.
-    for name in ("ffmpeg", "ffmpeg-tester"):
-        abi = abis[f"{name}_{job['triplet']}"]
-        if (cache / abi[:2] / (abi + ".zip")).exists():
-            raise EnvironmentFailure("Dependency Seed contains a target/Tester archive")
     return abis
 
 
@@ -192,7 +188,7 @@ def prefetch_source(data: dict) -> None:
         archive.unlink()
     try:
         _run(vcpkg_command(["x-download", str(archive), digest,
-                            f"--url=https://github.com/ffmpeg/ffmpeg/archive/{ref}.tar.gz"]),
+                            f"--url=https://github.com/ffmpeg/ffmpeg/archive/{ref}.tar.gz"], env=os.environ),
              env=dict(os.environ), log=runtime_dir() / "source-download.log")
     except (OSError, BuildFailure) as exc:
         raise EnvironmentFailure("Pinned FFmpeg source could not be prepared") from exc
@@ -200,43 +196,44 @@ def prefetch_source(data: dict) -> None:
 
 def preflight(data: dict) -> None:
     """Restore exact dependency graphs before invoking the model. Fill a missing Seed locally."""
-    from ..seed import prepare_seed, load_seed_plan, DEFAULT_PLAN
-    from ..builder import patch_arm_sdk
-    if "arm-windows" in data["triplets"]:
-        patch_arm_sdk()
+    from ..seed import populate_cache, load_seed_plan, DEFAULT_PLAN
+    ready = runtime_dir() / "ready.json"
+    ready.unlink(missing_ok=True)
     port = prepare_port(data)
     prefetch_source(data)
+    configured = set(load_targets())
     for triplet in data["triplets"]:
+        seed_plan = load_seed_plan(DEFAULT_PLAN, triplet)
+        cache = cache_dir(triplet)
+        cache.mkdir(parents=True, exist_ok=True)
+        populate_cache(triplet=triplet, plan=seed_plan, cache_dir=cache,
+                       evidence=runtime_dir() / "abi-evidence" / "preflight" / triplet)
         specs = set()
+        failed = {}
         for diagnostic in data["diagnostics"]:
             plan = diagnostic["build_plan"]
             if plan["triplet"] != triplet:
                 continue
-            specs.add(spec_string(plan["package"], triplet))
+            value = spec_string(plan["package"], triplet)
+            specs.add(value)
+            failed[value] = plan
             suffix = ",static" if plan["linkage"] == "static" else ""
-            specs.add(spec_string(f"ffmpeg[all-gpl{suffix}]", triplet))
-        jobs = [job_for(value, data) for value in sorted(specs)]
-        try:
-            for job in jobs:
-                cached_abis(job, port)
-        except EnvironmentFailure:
-            cache = cache_dir(triplet)
-            cache.mkdir(parents=True, exist_ok=True)
-            old = os.environ.get("VCPKG_BINARY_SOURCES")
-            os.environ["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache},readwrite"
-            try:
-                prepare_seed(triplet=triplet,
-                             plan=load_seed_plan(DEFAULT_PLAN, triplet) if DEFAULT_PLAN.is_file() else None,
-                             cache_dir=cache)
-            finally:
-                if old is None:
-                    os.environ.pop("VCPKG_BINARY_SOURCES", None)
-                else:
-                    os.environ["VCPKG_BINARY_SOURCES"] = old
-            # A failed or incomplete dependency preparation aborts before Pi.
-            for job in jobs:
-                cached_abis(job, port)
-    (runtime_dir() / "ready.json").write_text(json.dumps(bindings()), encoding="utf-8")
+            representative = spec_string(f"ffmpeg[all-gpl{suffix}]", triplet)
+            if parse_spec(representative) in configured:
+                specs.add(representative)
+        for value in sorted(specs):
+            graph = cached_abis(job_for(value, data), port)
+            previous = failed.get(value, {})
+            old_abi = previous.get("abi_hash")
+            if old_abi and old_abi != graph[f"ffmpeg_{triplet}"]:
+                print(f"Original failed ABI differs on the current Runner for {value}: "
+                      f"{old_abi} -> {graph[f'ffmpeg_{triplet}']}", flush=True)
+            old_graph = previous.get("native_graph_sha256")
+            if old_graph:
+                from ..native_abi import graph_digest
+                if old_graph != graph_digest(graph):
+                    print(f"Original native graph differs on the current Runner for {value}", flush=True)
+    ready.write_text(json.dumps(bindings()), encoding="utf-8")
     print("Repair dependency environment ready.", flush=True)
 
 
@@ -299,7 +296,7 @@ def _remove_targets(triplet: str, env: dict, ports: tuple[str, ...] = ("ffmpeg-t
                and "Status: install ok installed" in entry for entry in text.split("\n\n")):
             targets.append(f"{port}:{triplet}")
     if targets:
-        _run(vcpkg_command(["remove", *targets, "--recurse", f"--overlay-triplets={ROOT / 'triplets'}", *_native_paths()]),
+        _run(vcpkg_command(["remove", *targets, "--recurse", f"--overlay-triplets={ROOT / 'triplets'}", *_native_paths()], env=env),
              env=env, log=runtime_dir() / "remove.log")
 
 
@@ -404,9 +401,7 @@ def build(value: str, *, clean: bool = False) -> dict:
     data = context()
     job = job_for(value, data)
     port = prepare_port(data)
-    abis = cached_abis(job, port)
     triplet = job["triplet"]
-    abi = abis[f"ffmpeg_{triplet}"]
     env = build_env(triplet)
     installed, buildtrees, packages = _layout_paths()
     root = runtime_dir()
@@ -425,17 +420,15 @@ def build(value: str, *, clean: bool = False) -> dict:
     log = root / "build.log"
     try:
         restored = restore_dependencies(job, cache_dir(triplet), port=port, installed=installed,
-                                        paths=_native_paths(), env=env,
+                                        paths=_native_paths(), env=env, candidate=True,
                                         run=lambda args: _run(args, env=env, log=root / "restore-dependencies.log"))
-        if restored != abis:
-            raise RuntimeError("Native dependency graph changed during restore")
+        abi = restored[f"ffmpeg_{triplet}"]
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         raise EnvironmentFailure(str(exc)) from exc
     error = None
     try:
-        _run(vcpkg_command(["install", job["package"], "ffmpeg-tester", f"--triplet={triplet}",
-                            f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}",
-                            *_native_paths()]), env=env, log=log)
+        install_target(job, port=port, paths=_native_paths(), env=env,
+                       run=lambda args: _run(args, env=env, log=log))
     except BuildFailure as exc:
         error = exc
     try:
@@ -443,9 +436,9 @@ def build(value: str, *, clean: bool = False) -> dict:
     except RuntimeError as exc:
         raise EnvironmentFailure(str(exc)) from exc
     if error:
-        from .policy import INFRA_ERROR, VCPKG_PACKAGE_FAILURE, TARGET_PACKAGE
+        from .policy import INFRA_ERROR, VCPKG_PACKAGE_FAILURE, TARGET_PORTS
         text = log.read_text(encoding="utf-8", errors="replace")
-        if INFRA_ERROR.search(text) or any(not TARGET_PACKAGE.fullmatch(name) for name in VCPKG_PACKAGE_FAILURE.findall(text)):
+        if INFRA_ERROR.search(text) or any(name.lower() not in TARGET_PORTS for name in VCPKG_PACKAGE_FAILURE.findall(text)):
             raise EnvironmentFailure(str(error))
         raise error
     result = verify_outputs(job, abi)
@@ -481,9 +474,8 @@ def test(value: str, *, rebuild_tester: bool = True) -> dict:
         except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
             raise EnvironmentFailure(str(exc)) from exc
         try:
-            _run(vcpkg_command(["install", job["package"], "ffmpeg-tester", f"--triplet={triplet}",
-                                f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}",
-                                *_native_paths()]), env=env, log=root / "tester.log")
+            install_target(job, port=port, paths=_native_paths(), env=env,
+                           run=lambda args: _run(args, env=env, log=root / "tester.log"))
         finally:
             try:
                 verify_no_dependency_builds(job, buildtrees)

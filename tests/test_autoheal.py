@@ -396,7 +396,7 @@ class BotContinuationTests(unittest.TestCase):
         from ffbuild.autoheal import pr_history
         body = (pr_history.START + "\n"
                 + f"**Repair round:** {round_no}/2\n"
-                + f"**Incident signature:** {SIG}\n"
+                + f"<!-- ffbuild-autoheal-incident:v1 {SIG} -->\n"
                 + pr_history.END)
         pr = {
             "number": 42, "user": {"login": "ffmpeg-dev[bot]"}, "body": body,
@@ -498,6 +498,20 @@ class PatchReplayTests(unittest.TestCase):
             self.assertEqual(["ffmpeg/8.1.1.yaml", "patches/8.x/new.patch"],
                              scope.validate_changes("8.1.1", delta, root,
                                                     before="patches: []\n"))
+
+
+
+class CurrentTargetPolicy(unittest.TestCase):
+    def test_legacy_package_names_are_not_repairable(self):
+        from ffbuild.autoheal.policy import classify
+        job={"name":"ffbuild-fixture","conclusion":"failure",
+             "steps":[{"name":"Build and test via native vcpkg","conclusion":"failure"}]}
+        for package in ("ffmpeg-master","ffmpeg-8-1-3","zlib"):
+            self.assertEqual(("build","external_dependency",False),
+                classify(job,f"error: building {package}:x64-windows failed\nlibavcodec/foo.c error"))
+        for package in ("ffmpeg","ffmpeg-tester"):
+            self.assertEqual(("build","source_patch",True),
+                classify(job,f"error: building {package}:x64-windows failed\nlibavcodec/foo.c error"))
 
 
 if __name__ == "__main__":

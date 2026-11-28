@@ -37,7 +37,12 @@ class WorkflowReleasePolicyTests(unittest.TestCase):
         self.assertEqual("true", ci["jobs"]["build"]["with"]["force"])
         self.assertEqual("true", ci["jobs"]["build"]["with"]["skip_publish"])
         self.assertIn("release_trigger pr-gate", str(ci["jobs"]["validate"]["steps"]))
-        self.assertNotIn("push", workflow("dependency-submission.yml")["on"])
+        submission = workflow("dependency-submission.yml")
+        self.assertEqual(["main"], submission["on"]["push"]["branches"])
+        self.assertIn("ports/**", submission["on"]["push"]["paths"])
+        self.assertIn("ffmpeg/**", submission["on"]["push"]["paths"])
+        self.assertIn("submit-dependencies", str(submission["jobs"]["submit"]["steps"]))
+        self.assertNotIn("ffvcpkg install", str(submission["jobs"]["submit"]["steps"]))
 
     def test_production_build_requires_dispatch_and_single_version(self):
         ci = workflow("build-release.yml")
@@ -53,10 +58,11 @@ class WorkflowReleasePolicyTests(unittest.TestCase):
         self.assertIn("needs.build.result == 'success'", condition)
         self.assertNotIn("build-extra", ci["jobs"])
         self.assertIn("!inputs.force", condition)
-        self.assertIn("Validate release catalog for production", str(ci["jobs"]["plan"]["steps"]))
+        self.assertIn("ffbuild.ci plan", str(ci["jobs"]["plan"]["steps"]))
         requests, blocked = build_requests(version="8.1.3", release_date="2026-11-25")
         self.assertFalse(blocked)
-        self.assertEqual(16, len(requests))
+        from ffbuild.targets import load_targets
+        self.assertEqual(len(load_targets()), len(requests))
         self.assertEqual({"8.1.3"}, {row["yaml"] for row in requests})
         self.assertEqual({"2026-11-25"}, {row["release_date"] for row in requests})
 

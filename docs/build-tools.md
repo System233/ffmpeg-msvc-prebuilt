@@ -71,7 +71,7 @@ reflected in every generated Port without silently dropping its behavior.
 - Only same-repository PRs created by the authorized GitHub App Bot with
   matching `version:<version>` labels and version-specific branches can
   compile. Their cumulative diff must preserve every other version's
-  resolved recipe, inheritance and patch bytes. They validate all 16
+  resolved recipe, inheritance and patch bytes. They validate all configured
   targets for exactly one version, without publishing.
 - The single daily workflow discovers upstream stable versions and creates
   missing labeled PRs. Weekly Friday (06:00 UTC) directly requests a Master
@@ -94,11 +94,13 @@ reflected in every generated Port without silently dropping its behavior.
   LGPL/GPL aggregate profiles. It is reachable only through the explicitly
   selected nonfree aggregate. Target policy errors are fatal to CI planning:
   no successful matrix may quietly omit a declared preset.
-- The native ABI plan is one immutable artifact and contains at most 16
-  standard target variants for a single production version. Only missing
-  native ABIs are built on a production request; authorized Bot PRs force verification of
-  the complete target matrix. The CI output rejects plans larger than 16
-  jobs or containing more than one version; local JSON planning remains unrestricted.
+- The native ABI plan is one immutable artifact for a single production
+  version. The expected target set is generated from the declared matrix
+  dimensions and validated by identity, not a fixed number. Only missing
+  native ABIs are built on a production request; authorized Bot PRs force
+  verification of the complete target matrix. CI rejects duplicate targets,
+  multiple versions and matrices beyond GitHub Actions' 256-job limit.
+  Local JSON planning remains unrestricted.
 - Agent repair is read-only with respect to GitHub. It must run
   `python -m ffbuild autoheal check-worktree` before and after committing.
   The same version scope is independently checked during delivery and PR
@@ -138,36 +140,39 @@ target matrix using vcpkg's native install plan. Identical dependency
 declarations are scanned once, including linkage-only variants whose
 requested Features have no dependency edges. Each native plan records the
 complete package specs (including explicit core, Features and host Triplet)
-and ABI hashes, excluding only the two FFmpeg target packages. Compatible
-graphs may be merged into a batch, but vcpkg must independently reproduce the
-exact ABI and spec graph when invoked without an FFmpeg overlay. If a merge
-changes the graph, the original independent batches must pass instead.
+and ABI hashes, excluding only the two FFmpeg target packages. The Seed selects a deterministic cover of the original observed graphs.
+It never combines unrelated graphs into a synthetic install batch: different
+Ports may own the same installed files even when a dry-run reports unchanged
+ABIs. vcpkg must independently reproduce each selected exact ABI and spec
+graph without an FFmpeg overlay.
 No packages outside the declared CI matrix are intentionally prebuilt.
 
 CI's work order is:
 
 1. `plan` generates all versioned Ports including a pinned Master. It scans
    only the **one selected release version** for publication scheduling, but
-   derives the shared dependency plan for all versions and all four Triplets
+   derives the shared dependency plan for all versions and all configured Triplets
    when there is work. Actual selected target graphs must be covered by that
    dependency plan. It outputs only the Triplets with unpublished native ABI work. The ARM SDK
    selection workaround is applied **before** the ABI scan, matching Prepare
    and Build runners so the planned compiler ABI does not depend on a different
    SDK selection.
-2. `download` restores a shared vcpkg downloads cache, or runs `ffbuild prepare
-   --triplet <triplet> --only-downloads` once across all four architectures and
+2. `download` restores a shared vcpkg downloads cache, or runs `ffbuild.ci download` across all configured Triplets and
    saves the consolidated downloads. Previously published download caches are
-   used as fallback sources.
+   used as fallback sources. Download-only execution resolves package specs,
+   not binary ABI equality across runners.
 3. `prepare` runs once per **needed Triplet**, restoring a prior binary Seed
-   when possible, after verifying direct dependency batch ABIs against Plan.
-   On a cache miss, it builds only those external batches. Before saving or
-   releasing Workers, it restores every batch in cache-only mode into fresh
-   install roots and compares the actually installed ABIs, rejecting incomplete
-   or corrupt archives even on an exact GitHub cache hit. After verification,
-   obsolete vcpkg ABI archives from the legacy fallback are removed only from
+   when possible. The native preparation command verifies each batch ABI against Plan before installation.
+   A new ABI set restores the previous cache for that Triplet and lets native
+   vcpkg reuse matching archives and populate only missing packages. If the
+   current identity cannot be restored, preparation retries in readwrite mode
+   against the same directory. Before publishing a new cache, it restores each
+   batch in cache-only mode and checks installed ABIs. A failed refresh is fatal.
+   After verification,
+   unneeded vcpkg ABI archives from earlier current-namespace plans are removed only from
    the dedicated CI cache; local and shared repair caches are not pruned.
-4. Each `build` Worker restores the **exact same completed Seed key, read-only
-   from GitHub Actions**. A missing cache fails the job instead of silently
+4. Each `build` Worker restores the shared source downloads and the **exact
+   same completed Seed ABI identity, read-only from GitHub Actions**. A missing cache fails the job instead of silently
    rebuilding all dependencies independently. The worker vcpkg binary source
    itself is `read` rather than `readwrite`, preventing redundant FFmpeg ZIP
    writes on a space-constrained Windows Runner. **Before building, the Worker
@@ -183,12 +188,16 @@ CI's work order is:
 The binary cache namespace is scoped by pinned vcpkg version, Triplet and
 SHA256 of the newline-joined, lexically sorted **unique external native ABIs**.
 It excludes FFmpeg, Tester, dependency grouping labels and any virtual Port.
+GitHub cache entries cannot be overwritten. If an existing cache for the exact
+ABI identity cannot be restored but native population succeeds, Prepare saves
+a replacement under the same ABI key with a run/attempt suffix. Restore prefers
+that generation before the canonical key. Healthy cache hits never create a
+new generation; Workers cannot fall back to a different ABI identity.
 The dependency plan retains package names and specs for diagnostics and
 execution, not as additional cache-key inputs. Source download cache identity
 uses the union of native external specs and dependency recipe files, not
-compiler/tool ABI hashes. Old `ffbuild-seed`, `ffbuild-native` and
-`vcpkg-seed` entries may supply existing binaries; only `prepare` writes the
-consolidated GitHub cache. There is no independent environment fingerprint.
+compiler/tool ABI hashes. Only the current `ffbuild-seed` namespace may supply existing binaries;
+only `prepare` writes the consolidated GitHub binary cache. There is no independent environment fingerprint.
 
 Seed builds use `--clean-buildtrees-after-build` and
 `--clean-packages-after-build`, **not** `--clean-after-build`: the latter also
@@ -197,9 +206,28 @@ part of local Python tests or `generate --all`.
 
 ## Scan native ABIs without compiling
 
-The CI uses pinned vcpkg 2026.06.01. All install modes, including dry-run,
-download-only and cache-only restore, use the shared vcpkg wrapper with
-VCPKG_FORCE_DOWNLOADED_BINARIES=1 and --x-abi-tools-use-exact-versions.
+The version-controlled environment in `.github/ci.env` is the single
+declaration of `VCPKG_TAG`, `TRIPLETS`, `LICENSES`, `LINKAGES`,
+`VCPKG_INSTALL_OPTIONS`, and `ARM_WINDOWS_SDK`. It uses literal
+KEY=VALUE lines (no shell expansion). All workflows and local tooling read
+the same declarations; explicit environment variables may narrow local
+tests. The matrix is the Cartesian product of the declared axes.
+`setup-vcpkg` initializes the Python and vcpkg environment once per native
+Runner. The CI Plan command generates the complete immutable release plan,
+native Seed plans, and cache identities. The Download and Prepare jobs
+consume that plan. Exact Worker restores use the official GitHub cache
+Action directly. Download, Prepare and Auto-Heal also use the official
+cache restore Action, with incremental reuse restricted to their current
+cache namespace and matching vcpkg version.
+Auto-Heal restores only the incident Triplets with the same cache action;
+four positional restore slots cover the supported Windows architectures.
+Native ABI validation and final cache-only verification still fail closed.
+Dependency submission uses one Windows Runner, one source snapshot and
+one generated Port set across all configured Triplets.
+Local Python bootstrap requires VCPKG_TAG or an explicit tag if vcpkg is
+not installed. All native install modes consume VCPKG_INSTALL_OPTIONS
+and reject configuration that omits VCPKG_FORCE_DOWNLOADED_BINARIES=1 or the mandatory
+--x-abi-tools-use-exact-versions guard.
 The setup action also preserves PYTHONIOENCODING=utf-8. Its `install --dry-run` command supports
 the experimental `--x-write-nuget-packages-config=<path>` option. The resulting
 NuGet `packages.config` gives each Port's full native ABI in its
@@ -212,8 +240,8 @@ python -m ffbuild plan --abi-file ffbuild-abi.json --state-dir data
 
 Use `scan --history` for every source-backed stable release; the default
 without `--version` selects the latest release in each family, while the
-generator still prepares *all* versions. `scan --targets-file <yaml>` selects
-other native Package Specs/Triplets. The target declaration lists profiles
+generator still prepares *all* versions. The shared environment declarations select
+other native Package Specs/Triplets. The matrix generator produces native package profiles
 using `ffmpeg[...]`; the scanner selects the matching version-directory
 Overlay while the native package identity remains `ffmpeg`. **Each variant
 is queried in its own vcpkg plan**, even though all Port definitions have
@@ -259,7 +287,7 @@ tracks **published artifacts**, not whether a package is present in cache.
 
 ## Package, data and publish
 
-The CI executes `ffbuild package --job-env FFBUILD_JOB --port-dir <package-dir>`
+The CI executes `ffbuild.ci worker-package` (the same native packager and dry-run publication gate)
 after building `ffmpeg` from the selected version-directory Port. The
 packager checks the actual installed Feature selection, upstream source
 version, Triplet, linkage and licensing policy. The **Static Binary ZIP

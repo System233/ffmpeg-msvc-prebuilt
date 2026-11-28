@@ -450,7 +450,7 @@ def sync_status(report: dict) -> None:
         return  # the later CI event already owns the current presentation
     outcome = authoritative.conclusion if authoritative else "pending"
     status = {
-        "success": ("Full MSVC matrix: 16/16 passed." if report.get("verified_version_ci") else
+        "success": ("Complete MSVC matrix passed." if report.get("verified_version_ci") else
                     "CI passed; complete matrix verification not established."),
         "failure": ("CI failed; repair budget exhausted." if rounds[-1].number >= 2 else
                     "CI failed; see the linked run."),

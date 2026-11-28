@@ -144,10 +144,11 @@ def build_gate(payload: dict, environ: dict[str, str]) -> dict:
     event_name = environ.get("GITHUB_EVENT_NAME")
     target_arch = environ.get("TARGET_ARCH", "")
     target_license = environ.get("TARGET_LICENSE", "")
-    from .versions import TRIPLETS
-    if target_arch and target_arch not in TRIPLETS:
+    from .targets import matrix_axes
+    axes = matrix_axes()
+    if target_arch and target_arch not in axes["TRIPLETS"]:
         raise ValueError("Unknown validation target architecture")
-    if target_license and target_license not in ("lgpl", "gpl"):
+    if target_license and target_license not in axes["LICENSES"]:
         raise ValueError("Unknown validation target license")
     manual_validation = (event_name == "workflow_dispatch" and ref == "refs/heads/main"
                          and validation and skip)
@@ -286,10 +287,10 @@ def write_publication_tag(tag: str, commit: str, batch: str, *, release_record: 
 
 
 def complete_pr_build(version: str, planned: list[dict], jobs: list[dict]) -> bool:
-    from .targets import load_targets
-    expected = {(t.triplet, t.package) for t in load_targets()}
-    actual = {(row.get("triplet"), row.get("package")) for row in planned}
-    if len(planned) != len(expected) or actual != expected or any(row.get("yaml") != version for row in planned):
+    from .targets import load_targets, require_complete_targets
+    try:
+        require_complete_targets(planned, version=version, targets=load_targets())
+    except ValueError:
         return False
     for row in planned:
         suffix = "/ ffbuild-" + row["id"]

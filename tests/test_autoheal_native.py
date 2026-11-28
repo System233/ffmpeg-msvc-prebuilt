@@ -66,11 +66,36 @@ class NativeValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             build.validate_plan({"checks":[check(item["spec"],1)]},data)
 
-    def test_static_only_and_nonfree(self):
+    def test_representatives_follow_configured_profiles(self):
+        data = plan(("x64-windows", "lgpl", "shared"))
+        with mock.patch.dict(os.environ, {"TRIPLETS": "x64-windows",
+                                          "LICENSES": "lgpl", "LINKAGES": "shared"}):
+            allowed = check("ffmpeg[all-lgpl]:x64-windows", 1)
+            self.assertEqual([allowed], build.validate_plan({"checks": [allowed]}, data))
+            with self.assertRaisesRegex(ValueError, "outside the configured"):
+                build.validate_plan({"checks": [check("ffmpeg[all-gpl]:x64-windows", 1)]}, data)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data["triplets"] = ["x64-windows"]
+            data["diagnostics"][0]["build_plan"]["package"] = "ffmpeg[all-lgpl]"
+            with mock.patch.dict(os.environ, {"TRIPLETS": "x64-windows",
+                                              "LICENSES": "lgpl", "LINKAGES": "shared"}), \
+                 mock.patch.object(build, "prepare_port", return_value=root), \
+                 mock.patch.object(build, "prefetch_source"), \
+                 mock.patch.object(build, "runtime_dir", return_value=root), \
+                 mock.patch.object(build, "job_for", return_value={"triplet": "x64-windows"}) as job, \
+                 mock.patch.object(build, "cached_abis"), \
+                 mock.patch.object(build, "cache_dir", return_value=root/"cache"), \
+                 mock.patch("ffbuild.seed.populate_cache"), \
+                 mock.patch("ffbuild.seed.load_seed_plan",return_value={"key":"a"*64}), \
+                 mock.patch.object(build, "bindings", return_value={}):
+                build.preflight(data)
+                job.assert_called_once_with("ffmpeg[all-lgpl]:x64-windows", data)
+
+    def test_static_and_reject_nonfree_incident(self):
         data = plan(("arm64-windows","nonfree","static"))
-        valid = check("ffmpeg[all-nonfree,static]:arm64-windows",1)
-        self.assertEqual([valid],build.validate_plan({"checks":[valid]},data))
-        for spec in ("ffmpeg[all-gpl,static]:arm64-windows","ffmpeg[all-nonfree]:arm64-windows"):
+        for spec in ("ffmpeg[all-nonfree,static]:arm64-windows","ffmpeg[all-gpl,static]:arm64-windows",
+                     "ffmpeg[all-nonfree]:arm64-windows"):
             with self.assertRaises(ValueError):
                 build.validate_plan({"checks":[check(spec,1)]},data)
 
@@ -189,7 +214,7 @@ class NativeValidation(unittest.TestCase):
             with mock.patch.dict(os.environ, {"VCPKG_ROOT":str(root), "FFBUILD_REPAIR_CACHE":str(root/"cache")}), \
                  mock.patch.object(build,"config",return_value={"source":{"ref":"n${VERSION}","sha512":digest}}), \
                  mock.patch.object(build,"runtime_dir",return_value=root), \
-                 mock.patch.object(build,"vcpkg_command",side_effect=lambda args:args), \
+                 mock.patch.object(build,"vcpkg_command",side_effect=lambda args, **kwargs:args), \
                  mock.patch.object(build,"_run") as run:
                 build.prefetch_source(data)
                 run.assert_not_called()
@@ -211,47 +236,90 @@ class NativeValidation(unittest.TestCase):
                  mock.patch.object(build,"runtime_dir",return_value=root), \
                  mock.patch.object(build,"cache_dir",return_value=root/"cache"), \
                  mock.patch.object(build,"job_for",return_value={"triplet":"x64-windows"}), \
-                 mock.patch.object(build,"cached_abis",side_effect=[build.EnvironmentFailure("missing"),{}]) as scan, \
+                 mock.patch.object(build,"cached_abis") as scan, \
                  mock.patch.object(build,"bindings",return_value={"context_sha256":"a","contract_sha256":"b"}), \
-                 mock.patch("ffbuild.seed.DEFAULT_PLAN", root/"missing-plan.json"), \
-                 mock.patch("ffbuild.seed.prepare_seed") as seed:
+                 mock.patch("ffbuild.seed.DEFAULT_PLAN", root/"seed-plan.json"), \
+                 mock.patch("ffbuild.seed.load_seed_plan",return_value={"key":"a"*64}), \
+                 mock.patch("ffbuild.seed.populate_cache") as seed:
                 build.preflight(data)
                 prefetch.assert_called_once_with(data)
-                seed.assert_called_once_with(triplet="x64-windows",plan=None,cache_dir=root/"cache")
-                self.assertEqual(2,scan.call_count)
+                seed.assert_called_once()
+                self.assertEqual(root/"cache",seed.call_args.kwargs["cache_dir"])
+                self.assertEqual(1,scan.call_count)
                 self.assertTrue((root/"ready.json").is_file())
+
+    def test_preflight_records_old_abi_drift_without_rejecting_current_cache(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            data=plan(("x64-windows","gpl","shared"))
+            data["triplets"]=["x64-windows"]
+            data["diagnostics"][0]["build_plan"].update(package="ffmpeg[all-gpl]",
+                abi_hash="a"*64,native_graph_sha256="b"*64)
+            with mock.patch.object(build,"prepare_port",return_value=root), \
+                 mock.patch.object(build,"prefetch_source"), \
+                 mock.patch.object(build,"runtime_dir",return_value=root), \
+                 mock.patch.object(build,"cache_dir",return_value=root/"cache"), \
+                 mock.patch("ffbuild.seed.load_seed_plan",return_value={"key":"a"*64}), \
+                 mock.patch("ffbuild.seed.populate_cache"), \
+                 mock.patch.object(build,"job_for",return_value={"triplet":"x64-windows"}), \
+                 mock.patch.object(build,"cached_abis",return_value={"ffmpeg_x64-windows":"c"*64}), \
+                 mock.patch.object(build,"bindings",return_value={}),redirect_stdout(StringIO()) as log:
+                build.preflight(data)
+                self.assertIn("Original failed ABI differs",log.getvalue())
+                self.assertIn("Original native graph differs",log.getvalue())
+                self.assertTrue((root/"ready.json").exists())
+
+    def test_preflight_unrecoverable_cache_cannot_start_agent(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/"ready.json").write_text("{}")
+            data=plan(("x64-windows","gpl","shared"))
+            data["triplets"]=["x64-windows"]
+            data["diagnostics"][0]["build_plan"]["package"]="ffmpeg[all-gpl]"
+            with mock.patch.object(build,"prepare_port",return_value=root), \
+                 mock.patch.object(build,"prefetch_source"), \
+                 mock.patch.object(build,"runtime_dir",return_value=root), \
+                 mock.patch.object(build,"cache_dir",return_value=root/"cache"), \
+                 mock.patch("ffbuild.seed.load_seed_plan",return_value={"key":"a"*64}), \
+                 mock.patch("ffbuild.seed.populate_cache",side_effect=subprocess.CalledProcessError(1,"vcpkg")) as seed, \
+                 mock.patch.object(build,"cached_abis") as scan:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    build.preflight(data)
+                seed.assert_called_once()
+                scan.assert_not_called()
+                self.assertFalse((root/"ready.json").exists())
 
     def test_workflow_reuses_production_cache_path(self):
         import yaml
         from ffbuild.versions import ROOT
         repair=yaml.safe_load((ROOT/".github/actions/prepare-repair/action.yml").read_text(encoding="utf-8"))["runs"]
         worker=yaml.safe_load((ROOT/".github/workflows/build-release.yml").read_text(encoding="utf-8"))["jobs"]["prepare"]
-        seed=[step["with"] for step in worker["steps"] if step.get("uses","").startswith("actions/cache/save") and step.get("with",{}).get("key","").startswith("ffbuild-seed-")][0]
-        restores=[step["with"] for step in repair["steps"] if step.get("with",{}).get("key","").startswith("ffbuild-seed-")]
-        self.assertEqual(4,len(restores))
-        self.assertTrue(all(item["path"]==seed["path"] for item in restores))
-        paths=next(step["env"] for step in repair["steps"] if step.get("name")=="Initialize native repair paths")
-        self.assertEqual(seed["path"],paths["FFBUILD_REPAIR_CACHE"])
+        seed=next(step for step in worker["steps"] if step.get("id")=="seed-cache")
+        restores=[s for s in repair["steps"] if s.get("name","").startswith("Restore native dependency cache")]
+        from ffbuild.native_platform import PE_MACHINE
+        self.assertEqual(len(PE_MACHINE),len(restores))
+        self.assertTrue(all(step["uses"]==seed["uses"] for step in restores))
+        self.assertTrue(all(step["with"]["path"]=="${{ inputs.cache-dir }}" for step in restores))
+        request=next(step for step in repair["steps"] if "repair-cache-plan" in step.get("run",""))
+        self.assertEqual("${{ steps.source.outputs.triplets }}",request["env"]["REPAIR_TRIPLETS"])
 
-    def test_legacy_restore_uses_original_cache_version_and_current_destination(self):
-        import yaml
-        from ffbuild.versions import ROOT
-        workflow=yaml.safe_load((ROOT/".github/workflows/auto-heal.yml").read_text(encoding="utf-8"))
-        steps=yaml.safe_load((ROOT/".github/actions/prepare-repair/action.yml").read_text(encoding="utf-8"))["runs"]["steps"]
-        fallback=[s for s in steps if s.get("uses")=="./.github/actions/restore-legacy-cache"]
-        self.assertEqual(5,len(fallback))
-        for item in fallback:
-            cfg=item["with"]
-            self.assertNotEqual(cfg["legacy-path"],cfg["path"])
-            self.assertIn("cache-matched-key == ''", item["if"])
-            self.assertIn("/ffbuild/",cfg["path"])
-        for arch in ("x64","x86","arm64","arm"):
-            cfg=next(s["with"] for s in fallback if s["name"]==f"Reuse legacy {arch}-windows dependency Seed")
-            self.assertTrue(cfg["legacy-path"].endswith("/vcpkg-cache"))
-            self.assertTrue(cfg["prefix"].endswith(f"{arch}-windows-"))
-        action=yaml.safe_load((ROOT/".github/actions/restore-legacy-cache/action.yml").read_text(encoding="utf-8"))
-        self.assertEqual("${{ inputs.legacy-path }}",action["runs"]["steps"][0]["with"]["path"])
-        self.assertIn("Move-Item",action["runs"]["steps"][1]["run"])
+    def test_preflight_rejects_missing_seed_plan(self):
+        data=plan(("x64-windows","gpl","shared"))
+        data["triplets"]=["x64-windows"]
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            with mock.patch.object(build,"prepare_port",return_value=root), \
+                 mock.patch.object(build,"prefetch_source"), \
+                 mock.patch.object(build,"runtime_dir",return_value=root), \
+                 mock.patch("ffbuild.seed.DEFAULT_PLAN",root/"missing.json"), \
+                 mock.patch("ffbuild.seed.populate_cache") as seed:
+                with self.assertRaises(FileNotFoundError):
+                    build.preflight(data)
+                seed.assert_not_called()
+                self.assertFalse((root/"ready.json").exists())
 
     def test_audit_artifacts_are_attempt_scoped(self):
         import yaml

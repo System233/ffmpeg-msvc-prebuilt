@@ -1,4 +1,4 @@
-"""Catalog migration, lookup isolation and retention with native release identities."""
+"""Catalog validation, lookup isolation and retention with native release identities."""
 from __future__ import annotations
 
 import json
@@ -8,12 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
-
-from ffbuild import catalog, catalog_migration
+from ffbuild import catalog
 from ffbuild.identity import archive_name, variant_name
 from ffbuild.state import PublishedState
-from ffbuild.identity import record_release_tag
 
 
 def record(version="9.1", when="2026-11-25", arch="x64", channel="release", commit=None):
@@ -120,20 +117,19 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(catalog.LEGACY_LGPL_NOTE, schema["$defs"]["variant"]["properties"]["note"]["const"])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source, dest = root / "old", root / "new"
-            old = record()
-            del old["abi_hash"], old["package_format"]
-            gpl = dict(old, license="gpl")
-            rows = [old, gpl]
-            folder = source / "9.x/9.1-r1"
-            (folder / "variants").mkdir(parents=True)
-            for row in rows:
-                (folder / "variants" / (catalog._slot(row)+".yaml")).write_text(yaml.safe_dump(row))
-            (folder / "version.yaml").write_text(yaml.safe_dump({
-                "version": "9.1", "release_tag": "ffmpeg-9.1-r1",
-                "release_date": old["release_date"], "channel": "release", "variants": rows}))
-            catalog_migration.migrate(source, dest)
+            dest = root / "catalog"
+            tag = "ffmpeg-9.1-r1"
+            release = {"tag": tag, "date": "2026-11-25", "variants": {}}
+            for license_ in ("lgpl", "gpl"):
+                file = f"ffmpeg-9.1-x64-static-{license_}.zip"
+                variant = {"binary": {"file": file, "size": 100, "sha256": "b"*64,
+                                       "url": catalog.github_asset_url(tag, file)}}
+                if license_ == "lgpl":
+                    variant["note"] = catalog.LEGACY_LGPL_NOTE
+                release["variants"][f"x64-windows-static-{license_}"] = variant
             path = dest / "releases/9.1.json"
+            catalog.write_json(path, {"version":"9.1","lts":True,"releases":[release]})
+            catalog.write_json(dest/"index.json",{"schema":1,"releases":["9.1"],"master":[]})
             shard = catalog.load_shard(dest, "releases", "9.1")
             variants = shard["releases"][0]["variants"]
             self.assertEqual(catalog.LEGACY_LGPL_NOTE, variants["x64-windows-static-lgpl"]["note"])
@@ -190,33 +186,17 @@ class CatalogTests(unittest.TestCase):
             self.assertIsNone(state.find_abi(old["version"], old["triplet"], old["abi_hash"],
                                              channel="master", source_commit="b" * 40))
 
-    def test_migration_is_lossless_and_source_read_only(self):
+    def test_old_yaml_layout_is_rejected_without_conversion(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            source, dest = root / "old", root / "new"
-            row = record()
-            # Build a legacy dated v1 record for migration compatibility.
-            path = source / "9.x/9.1-261125/variants/x64-windows-static-lgpl.yaml"
-            path.parent.mkdir(parents=True)
-            path.write_text(yaml.safe_dump(row), encoding="utf-8")
-            (path.parent.parent / "version.yaml").write_text(yaml.safe_dump({
-                "version": row["version"], "release_tag": record_release_tag(row),
-                "release_date": row["release_date"], "channel": row["channel"], "variants": [row]}), encoding="utf-8")
-            before = {p: p.read_bytes() for p in source.rglob("*.yaml")}
-            self.assertEqual((1, 1, 1), catalog_migration.migrate(source, dest))
-            self.assertIs(catalog.load_shard(dest, "releases", "9.1")["lts"], True)
-            self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.yaml")})
-            self.assertEqual(row["assets"], PublishedState(directory=dest).find_abi(
-                "9.1", row["triplet"], row["abi_hash"])["assets"])
-            # Disagreeing duplicate records must stop migration.
-            broken = yaml.safe_load(path.read_text())
-            broken["assets"]["binary"]["size"] += 1
-            path.write_text(yaml.safe_dump(broken), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "Legacy asset copies differ"):
-                catalog_migration.migrate(source, root / "broken")
-            self.assertFalse((root / "broken").exists())
-            with self.assertRaisesRegex(ValueError, "Unsupported catalog layout"):
-                catalog.register_release(source, [row])
+            source=Path(tmp)
+            old=source/"9.x/9.1-r1/version.yaml"
+            old.parent.mkdir(parents=True)
+            old.write_text("version: '9.1'\n",encoding="utf-8")
+            before=old.read_bytes()
+            with self.assertRaisesRegex(ValueError,"Unsupported catalog layout"):
+                catalog.register_release(source,[record()])
+            self.assertEqual(before,old.read_bytes())
+            self.assertFalse((source/"index.json").exists())
 
     def test_reject_mixed_index_and_duplicate_json_keys(self):
         with tempfile.TemporaryDirectory() as tmp:

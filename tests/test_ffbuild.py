@@ -260,17 +260,16 @@ class WorkflowTests(unittest.TestCase):
             {"select", "plan", "download", "prepare", "build", "publish"},
             set(workflow["jobs"]),
         )
-        self.assertTrue(any("python -m ffbuild @arguments" in step.get("run", "")
-                            and "'--abi-file'" in step.get("run", "")
+        self.assertTrue(any("python -m ffbuild.ci plan" in step.get("run", "")
                             for step in workflow["jobs"]["plan"]["steps"]))
-        self.assertTrue(any("ffbuild prepare" in step.get("run", "")
+        self.assertTrue(any("ffbuild.ci prepare-cache" in step.get("run", "")
                             for step in workflow["jobs"]["prepare"]["steps"]))
-        self.assertTrue(any("--only-downloads" in step.get("run", "")
+        self.assertTrue(any("ffbuild.ci download" in step.get("run", "")
                             for step in workflow["jobs"]["download"]["steps"]))
         self.assertEqual(["plan", "prepare"], workflow["jobs"]["build"]["needs"])
         build_steps = workflow["jobs"]["build"]["steps"]
-        self.assertTrue(any("ffvcpkg install" in x.get("run", "") for x in build_steps))
-        self.assertTrue(any("ffbuild package" in x.get("run", "") for x in build_steps))
+        self.assertTrue(any("ffbuild.ci worker-build" in x.get("run", "") for x in build_steps))
+        self.assertTrue(any("ffbuild.ci worker-package" in x.get("run", "") for x in build_steps))
 
     def test_main_build_owns_pr_trigger(self):
         workflow = yaml.load(

@@ -21,22 +21,30 @@ from ffbuild.versions import ROOT
 
 class MatrixAndPolicyTests(unittest.TestCase):
     def test_single_version_matrix_is_complete(self):
-        jobs = [{"id": f"job-{i}", "yaml": "8.1.3", "triplet": "x64-windows"} for i in range(16)]
+        from ffbuild.targets import load_targets
+        jobs = [{"id": f"job-{i}", "yaml": "8.1.3", "triplet": target.triplet,
+                 "package": target.package} for i, target in enumerate(load_targets())]
         with tempfile.TemporaryDirectory() as tmp:
             destination = Path(tmp) / "output"
             write_github_output({"jobs": jobs}, destination)
             lines = dict(line.split("=", 1) for line in destination.read_text(encoding="utf-8").splitlines())
         self.assertEqual(jobs, json.loads(lines["matrix"]))
-        self.assertEqual("16", lines["count"])
+        self.assertEqual(str(len(jobs)), lines["count"])
         self.assertNotIn("matrix_extra", lines)
 
-    def test_oversized_or_multi_version_matrix_fails_closed(self):
+    def test_matrix_limit_is_platform_not_current_configuration(self):
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / "output"
-            for rows in ([{"yaml":"8.1.3","triplet":"x64-windows"}]*17,
-                         [{"yaml":v,"triplet":"x64-windows"} for v in ("8.1.3","9.1")]):
-                with self.assertRaisesRegex(ValueError, "16 jobs for one FFmpeg version"):
-                    write_github_output({"jobs": rows}, dest)
+            rows = [{"yaml":"8.1.3","triplet":"x64-windows","package":f"ffmpeg[feature-{i}]"}
+                    for i in range(17)]
+            write_github_output({"jobs": rows}, dest)
+            self.assertEqual(rows, json.loads(dest.read_text().splitlines()[0].split("=",1)[1]))
+            dest.unlink()
+            for invalid in ([dict(rows[0])]*2,
+                            [dict(rows[0], yaml="9.1"), rows[1]],
+                            [dict(rows[0], package=f"ffmpeg[feature-{i}]") for i in range(257)]):
+                with self.assertRaises(ValueError):
+                    write_github_output({"jobs": invalid}, dest)
                 self.assertFalse(dest.exists())
 
     def test_modified_old_version_is_scanned_on_main_push(self):
@@ -93,7 +101,7 @@ class MatrixAndPolicyTests(unittest.TestCase):
         self.assertEqual(["select","plan","build"], workflow["jobs"]["publish"]["needs"])
         self.assertIn("needs.build.result == 'success'", workflow["jobs"]["publish"]["if"])
         self.assertEqual("4", workflow["jobs"]["build"]["strategy"]["max-parallel"])
-        self.assertIn("ffbuild package", str(workflow["jobs"]["build"]["steps"]))
+        self.assertIn("ffbuild.ci worker-package", str(workflow["jobs"]["build"]["steps"]))
 
     def test_failure_evidence_is_ci_only(self):
         workflow = yaml.load((ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8"),
@@ -191,6 +199,25 @@ class ReleaseRecoveryTests(unittest.TestCase):
                     publication._release_assets("ffmpeg-8.1.3", [file],
                                                 upstream_version="8.1.3")
                 run.assert_not_called()
+
+
+
+class CurrentAssetContract(unittest.TestCase):
+    def test_missing_or_malformed_remote_digest_never_downloads(self):
+        from ffbuild import publication
+        import hashlib
+        from unittest.mock import patch
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            file=Path(tmp)/"fixture.zip"
+            file.write_bytes(b"fixture")
+            with patch.object(publication,"_run") as run:
+                for digest in (None,"sha256:bad","sha1:"+"a"*40):
+                    with self.assertRaisesRegex(ValueError,"asset digest"):
+                        publication._confirm_asset("fixture",file,{"size":7,"digest":digest})
+                run.assert_not_called()
+                publication._confirm_asset("fixture",file,{"size":7,"digest":"sha256:"+hashlib.sha256(b"fixture").hexdigest()})
 
 
 if __name__ == "__main__":

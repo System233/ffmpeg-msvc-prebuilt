@@ -119,7 +119,7 @@ class SimulatedSafetyCases(unittest.TestCase):
         from ffbuild.autoheal.ledger import RepairRound
         value = report()
         existing = (pr_history.START + "\n"
-                    + f"**Repair round:** 1/2\n**Incident signature:** {SIG}\n"
+                    + f"**Repair round:** 1/2\n<!-- ffbuild-autoheal-incident:v1 {SIG} -->\n"
                     + pr_history.END)
         api.return_value = {"number": 4, "user": {"login": "ffmpeg-dev[bot]"},
                             "head": {"sha": SHA}, "body": "Maintainer note\n\n" + existing}

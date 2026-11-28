@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import zipfile
 import os
 import shutil
 import subprocess
@@ -14,7 +16,7 @@ from unittest import mock
 import yaml
 
 from ffbuild.seed import (prepare_seed, seed_identity, external_batch, seed_hash,
-                          merge_batches, validate_plan, verify_batch, require_seed_archives,
+                          select_batches, validate_plan, verify_batch, require_seed_archives, populate_cache, CacheUnavailable,
                           _manifest_signature, load_seed_plan, prune_seed_cache, verify_target_coverage)
 from ffbuild.versions import ROOT, generate_all
 from ffbuild.targets import Target
@@ -26,21 +28,27 @@ def batch(*rows):
 
 
 def plan_for(batches, triplet="x64-windows"):
-    return {"triplet": triplet, "batches": batches, "key": seed_hash(batches),
-            "required": [list(p) for p in sorted({p for b in batches for p in b["abis"].items()})]}
+    return {"triplet": triplet, "batches": batches, "key": seed_hash(batches)}
+
 
 
 class SharedDependencySeedTests(unittest.TestCase):
-    def test_generated_ports_remove_obsolete_virtual_port(self):
+    def test_generated_ports_contain_only_current_ffmpeg_recipes(self):
         with tempfile.TemporaryDirectory() as temporary:
-            overlay = Path(temporary)
-            old = overlay / "ffmpeg-deps"
-            old.mkdir()
-            (old / "vcpkg.json").write_text('{"name":"ffmpeg-deps"}')
-            ports = generate_all(output=overlay)
-            self.assertFalse(old.exists())
+            overlay=Path(temporary)
+            ports=generate_all(output=overlay)
             self.assertTrue(ports)
-            self.assertEqual(set(ports), set(overlay.iterdir()))
+            self.assertEqual(set(ports),set(overlay.iterdir()))
+            self.assertTrue(all(json.loads((p/"vcpkg.json").read_text())["name"]=="ffmpeg" for p in ports))
+            stale=overlay/"ffmpeg-unused"
+            shutil.copytree(ports[0],stale)
+            self.assertEqual(set(ports),set(generate_all(output=overlay)))
+            self.assertFalse(stale.exists())
+            note=overlay/"unrelated.txt"
+            note.write_text("keep")
+            with self.assertRaisesRegex(ValueError,"non-generated content"):
+                generate_all(output=overlay)
+            self.assertEqual("keep",note.read_text())
 
     def test_hash_ignores_target_abis_order_and_duplicate_batches(self):
         dep = batch(("zlib", "x64-windows", "b", "core"))
@@ -56,15 +64,22 @@ class SharedDependencySeedTests(unittest.TestCase):
         self.assertEqual(seed_hash([a,changed]),seed_hash([changed,a]))
         self.assertRaises(ValueError, external_batch, dep["abis"],dep["specs"],"x64-windows")
 
-    def test_merge_keeps_distinct_abis_and_exact_host_specs(self):
+    def test_batch_selection_keeps_exact_graphs_and_never_unions_unrelated_ports(self):
         a=batch(("lib", "arm64-windows","a","core"),("tool","x64-windows","b","core"))
         b=batch(("lib", "arm64-windows","c","core,extra"),("tool","x64-windows","b","core"))
         c=batch(("other", "arm64-windows","d","core"))
-        merged=merge_batches([a,b,c,a])
-        self.assertEqual(2,len(merged))
-        self.assertEqual(seed_hash([a,b,c]),seed_hash(merged))
-        self.assertEqual({"a"*64,"c"*64},{p["abis"]["lib_arm64-windows"] for p in merged})
-        self.assertTrue(all(p["specs"]["tool_x64-windows"]=="tool[core]:x64-windows" for p in merged))
+        subset=batch(("tool","x64-windows","b","core"))
+        selected=select_batches([a,b,c,a,subset])
+        self.assertEqual(3,len(selected))
+        self.assertEqual(seed_hash([a,b,c,subset]),seed_hash(selected))
+        self.assertTrue(all(item in (a,b,c) for item in selected))
+        self.assertEqual({frozenset(item["abis"].items()) for item in (a,b,c)},
+                         {frozenset(item["abis"].items()) for item in selected})
+        # Two separately selected Ports may own the same paths even if their
+        # names and ABIs differ. A dry-run cannot certify their union.
+        left=batch(("headers-old","x64-windows","e","core"))
+        right=batch(("headers-new","x64-windows","f","core"))
+        self.assertCountEqual([left,right],select_batches([left,right]))
 
     def test_manifest_dedup_only_dependency_invariant_features(self):
         m={"name":"ffmpeg","version":"1","default-features":["base"],
@@ -76,7 +91,7 @@ class SharedDependencySeedTests(unittest.TestCase):
         changed["features"]["extra"]["dependencies"][0]["platform"]="arm"
         self.assertNotEqual(_manifest_signature(m,("base",)),_manifest_signature(changed,("base",)))
 
-    def test_planner_resolves_every_manifest_and_falls_back_on_merge_drift(self):
+    def test_planner_resolves_every_manifest_and_never_queries_synthetic_union(self):
         with tempfile.TemporaryDirectory() as temporary:
             overlay=Path(temporary)
             for name in ("ffmpeg-1-0","ffmpeg-2-0"):
@@ -92,8 +107,7 @@ class SharedDependencySeedTests(unittest.TestCase):
                     kw["specs"].update(dict(x["specs"],**{k:k.split("_")[0]+"[core]:x64-windows" for k in targets}))
                     return dict(x["abis"],**targets)
                 if len(packages)==2:
-                    kw["specs"].update(a["specs"])
-                    return a["abis"]  # merge loses a required package
+                    raise AssertionError("synthetic union must never be queried")
                 x=a if packages[0].startswith("lib[") else b
                 kw["specs"].update(x["specs"]);return x["abis"]
             with mock.patch("ffbuild.seed.versions",return_value=["1.0","2.0"]), \
@@ -101,15 +115,15 @@ class SharedDependencySeedTests(unittest.TestCase):
                  mock.patch("ffbuild.seed.load_targets",return_value=[Target("ffmpeg[base]","x64-windows",("base",))]), \
                  mock.patch("ffbuild.seed.native_abi_query",side_effect=query) as scan:
                 key,plan=seed_identity(triplet="x64-windows",overlay=overlay)
-                self.assertEqual(5,scan.call_count)
+                self.assertEqual(4,scan.call_count)
                 self.assertEqual(seed_hash([a,b]),key)
                 self.assertEqual(2,len(plan["batches"]))
-                self.assertEqual(2,len(plan["coverage"]))
+                self.assertEqual({"triplet","batches","key"},set(plan))
                 validate_plan(plan,"x64-windows",key)
-                with self.assertRaisesRegex(ValueError,"cover required"):
-                    validate_plan(dict(plan,required=[]),"x64-windows")
                 (overlay/"plan.json").write_text(json.dumps({"x64-windows":plan}))
                 self.assertEqual(plan,load_seed_plan(overlay/"plan.json","x64-windows",key))
+                with self.assertRaisesRegex(RuntimeError,"identity mismatch"):
+                    validate_plan(plan_for([a]),"x64-windows",key)
                 (overlay/"ffmpeg-2-0"/"vcpkg.json").unlink()
                 with self.assertRaises(FileNotFoundError):
                     seed_identity(triplet="x64-windows",overlay=overlay)
@@ -146,14 +160,85 @@ class SharedDependencySeedTests(unittest.TestCase):
                     prepare_seed(triplet="x64-windows",plan=plan,install_root=root)
                 run.assert_not_called()
 
+    def test_populate_and_verify_resolves_once_and_restores_independently(self):
+        a=batch(("lib","x64-windows","a","core"))
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            with mock.patch("ffbuild.seed.verify_batch") as verify, \
+                 mock.patch("ffbuild.seed.subprocess.run") as run, \
+                 mock.patch("ffbuild.cache_guard.installed_abis",return_value=a["abis"]):
+                prepare_seed(triplet="x64-windows",plan=plan_for([a]),binary=Path("vcpkg.exe"),
+                             cache_dir=root/"cache",install_root=root/"roots",verify_after=True)
+                verify.assert_called_once()
+                self.assertEqual(2,run.call_count)
+                first,second=run.call_args_list
+                self.assertNotIn("--only-binarycaching",first.args[0])
+                self.assertIn("--only-binarycaching",second.args[0])
+                self.assertTrue(first.kwargs["env"]["VCPKG_BINARY_SOURCES"].endswith(",readwrite"))
+                self.assertTrue(second.kwargs["env"]["VCPKG_BINARY_SOURCES"].endswith(",read"))
+                self.assertNotEqual(next(x for x in first.args[0] if x.startswith("--x-install-root=")),
+                                    next(x for x in second.args[0] if x.startswith("--x-install-root=")))
+
+    def test_discard_only_confirmed_corruption_in_failed_batch(self):
+        from ffbuild.seed import discard_damaged_archives
+        with tempfile.TemporaryDirectory() as tmp:
+            cache=Path(tmp)
+            healthy_info=b"native ABI info"
+            healthy=hashlib.sha256(healthy_info).hexdigest()
+            wrong="a"*64
+            bad="b"*64
+            unrelated="c"*64
+            abis={f"{name}_x64-windows":abi for name,abi in
+                  (("healthy",healthy),("wrong",wrong),("bad",bad),("unrelated",unrelated))}
+            specs={key:key.split("_")[0]+"[core]:x64-windows" for key in abis}
+            plan=plan_for([{"abis":abis,"specs":specs}])
+            for name,abi in abis.items():
+                package=name.split("_")[0]
+                file=cache/abi[:2]/(abi+".zip")
+                file.parent.mkdir(exist_ok=True)
+                if abi in (bad,unrelated):
+                    file.write_bytes(b"not a zip")
+                else:
+                    with zipfile.ZipFile(file,"w") as z:
+                        z.writestr(f"share/{package}/vcpkg_abi_info.txt",healthy_info)
+            self.assertEqual(2,discard_damaged_archives(plan,cache,{healthy,wrong,bad}))
+            self.assertTrue((cache/healthy[:2]/(healthy+".zip")).is_file())
+            self.assertTrue((cache/unrelated[:2]/(unrelated+".zip")).is_file())
+            self.assertFalse((cache/wrong[:2]/(wrong+".zip")).exists())
+            self.assertFalse((cache/bad[:2]/(bad+".zip")).exists())
+
+    def test_refresh_reuses_old_cache_and_does_not_swallow_graph_errors(self):
+        a=batch(("lib","x64-windows","a","core"))
+        plan=plan_for([a])
+        cache=Path("cache")
+        args=dict(triplet="x64-windows",plan=plan,cache_dir=cache)
+        with mock.patch("ffbuild.seed.prepare_seed") as prepare:
+            self.assertFalse(populate_cache(**args))
+            self.assertTrue(prepare.call_args.kwargs["cache_only"])
+        with mock.patch("ffbuild.seed.prepare_seed",side_effect=[CacheUnavailable("corrupt"),None]) as prepare:
+            self.assertTrue(populate_cache(**args))
+            self.assertEqual(2,prepare.call_count)
+            self.assertTrue(prepare.call_args_list[0].kwargs["cache_only"])
+            self.assertTrue(prepare.call_args_list[1].kwargs["verify_after"])
+            self.assertEqual(cache,prepare.call_args_list[1].kwargs["cache_dir"])
+        with mock.patch("ffbuild.seed.prepare_seed") as prepare:
+            self.assertTrue(populate_cache(**args,prefer_cache=False))
+            prepare.assert_called_once()
+            self.assertTrue(prepare.call_args.kwargs["verify_after"])
+        with mock.patch("ffbuild.seed.prepare_seed",side_effect=RuntimeError("ABI drift")) as prepare:
+            with self.assertRaisesRegex(RuntimeError,"ABI drift"):
+                populate_cache(**args)
+            prepare.assert_called_once()
+
     def test_download_only_and_cache_only(self):
         a=batch(("lib","arm64-windows","a","core"),("tool","x64-windows","b","core"))
         plan=plan_for([a],"arm64-windows")
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary)
-            with mock.patch("ffbuild.seed.verify_batch"),mock.patch("ffbuild.seed.subprocess.run") as run:
+            with mock.patch("ffbuild.seed.verify_batch") as verify,mock.patch("ffbuild.seed.subprocess.run") as run:
                 prepare_seed(triplet="arm64-windows",plan=plan,binary=Path("fake-vcpkg.exe"),install_root=root,only_downloads=True)
                 self.assertIn("--only-downloads",run.call_args.args[0])
+                verify.assert_not_called()
                 self.assertNotIn("--clean-buildtrees-after-build",run.call_args.args[0])
                 with self.assertRaisesRegex(RuntimeError,"Seed cache incomplete"):
                     prepare_seed(triplet="arm64-windows",plan=plan,cache_only=True,cache_dir=root)
@@ -238,49 +323,41 @@ class SharedDependencySeedTests(unittest.TestCase):
         self.assertEqual(["","dependencygraph"],calls)
 
     def test_workflow_prebuilds_seed_once_per_needed_triplet(self):
-        workflow = yaml.safe_load(
-            (ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8"))
-        plan = workflow["jobs"]["plan"]
-        prepare = workflow["jobs"]["prepare"]
-        download = workflow["jobs"]["download"]
-        build = workflow["jobs"]["build"]
-        self.assertIn("triplets", plan["outputs"])
-        plan_steps = plan["steps"]
-        sdk = next(i for i, step in enumerate(plan_steps)
-                   if "Align ARM SDK selection" in step.get("name", ""))
-        scanner = next(i for i, step in enumerate(plan_steps)
-                       if "Scan exact native vcpkg" in step.get("name", ""))
-        self.assertLess(sdk, scanner)
-        self.assertIn("prepare-host --triplet=arm-windows", plan_steps[sdk]["run"])
-        self.assertIn("fromJSON(needs.plan.outputs.triplets)",
-                      prepare["strategy"]["matrix"]["triplet"])
-        self.assertEqual(["plan", "prepare"], build["needs"])
-        self.assertEqual(["plan", "download"], prepare["needs"])
-        self.assertEqual("plan", download["needs"])
-        prepare_steps = prepare["steps"]
-        build_steps = build["steps"]
-        download_steps = download["steps"]
-        self.assertTrue(any("--only-downloads" in step.get("run", "")
-                            for step in download_steps))
-        source_save = next(step for step in download_steps if
-                           step.get("uses", "").startswith("actions/cache/save@"))
-        source_restore = next(step for step in prepare_steps if
-                              step.get("name") == "Restore shared dependency source downloads")
-        self.assertEqual(source_save["with"]["key"], source_restore["with"]["key"])
-        self.assertEqual(True, source_restore["with"]["fail-on-cache-miss"])
-        seed_save = next(step for step in prepare_steps if
-                         step.get("uses", "").startswith("actions/cache/save@"))
-        restored = next(step for step in build_steps if
-                        step.get("uses", "").startswith("actions/cache/restore@"))
-        self.assertEqual(seed_save["with"]["key"], restored["with"]["key"])
-        self.assertEqual(True, restored["with"]["fail-on-cache-miss"])
-        self.assertFalse(any(step.get("uses", "").startswith("actions/cache/save@")
-                             for step in build_steps))
-        worker_install = next(step for step in build_steps
-                              if "Build and test via native vcpkg" in step.get("name", ""))
-        self.assertTrue(worker_install["env"]["VCPKG_BINARY_SOURCES"].endswith(",read"))
-        self.assertTrue(any("python -m ffbuild prepare" in step.get("run", "")
-                            for step in prepare_steps))
+        jobs=yaml.safe_load((ROOT/".github/workflows/build-release.yml").read_text(encoding="utf-8"))["jobs"]
+        self.assertIn("prepare_matrix",jobs["plan"]["outputs"])
+        self.assertIn("fromJSON(needs.plan.outputs.prepare_matrix)",jobs["prepare"]["strategy"]["matrix"]["include"])
+        self.assertEqual(["plan","prepare"],jobs["build"]["needs"])
+        self.assertEqual(["plan","download"],jobs["prepare"]["needs"])
+        self.assertEqual("plan",jobs["download"]["needs"])
+        download=jobs["download"]["steps"]
+        source=next(s for s in download if s.get("uses","").startswith("actions/cache/save@"))
+        for name in ("prepare","build"):
+            restored=next(s for s in jobs[name]["steps"] if s.get("name")=="Restore shared dependency source downloads")
+            self.assertEqual(source["with"]["key"],restored["with"]["key"])
+            self.assertTrue(restored["with"]["fail-on-cache-miss"])
+        prepared=next(s for s in jobs["prepare"]["steps"] if s.get("uses","").startswith("actions/cache/save@"))
+        restored=next(s for s in jobs["build"]["steps"] if s.get("name")=="Restore centrally prebuilt dependencies")
+        self.assertIn("steps.prepare-cache.outputs.save_key", prepared["with"]["key"])
+        self.assertIn("matrix.seed_key", restored["with"]["key"])
+        self.assertEqual(2,len(restored["with"]["restore-keys"].splitlines()))
+        self.assertTrue(all("matrix.seed_key" in key for key in restored["with"]["restore-keys"].splitlines()))
+        self.assertTrue(restored["with"]["fail-on-cache-miss"])
+        self.assertFalse(any(s.get("uses","").startswith("actions/cache/save@") for s in jobs["build"]["steps"]))
+
+    def test_dependency_submission_generates_one_source_snapshot_for_all_configured_triplets(self):
+        from ffbuild.builder import submit_dependencies
+        with mock.patch.dict(os.environ,{"TRIPLETS":"x64-windows arm64-windows"}), \
+             mock.patch("ffbuild.builder.bootstrap",return_value=Path("vcpkg.exe")), \
+             mock.patch("ffbuild.master.master_metadata",return_value={"ref":"pin"}) as pin, \
+             mock.patch("ffbuild.versions.generate_all") as generate, \
+             mock.patch("ffbuild.seed.seed_identity",return_value=("key",{})) as native, \
+             mock.patch("ffbuild.builder._submit_dependency_plan") as submit:
+            submit_dependencies(vcpkg_root=Path("vcpkg"))
+            pin.assert_called_once()
+            generate.assert_called_once_with(master={"ref":"pin"})
+            self.assertEqual(["x64-windows","arm64-windows"],[c.kwargs["triplet"] for c in native.call_args_list])
+            self.assertEqual(["x64-windows","arm64-windows"],[c.args[2] for c in submit.call_args_list])
+
 
 
 @unittest.skipUnless(os.environ.get("FFBUILD_TEST_VCPKG_BIN"), "Set native vcpkg binary for real Seed fixture")
@@ -323,7 +400,7 @@ class NativeSeedFixture(unittest.TestCase):
                 original,a=graph("ffmpeg[core]")
                 _,b=graph("ffmpeg[core,extra]")
                 self.assertNotEqual(a["abis"],b["abis"])
-                plans=merge_batches([a,b]); self.assertEqual(2,len(plans))
+                plans=select_batches([a,b]); self.assertEqual(2,len(plans))
                 plan=plan_for(plans)
                 # Real source-only changes affect FFmpeg/Tester ABIs but not Seed.
                 for p in (ffmpeg,tester):
@@ -333,21 +410,77 @@ class NativeSeedFixture(unittest.TestCase):
                 self.assertNotEqual(original["ffmpeg-tester_x64-windows"],changed["ffmpeg-tester_x64-windows"])
                 self.assertEqual(a,a2)
                 self.assertEqual(seed_hash([a,b]),seed_hash([a2,b]))
-                prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,install_root=root/"roots")
+                self.assertTrue(populate_cache(triplet="x64-windows",plan=plan_for([a]),binary=binary,
+                                               cache_dir=cache,install_root=root/"roots",prefer_cache=False))
                 self.assertTrue(marker.exists());marker.unlink()
+                abi=next(iter(a["abis"].values()))
+                original_archive=cache/abi[:2]/(abi+".zip")
+                original_hash=hashlib.sha256(original_archive.read_bytes()).hexdigest()
+                self.assertNotEqual(plan_for([a])["key"],plan["key"])
+                self.assertTrue(populate_cache(triplet="x64-windows",plan=plan,binary=binary,
+                                               cache_dir=cache,install_root=root/"roots",prefer_cache=False))
+                self.assertTrue(marker.exists());marker.unlink()
+                self.assertEqual(original_hash,hashlib.sha256(original_archive.read_bytes()).hexdigest())
                 self.assertFalse(target_marker.exists())
+                require_seed_archives(plan,cache)
+                abi=next(iter(a["abis"].values()))
+                (cache/abi[:2]/(abi+".zip")).write_bytes(b"not a ZIP")
+                # The cache provider must repair the bad file while retaining
+                # valid ABI archives; no synthetic cache content is accepted.
+                healthy_abi=next(iter(b["abis"].values()))
+                healthy=cache/healthy_abi[:2]/(healthy_abi+".zip")
+                healthy_hash=hashlib.sha256(healthy.read_bytes()).hexdigest()
+                self.assertTrue(populate_cache(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                                               install_root=root/"roots"))
+                self.assertTrue(marker.exists());marker.unlink()
+                self.assertEqual(healthy_hash,hashlib.sha256(healthy.read_bytes()).hexdigest())
+                self.assertFalse(target_marker.exists())
+                self.assertFalse(populate_cache(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                                                install_root=root/"roots"))
+                self.assertFalse(marker.exists())
+
+
+    def test_native_file_ownership_conflict_requires_separate_observed_graphs(self):
+        from ffbuild import native_abi, seed
+        import ffvcpkg
+        binary=Path(os.environ["FFBUILD_TEST_VCPKG_BIN"]).resolve()
+        with tempfile.TemporaryDirectory(prefix="ffbuild-seed-conflict-") as temporary:
+            root=Path(temporary)
+            ports=root/"ports"; ports.mkdir()
+            cache=root/"cache"; cache.mkdir()
+            shutil.copytree(ROOT/"triplets",root/"triplets")
+            names=("seed-conflict-old","seed-conflict-new")
+            for name in names:
+                port=ports/name; port.mkdir()
+                (port/"vcpkg.json").write_text(json.dumps({"name":name,"version":"1.0.0","license":"MIT"}))
+                (port/"portfile.cmake").write_text(
+                    'file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/include")\n'
+                    'file(WRITE "${CURRENT_PACKAGES_DIR}/include/conflicting.h" "${PORT}")\n'
+                    'file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/copyright" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")\n')
+                (port/"copyright").write_text("MIT fixture")
+            env=dict(os.environ,VCPKG_ROOT=str(binary.parent),FFVCPKG_BIN=str(binary),
+                     VCPKG_BINARY_SOURCES=f"clear;files,{cache},readwrite")
+            def direct(specs):
+                selected={}
+                abis=native_abi.native_abi_query(specs,"x64-windows",binary=binary,specs=selected)
+                return {"abis":abis,"specs":selected}
+            with mock.patch.object(native_abi,"ROOT",root),mock.patch.object(seed,"ROOT",root), \
+                 mock.patch.object(ffvcpkg,"ROOT",root),mock.patch.dict(os.environ,env):
+                original=[direct([name+"[core]"]) for name in names]
+                union=direct([name+"[core]" for name in names])
+                self.assertEqual(seed_hash(original),seed_hash([union]))
+                # Actual dry-run permits the union. Actual installation does not.
+                with self.assertRaises(subprocess.CalledProcessError):
+                    prepare_seed(triplet="x64-windows",plan=plan_for([union]),binary=binary,
+                                 cache_dir=cache,install_root=root/"roots")
+                selected=select_batches(original)
+                self.assertCountEqual(original,selected)
+                plan=plan_for(selected)
+                prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                             install_root=root/"roots")
                 require_seed_archives(plan,cache)
                 prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
                              install_root=root/"roots",cache_only=True)
-                self.assertFalse(marker.exists())
-                self.assertFalse(target_marker.exists())
-                abi=next(iter(a["abis"].values()))
-                (cache/abi[:2]/(abi+".zip")).write_bytes(b"not a ZIP")
-                with self.assertRaises(subprocess.CalledProcessError):
-                    prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
-                                 install_root=root/"roots",cache_only=True)
-                self.assertFalse(marker.exists())
-                self.assertFalse(target_marker.exists())
 
 
 if __name__ == "__main__":

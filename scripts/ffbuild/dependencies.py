@@ -19,7 +19,7 @@ def _overlay_closure(names: set[str]) -> set[Path]:
             continue
         visited.add(name)
         port = ROOT / "ports" / name
-        if not port.is_dir() or name in {"ffmpeg", "ffmpeg-deps"}:
+        if not port.is_dir() or name == "ffmpeg":
             continue  # generated ports are not authored overlays
         for file in port.rglob("*"):
             if file.is_file() and "__pycache__" not in file.parts:

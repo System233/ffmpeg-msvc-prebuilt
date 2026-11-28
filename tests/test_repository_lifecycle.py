@@ -33,7 +33,8 @@ REPO = "example/ffmpeg"
 
 def matrix(version="8.1.3", day=DAY, salt="a", pin=None):
     jobs, blocked = build_requests(version=version, release_date=day, snapshot=pin)
-    assert not blocked and len(jobs) == 16
+    from ffbuild.targets import load_targets
+    assert not blocked and len(jobs) == len(load_targets())
     for job in jobs:
         abi = hashlib.sha256((job["version"]+job["triplet"]+job["package"]+salt).encode()).hexdigest()
         job.update(abi_hash=abi, id=variant_name(job["version"],0,job["triplet"],job["linkage"],job["license"],abi_hash=abi))
@@ -126,9 +127,19 @@ class CatalogLifecycle(unittest.TestCase):
         annotation={"repository_commit":SHA,"batch":digest,"release":batch}
         tag="ffmpeg-8.1.3-261125R2"
         assets={a["file"]:{"size":a["size"],"digest":a["digest"],"browser_download_url":catalog.github_asset_url(tag,a["file"],repository=REPO)} for r in rows for a in r["assets"].values()}
+        from ffbuild.versions import ROOT
+        historical = (ROOT / ".github/ci.env").read_text(encoding="utf-8")
         def fake_git(*args):
-            return json.dumps(annotation) if args[0]=="for-each-ref" else SHA
-        with patch.dict(os.environ,{"GITHUB_REF":"refs/heads/main","GITHUB_REPOSITORY":REPO}),patch("ffbuild.release_trigger.git",side_effect=fake_git),patch("ffbuild.publication.subprocess.run"),patch.object(publication,"_release_api",return_value={"id":1,"tag_name":tag,"draft":False,"prerelease":False}),patch.object(publication,"_release_asset_list",return_value=assets),patch.object(publication,"_push_data") as push,patch.object(publication,"_release_assets") as publish:
+            if args[0]=="for-each-ref":
+                return json.dumps(annotation)
+            if args[0]=="show":
+                self.assertEqual(f"{SHA}:.github/ci.env", args[1])
+                return historical
+            return SHA
+        # Current CI may be narrowed after the original release. Recovery
+        # still needs the original matrix in the verified source commit.
+        with patch.dict(os.environ,{"GITHUB_REF":"refs/heads/main","GITHUB_REPOSITORY":REPO,
+                                    "TRIPLETS":"x64-windows","LICENSES":"lgpl","LINKAGES":"shared"}),patch("ffbuild.release_trigger.git",side_effect=fake_git),patch("ffbuild.publication.subprocess.run"),patch.object(publication,"_release_api",return_value={"id":1,"tag_name":tag,"draft":False,"prerelease":False}),patch.object(publication,"_release_asset_list",return_value=assets),patch.object(publication,"_push_data") as push,patch.object(publication,"_release_assets") as publish:
             key=next(iter(assets))
             saved=assets[key]["digest"]
             assets[key]["digest"]="sha256:"+"0"*64

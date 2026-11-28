@@ -1,6 +1,15 @@
 name: Dependency Submission
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - vcpkg-configuration.json
+      - ports/**
+      - ffmpeg/**
+      - triplets/**
+      - .github/ci.env
+      - .github/workflows/build-release.yml
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -11,16 +20,11 @@ permissions:
 jobs:
   submit:
     runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        triplet: [x64-windows, x86-windows, arm64-windows, arm-windows]
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-python
-        with:
-          requirements: requirements.txt
+      - uses: ./.github/actions/setup-vcpkg
+        id: config
       - name: Submit vcpkg dependency graph
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python -m ffbuild.ci submit-dependencies --triplet "${{ matrix.triplet }}"
+        run: python -m ffbuild.ci submit-dependencies
