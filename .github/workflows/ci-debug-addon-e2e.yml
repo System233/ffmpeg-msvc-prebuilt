@@ -101,6 +101,7 @@ jobs:
       matrix:
         include:
           - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-lgpl]', license: lgpl, linkage: shared}
+          - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-gpl]', license: gpl, linkage: shared}
           - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
           - {version: '8.1.3', triplet: x64-windows, package: 'ffmpeg[all-gpl]', license: gpl, linkage: shared}
           - {version: '8.1.3', triplet: x86-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
@@ -168,20 +169,11 @@ jobs:
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
         run: python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
-      - name: Run locally installed static SDK acceptance
+      - name: Validate independent installed static SDK consumers
         if: matrix.linkage == 'static'
-        shell: pwsh
         env:
-          FFBUILD_TEST_MSVC: '1'
-          FFBUILD_TEST_REAL_STATIC_TRIPLET: ${{ matrix.triplet }}
-          FFBUILD_TEST_REAL_STATIC_PACKAGE: ${{ runner.temp }}/ffbuild/vcpkg/packages/ffmpeg_${{ matrix.triplet }}
-          FFBUILD_TEST_REAL_STATIC_INSTALLED: ${{ runner.temp }}/ffbuild/vcpkg/installed/${{ matrix.triplet }}
-          FFBUILD_TEST_PKGCONF: ${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe
-        run: |
-          # Genuine static acceptance needs the installed SDK and native
-          # compiler/pkgconf only; the strict runner rejects any skipped case.
-          python tests/run_cmake_contracts.py --tier real-static --module test_cmake_real_static_sdk --jobs 2 --native-jobs 2 --group-timeout 1200 --report cmake-real-static.json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+        run: python -m ffbuild.ci verify-installed-sdk --job-env FFBUILD_JOB --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report installed-sdk-tests.json
       - name: Verify and package installed vcpkg result
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
@@ -189,14 +181,15 @@ jobs:
       - name: Validate packaged ZIPs with the publication gate
         run: python -m ffbuild publish --artifacts-dir Release --dry-run
       - name: Validate extracted public SDK and CLI
-        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe"
+        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report public-sdk-tests.json
       - uses: actions/upload-artifact@v6
         if: ${{ success() }}
         with:
           name: cached-native-build-${{ matrix.version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
           path: |
             Release/
-            cmake-real-static.json
+            installed-sdk-tests.json
+            public-sdk-tests.json
           retention-days: 3
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
@@ -207,6 +200,7 @@ jobs:
             ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
             ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
             ffbuild-abi.json
-            cmake-real-static.json
+            installed-sdk-tests.json
+            public-sdk-tests.json
           retention-days: 3
           if-no-files-found: ignore
