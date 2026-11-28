@@ -22,6 +22,7 @@ BUILDER_FILES = (
     "build.sh.in",
     "FindFFmpeg.cmake.in",
     "vcpkg-cmake-wrapper.cmake",
+    "package-config.cmake",
 )
 
 
@@ -89,12 +90,14 @@ class OriginalBuildRecipeParityTests(unittest.TestCase):
             'vcpkg_find_acquire_program(GASPREPROCESSOR)',
             'VCPKG_TARGET_ARCHITECTURE STREQUAL "arm"',
             "VCPKG_DETECTED_MSVC", "VCPKG_CRT_LINKAGE",
-            "--extra-ldflags=-libpath:", 'OPTIONS_DEBUG', 'OPTIONS_RELEASE',
-            'z_vcpkg_setup_pkgconfig_path(CONFIG RELEASE)',
-            'z_vcpkg_setup_pkgconfig_path(CONFIG DEBUG)',
+            "vcpkg_host_path_list(PREPEND ENV{LIB}", "--extra-ldflags=-L", 'OPTIONS_DEBUG', 'OPTIONS_RELEASE',
+            'ffmpeg_setup_native_pkgconfig(RELEASE)',
+            'ffmpeg_setup_native_pkgconfig(DEBUG)',
+            'z_vcpkg_setup_pkgconfig_path(CONFIG ${_config})',
+            'z_vcpkg_restore_pkgconfig_path()',
             'ffmpeg_pkgconf_run', 'vcpkg_fixup_pkgconfig',
             'libconvert-', 'vcpkg_copy_tools',
-            'FindFFmpeg.cmake.in', 'vcpkg-cmake-wrapper.cmake',
+            'package-config.cmake', 'ffmpeg_install_cmake_package', 'vcpkg-cmake-wrapper.cmake',
             'FFMPEG_PATCHES', '/constraints.cmake',
         ):
             with self.subTest(requirement=requirement):

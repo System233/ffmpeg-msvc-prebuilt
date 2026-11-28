@@ -390,11 +390,12 @@ def verify_outputs(job: dict, abi: str) -> dict:
     _verify_native_package_abi(prefix, "ffmpeg", abi)
     tools = prefix / "tools" / "ffmpeg"
     libs = ["avutil", "avcodec", "avformat", "avdevice", "avfilter", "swresample", "swscale"]
-    if any((prefix / "lib").glob("*postproc*.lib")):
-        libs.append("postproc")
+    for optional in ("postproc", "avresample"):
+        if (prefix / "lib" / (optional + ".lib")).is_file():
+            libs.append(optional)
     expected = {f"check-{mode}{lib}.exe" for lib in libs for mode in ("", "full-", "legacy-")}
     expected.update(f"check-{mode}transitive-{lib}.exe"
-                    for lib in libs if lib not in ("avutil", "postproc")
+                    for lib in libs if lib not in ("avutil", "postproc", "avresample")
                     for mode in ("", "full-", "legacy-"))
     testers = {}
     for cfg, suffix in (("release", "rel"), ("debug", "dbg")):
@@ -575,7 +576,7 @@ def validate_evidence(evidence: dict, data: dict) -> None:
             raise ValueError("External dependencies may not be rebuilt during repair")
         counts = check.get("tester_targets")
         if (not isinstance(counts, dict) or set(counts) != {"release", "debug"}
-                or counts["release"] not in (39, 42) or counts["debug"] != counts["release"]):
+                or counts["release"] not in (39, 42, 45) or counts["debug"] != counts["release"]):
             raise ValueError("Incomplete Tester verification")
         runtime = check.get("runtime")
         if not isinstance(runtime, dict):

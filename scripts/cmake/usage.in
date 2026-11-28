@@ -1,11 +1,11 @@
 FFmpeg provides CMake imported targets:
 
   # Recommended: full umbrella target
-  find_package(FFmpeg REQUIRED)
+  find_package(FFmpeg CONFIG REQUIRED)
   target_link_libraries(main PRIVATE FFmpeg::FFmpeg)
 
   # Or link individual modules
-  find_package(FFmpeg REQUIRED)
+  find_package(FFmpeg CONFIG REQUIRED)
   target_link_libraries(main PRIVATE
       FFmpeg::avformat
       FFmpeg::avcodec
@@ -17,6 +17,7 @@ FFmpeg provides CMake imported targets:
   target_link_libraries(main PRIVATE ${FFMPEG_LIBRARIES})
 
 Compatibility:
+  find_package(FFmpeg MODULE REQUIRED) remains supported.
   Old FFMPEG::ffmpeg / FFMPEG::avformat names are still available
   as aliases.
 
@@ -25,4 +26,5 @@ Full example with deploy scripts:
   https://github.com/System233/ffmpeg-msvc-prebuilt/tree/main/examples
 
 Direct download usage:
-  cmake -B build -DFFMPEG_ROOT=<absolute_path_to_ffmpeg_prefix>
+  cmake -B build -DCMAKE_PREFIX_PATH=<absolute_path_to_ffmpeg_prefix>
+  # For older SDKs, use FFMPEG_ROOT and FindFFmpeg.cmake as before.

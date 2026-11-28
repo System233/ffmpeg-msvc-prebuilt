@@ -125,9 +125,11 @@ v2 格式采用差分打包；历史 Develop 包保持原有独立安装语义�
 
 ```bash
 # 先解压，再构建
-cmake -B build -DFFMPEG_ROOT=C:/path/to/extracted_prefix
+cmake -B build -DCMAKE_PREFIX_PATH=C:/path/to/extracted_prefix
 cmake --build build
 ```
+
+不包含 Config 接口的旧版 SDK 仍可使用 `-DFFMPEG_ROOT=...`。
 
 详见 [`examples/README_CN.md`](./examples/README_CN.md) 中的 CMake、Meson 和 GNU Make 说明。
 

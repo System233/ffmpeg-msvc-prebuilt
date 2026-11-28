@@ -164,7 +164,7 @@ def generate_port(config_name: str, *, destination: Path, ref: str = "",
     builder_dir = port / "builder"
     builder_dir.mkdir()
     for name in ("ffmpeg-portfile.cmake", "build.sh.in", "FindFFmpeg.cmake.in",
-                 "vcpkg-cmake-wrapper.cmake"):
+                 "vcpkg-cmake-wrapper.cmake", "package-config.cmake"):
         source_file = builder_source / name
         if not source_file.is_file():
             raise FileNotFoundError(f"Original FFmpeg builder missing: {source_file}")
