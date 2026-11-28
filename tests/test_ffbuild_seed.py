@@ -207,6 +207,48 @@ class SharedDependencySeedTests(unittest.TestCase):
             self.assertFalse((cache/wrong[:2]/(wrong+".zip")).exists())
             self.assertFalse((cache/bad[:2]/(bad+".zip")).exists())
 
+    def test_each_corrupt_batch_is_recovered_without_repeating_completed_batches(self):
+        a=batch(("lib","x64-windows","a","core"))
+        b=batch(("other","x64-windows","b","core"))
+        c=batch(("healthy","x64-windows","c","core"))
+        plan=plan_for([a,b,c])
+        for prefer in (True,False):
+            visited=[]
+            recovered=set()
+            def prepare(**kwargs):
+                current=kwargs["plan"]["batches"][0]
+                key=next(iter(current["abis"]))
+                visited.append((key,kwargs.get("cache_only",False)))
+                if current != c and key not in recovered:
+                    if not kwargs.get("cache_only"):
+                        recovered.add(key)
+                    raise CacheUnavailable("corruption",current["abis"].values())
+            with mock.patch("ffbuild.seed.prepare_seed",side_effect=prepare), \
+                 mock.patch("ffbuild.seed.discard_damaged_archives",return_value=1):
+                self.assertTrue(populate_cache(triplet="x64-windows",plan=plan,cache_dir=Path("cache"),prefer_cache=prefer))
+            names=[name for name,_ in visited]
+            self.assertEqual(1,names.count("healthy_x64-windows"))
+            self.assertEqual(sorted(names,key=lambda name: ["lib_x64-windows","other_x64-windows","healthy_x64-windows"].index(name)),names)
+
+    def test_seed_reuses_already_observed_target_graph_without_changing_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            overlay=Path(tmp)
+            port=overlay/"ffmpeg-1-0";port.mkdir()
+            (port/"vcpkg.json").write_text(json.dumps({"name":"ffmpeg","version":"1.0",
+                "features":{"base":{"dependencies":["lib"]}}}))
+            a=batch(("lib","x64-windows","a","core"))
+            with mock.patch("ffbuild.seed.versions",return_value=["1.0"]), \
+                 mock.patch("ffbuild.seed.has_source",return_value=True), \
+                 mock.patch("ffbuild.seed.load_targets",return_value=[Target("ffmpeg[base]","x64-windows",("base",))]), \
+                 mock.patch("ffbuild.seed.native_abi_query") as query, \
+                 mock.patch("ffbuild.seed.verify_batch") as verify:
+                key,plan=seed_identity(triplet="x64-windows",overlay=overlay,
+                    dependency_batches={("1.0","x64-windows","ffmpeg[base]"):a})
+                query.assert_not_called()
+                verify.assert_called_once()
+                self.assertEqual(seed_hash([a]),key)
+                self.assertEqual([a],plan["batches"])
+
     def test_refresh_reuses_old_cache_and_does_not_swallow_graph_errors(self):
         a=batch(("lib","x64-windows","a","core"))
         plan=plan_for([a])
@@ -315,7 +357,7 @@ class SharedDependencySeedTests(unittest.TestCase):
                     path=Path(arg.split("=",1)[1])
                     path.write_text("<packages>"+"".join(f'<package id="{k}" version="1.0-vcpkg{v}" />'
                                     for k,v in a["abis"].items())+"</packages>")
-        with mock.patch("ffbuild.builder.bootstrap",return_value=Path("fake-vcpkg.exe")), \
+        with mock.patch("ffbuild.builder.Path.is_file",return_value=True), \
              mock.patch("ffbuild.versions.generate_all"),mock.patch("ffbuild.master.master_metadata",return_value={}), \
              mock.patch("ffbuild.seed.seed_identity",return_value=(plan["key"],plan)), \
              mock.patch("ffbuild.builder.subprocess.run",side_effect=run):
@@ -347,7 +389,7 @@ class SharedDependencySeedTests(unittest.TestCase):
     def test_dependency_submission_generates_one_source_snapshot_for_all_configured_triplets(self):
         from ffbuild.builder import submit_dependencies
         with mock.patch.dict(os.environ,{"TRIPLETS":"x64-windows arm64-windows"}), \
-             mock.patch("ffbuild.builder.bootstrap",return_value=Path("vcpkg.exe")), \
+             mock.patch("ffbuild.builder.Path.is_file",return_value=True), \
              mock.patch("ffbuild.master.master_metadata",return_value={"ref":"pin"}) as pin, \
              mock.patch("ffbuild.versions.generate_all") as generate, \
              mock.patch("ffbuild.seed.seed_identity",return_value=("key",{})) as native, \
@@ -438,6 +480,17 @@ class NativeSeedFixture(unittest.TestCase):
                 self.assertFalse(populate_cache(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
                                                 install_root=root/"roots"))
                 self.assertFalse(marker.exists())
+                for value in (a,b):
+                    abi=next(iter(value["abis"].values()))
+                    (cache/abi[:2]/(abi+".zip")).write_bytes(b"not a ZIP")
+                self.assertTrue(populate_cache(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                                               install_root=root/"roots",prefer_cache=False))
+                self.assertTrue(marker.exists()); marker.unlink()
+                self.assertFalse(target_marker.exists())
+                self.assertFalse(populate_cache(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                                                install_root=root/"roots"))
+                self.assertFalse(marker.exists())
+
 
 
     def test_native_file_ownership_conflict_requires_separate_observed_graphs(self):

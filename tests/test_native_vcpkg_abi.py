@@ -48,15 +48,22 @@ class NativeABIQueries(unittest.TestCase):
             items.extend(req)
         queries = []
 
-        def native(specs, triplet, **kwargs):
-            queries.append((tuple(specs), triplet, kwargs['port_overlay'].name))
-            self.assertEqual(2, len(specs))
-            self.assertEqual("ffmpeg-tester", specs[1])
-            return {f"{spec.split('[', 1)[0]}_{triplet}":
-                    str(len(queries)) * 64 for spec in specs}
+        def native(packages, triplet, **kwargs):
+            queries.append((tuple(packages), triplet, kwargs['port_overlay'].name))
+            self.assertEqual(2, len(packages))
+            self.assertEqual("ffmpeg-tester", packages[1])
+            graph = {f"{spec.split('[', 1)[0]}_{triplet}":
+                     str(len(queries)) * 64 for spec in packages}
+            graph[f"zlib_{triplet}"] = "a" * 64
+            if kwargs.get("specs") is not None:
+                kwargs["specs"].update({key: key.split("_")[0]+"[core]:"+triplet for key in graph})
+            return graph
 
+        batches = {}
         with mock.patch('ffbuild.native_abi.native_abi_query', side_effect=native):
-            results = scan_native_abis(items)
+            results = scan_native_abis(items, dependency_batches=batches)
+        self.assertEqual(4, len(batches))
+        self.assertTrue(all(batch == {"abis":{"zlib_x64-windows":"a"*64},"specs":{"zlib_x64-windows":"zlib[core]:x64-windows"}} for batch in batches.values()))
         self.assertEqual(4, len(results))
         self.assertEqual(4, len(queries))
         self.assertEqual(4, len({item['id'] for item in results}))

@@ -12,7 +12,6 @@ from unittest import mock
 
 import yaml
 
-from ffbuild.events import event_options
 from ffbuild.dependencies import overlay_port_names
 from ffbuild.publication import publish
 from ffbuild.planner import impacted_versions, write_github_output
@@ -128,60 +127,25 @@ class PlannerTests(unittest.TestCase):
             )
             write_github_output(result, dest)
             lines = dest.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(4, len(lines))
-            self.assertEqual("publication_required=true", lines[3])
+            self.assertEqual(2, len(lines))
+            self.assertEqual("publication_required=true", lines[1])
             self.assertEqual(result["jobs"], json.loads(lines[0][len("matrix="):]))
-            self.assertEqual("triplets=[\"x64-windows\"]", lines[1])
             self.assertFalse(any(line.startswith("auto_heal_") for line in lines))
 
 
-class EventTests(unittest.TestCase):
-    def test_explicit_force_overrides_event_defaults(self):
+class LocalPlanTests(unittest.TestCase):
+    def test_explicit_force_schedules_local_plan(self):
         from ffbuild.cli import main
-
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            event = root / "event.json"
-            event.write_text(json.dumps({"inputs": {"version": "8.1.3"}}), encoding="utf-8")
             scan_file = root / "scan.json"
             scan_file.write_text('{"schema":3,"jobs":[]}', encoding="utf-8")
             data = {"jobs": [], "matrix": [], "blocked": [], "versions": []}
-            with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch",
-                                           "GITHUB_EVENT_PATH": str(event)}):
-                with mock.patch("ffbuild.planner.plan_native", return_value=data) as planned:
-                    main(["plan", "--event", "--force", "--abi-file", str(scan_file),
-                          "--output", str(root / "plan.json")])
+            with mock.patch("ffbuild.planner.plan_native", return_value=data) as planned:
+                main(["plan", "--force", "--abi-file", str(scan_file),
+                      "--output", str(root / "plan.json")])
             self.assertTrue(planned.call_args.kwargs["force"])
             self.assertEqual(3, planned.call_args.args[0]["schema"])
-
-    def test_pr_is_changed_and_forced(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            event = Path(tmp) / "event.json"
-            event.write_text(
-                json.dumps({"pull_request": {
-                    "base": {"sha": "abc"}, "head": {"sha": "def"},
-                }}),
-                encoding="utf-8",
-            )
-            options = event_options({
-                "GITHUB_EVENT_NAME": "pull_request",
-                "GITHUB_EVENT_PATH": str(event),
-            })
-        self.assertEqual("changed", options["mode"])
-        self.assertEqual(("abc", "def"), (options["base"], options["head"]))
-        self.assertTrue(options["force"])
-        self.assertTrue(options["include_master"])
-
-    def test_manual_target_is_not_diff_limited(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            event = Path(tmp) / "event.json"
-            event.write_text(json.dumps({"inputs": {"version": "8.1.3"}}), encoding="utf-8")
-            options = event_options({
-                "GITHUB_EVENT_NAME": "workflow_dispatch",
-                "GITHUB_EVENT_PATH": str(event),
-            })
-        self.assertEqual("all", options["mode"])
-        self.assertEqual("8.1.3", options["version"])
 
 
 class UpdateTests(unittest.TestCase):

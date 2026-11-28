@@ -144,7 +144,6 @@ def main(argv: list[str] | None = None) -> None:
                 request = cache_request("downloads", tag=os.environ["VCPKG_TAG"],
                                         download_specs=outputs["download_specs"], recipe_hash=os.environ["CACHE_RECIPE"])
                 outputs.update(download_key=request["key"], download_prefix=request["prefix"])
-            if args.github_output:
                 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as file:
                     for key, value in outputs.items():
                         file.write(f"{key}={value}\n")

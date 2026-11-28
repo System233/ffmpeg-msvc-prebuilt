@@ -253,7 +253,8 @@ def build_requests(*, version: str = "", history: bool = False,
 
 
 def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
-                     binary: Path | None = None, evidence: Path | None = None) -> list[dict]:
+                     binary: Path | None = None, evidence: Path | None = None,
+                     dependency_batches: dict | None = None) -> list[dict]:
     """Resolve each variant with its corresponding version-directory overlay.
 
     Every query uses one ffmpeg identity and one selected recipe. Never combine
@@ -262,14 +263,19 @@ def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
     results: list[dict] = []
     for request in requests:
         triplet = request["triplet"]
+        specs = {} if dependency_batches is not None else None
         all_abis = native_abi_query([request["package"], request["tester_port"]], triplet,
                                     port_overlay=overlay / ffmpeg_port_name(request["yaml"]),
-                                    binary=binary, evidence=(evidence / request["yaml"] /
+                                    binary=binary, specs=specs, evidence=(evidence / request["yaml"] /
                                         triplet / (request["license"] + "-" + request["linkage"]))
                                     if evidence is not None else None)
         key = f"{request['port']}_{triplet}"
         if not {key, f"{request['tester_port']}_{triplet}"}.issubset(all_abis):
             raise RuntimeError(f"Native vcpkg ABI missing FFmpeg or Tester for {triplet}")
+        if dependency_batches is not None:
+            from .seed import external_batch
+            dependency_batches[(request["yaml"], triplet, request["package"])] = external_batch(
+                all_abis, specs, triplet)
         abi = all_abis[key]
         result = dict(request)
         result["abi_hash"] = abi

@@ -127,29 +127,13 @@ class VcpkgVersionDeclaration(unittest.TestCase):
         for name in ("builder.py","ci.py"):
             self.assertNotIn(tag,(ROOT/"scripts/ffbuild"/name).read_text(encoding="utf-8"))
 
-    def test_python_bootstrap_never_guesses_a_tag(self):
-        from ffbuild.builder import bootstrap
+    def test_submission_requires_bootstrapped_vcpkg(self):
+        from ffbuild.builder import submit_dependencies
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "vcpkg"
-            with patch.dict(os.environ, {}, clear=True), patch("ffbuild.builder.subprocess.run") as run:
-                with self.assertRaisesRegex(ValueError, "VCPKG_TAG"):
-                    bootstrap(root)
-                run.assert_not_called()
-            for env, explicit, expected in (
-                ({"VCPKG_TAG": "2031.02.03"}, None, "2031.02.03"),
-                ({"VCPKG_TAG": "2031.02.03"}, "2032.04.05", "2032.04.05"),
-            ):
-                with self.subTest(env=env, explicit=explicit), patch.dict(os.environ, env, clear=True), \
-                        patch("ffbuild.builder.subprocess.run", side_effect=RuntimeError("clone probe")) as run:
-                    with self.assertRaisesRegex(RuntimeError, "clone probe"):
-                        bootstrap(root, tag=explicit)
-                    args = run.call_args.args[0]
-                    self.assertEqual(expected, args[args.index("--branch") + 1])
-            root.mkdir()
-            executable = root / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
-            executable.touch()
-            with patch.dict(os.environ, {}, clear=True), patch("ffbuild.builder.subprocess.run") as run:
-                self.assertEqual(executable, bootstrap(root))
+            with patch("ffbuild.builder.subprocess.run") as run:
+                with self.assertRaises(FileNotFoundError):
+                    submit_dependencies(vcpkg_root=root)
                 run.assert_not_called()
 
 
@@ -185,7 +169,8 @@ class DynamicCIConfiguration(unittest.TestCase):
                 require_complete_targets(json.loads(path.read_text())["jobs"],version="8.1.3",targets=targets)
                 self.assertEqual({targets[0].triplet}, {t.triplet for t in select_targets(arch=targets[0].triplet)})
                 with patch("ffbuild.ci.patch_arm_sdk") as arm:
-                    ci.main(["prepare-host","--configured"])
+                    for triplet in configured_triplets():
+                        ci.main(["prepare-host","--triplet",triplet])
                     self.assertEqual("arm-windows" in configured_triplets(),arm.called)
 
     def test_invalid_axes_fail_closed(self):
@@ -208,15 +193,14 @@ class DynamicCIConfiguration(unittest.TestCase):
                 self.assertIn("--clean-after-build",args)
                 self.assertEqual(1,args.count(ffvcpkg.EXACT_ABI_TOOLS))
             env=dict(line.split("=",1) for line in output.read_text().splitlines())
-            self.assertEqual(set(workflow_defaults()) | {"VCPKG_ROOT","FFBUILD_CACHE_DIR","FFBUILD_DOWNLOADS_DIR",
-                "FFBUILD_REPAIR_DIR","FFBUILD_REPAIR_CACHE"},set(env))
+            self.assertEqual(set(workflow_defaults()) | {"VCPKG_ROOT","FFBUILD_CACHE_DIR","FFBUILD_REPAIR_DIR"},set(env))
             self.assertEqual(temp+"/ffbuild/vcpkg-cache",env["FFBUILD_CACHE_DIR"])
-            self.assertEqual(temp+"/ffbuild/vcpkg/downloads",env["FFBUILD_DOWNLOADS_DIR"])
             self.assertEqual("2031.02.03",env["VCPKG_TAG"])
             emitted=dict(line.split("=",1) for line in output.with_suffix(".outputs").read_text().splitlines())
             self.assertEqual(env["VCPKG_TAG"],emitted["vcpkg_tag"])
             self.assertEqual(env["VCPKG_ROOT"],emitted["vcpkg_root"])
             self.assertEqual(env["FFBUILD_CACHE_DIR"],emitted["cache_dir"])
+            self.assertEqual(temp+"/ffbuild/vcpkg/downloads",emitted["downloads_dir"])
             self.assertNotIn("triplets",emitted)
             with patch.dict(os.environ,env):
                 request=ci.cache_request("seed",tag=env["VCPKG_TAG"],triplet="x64-windows",abi="a"*64)
@@ -270,6 +254,8 @@ class DynamicCIConfiguration(unittest.TestCase):
         steps=action["runs"]["steps"]
         slots=[s for s in steps if s.get("name","").startswith("Restore native dependency cache")]
         self.assertEqual(len(PE_MACHINE),len(slots))
+        for slot in slots:
+            self.assertTrue(slot["with"]["key"].endswith("-"+ "$"+"{{ github.run_id }}-"+ "$"+"{{ github.run_attempt }}"))
         self.assertFalse(any("npm" in s.get("run","") or "setup-node" in s.get("uses","") for s in steps))
         env={"VCPKG_TAG":"2031.02.03","FFBUILD_CACHE_DIR":"cache",
              "FFBUILD_REPAIR_DIR":"repair"}

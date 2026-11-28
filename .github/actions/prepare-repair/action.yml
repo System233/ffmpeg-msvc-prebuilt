@@ -48,7 +48,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ inputs.cache-dir }}
-        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[0].key }}-${ github.run_id }-${ github.run_attempt }
+        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[0].key }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[0].key }}-
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[0].key }}
@@ -58,7 +58,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ inputs.cache-dir }}
-        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[1].key }}-${ github.run_id }-${ github.run_attempt }
+        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[1].key }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[1].key }}-
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[1].key }}
@@ -68,7 +68,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ inputs.cache-dir }}
-        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[2].key }}-${ github.run_id }-${ github.run_attempt }
+        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[2].key }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[2].key }}-
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[2].key }}
@@ -78,7 +78,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ inputs.cache-dir }}
-        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[3].key }}-${ github.run_id }-${ github.run_attempt }
+        key: ${{ fromJSON(steps.cache-plan.outputs.seeds)[3].key }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[3].key }}-
           ${{ fromJSON(steps.cache-plan.outputs.seeds)[3].key }}

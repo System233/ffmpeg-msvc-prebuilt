@@ -188,7 +188,7 @@ CI's work order is:
 The binary cache namespace is scoped by pinned vcpkg version, Triplet and
 SHA256 of the newline-joined, lexically sorted **unique external native ABIs**.
 It excludes FFmpeg, Tester, dependency grouping labels and any virtual Port.
-GitHub cache entries cannot be overwritten. If an existing cache for the exact
+Each incompatible native dependency batch is recovered independently; successful batches are not restarted. GitHub cache entries cannot be overwritten. If an existing cache for the exact
 ABI identity cannot be restored but native population succeeds, Prepare saves
 a replacement under the same ABI key with a run/attempt suffix. Restore prefers
 that generation before the canonical key. Healthy cache hits never create a
