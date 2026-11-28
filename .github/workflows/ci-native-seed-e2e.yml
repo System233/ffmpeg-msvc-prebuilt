@@ -1,0 +1,534 @@
+name: Native Dependency Seed E2E
+on:
+  push:
+    branches: [ci/native-seed-e2e-20261128]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: native-seed-e2e-20261128
+  cancel-in-progress: false
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      production: ${{ steps.target.outputs.production }}
+      version: ${{ steps.target.outputs.version }}
+      date: ${{ steps.target.outputs.date }}
+      ref: ${{ steps.target.outputs.ref }}
+      commit: ${{ steps.target.outputs.commit }}
+      sha512: ${{ steps.target.outputs.sha512 }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - name: Select isolated non-publishing test target
+        id: target
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = refs/heads/ci/native-seed-e2e-20261128
+          test "$GITHUB_EVENT_NAME" = push
+          echo 'production=false' >> "$GITHUB_OUTPUT"
+          echo 'version=8.1.3' >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          echo 'ref=' >> "$GITHUB_OUTPUT"
+          echo 'commit=' >> "$GITHUB_OUTPUT"
+          echo 'sha512=' >> "$GITHUB_OUTPUT"
+
+  plan:
+    needs: select
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      triplets: ${{ steps.plan.outputs.triplets }}
+      publication_required: ${{ steps.plan.outputs.publication_required }}
+      plan_attempt: ${{ steps.plan.outputs.plan_attempt }}
+      seed_keys: ${{ steps.seed-identity.outputs.seed_keys }}
+      download_specs: ${{ steps.seed-identity.outputs.download_specs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - name: Restore Release catalog from data branch
+        uses: actions/checkout@v6
+        with:
+          ref: data
+          path: data
+      - name: Validate release catalog for production
+        if: ${{ needs.select.outputs.production == 'true' }}
+        run: python -c "from pathlib import Path; from ffbuild.catalog import validate_catalog; validate_catalog(Path('data'))"
+      - name: Generate all version-qualified FFmpeg ports once
+        shell: pwsh
+        env:
+          FFBUILD_VERSION: ${{ needs.select.outputs.version }}
+          FFBUILD_REF: ${{ needs.select.outputs.ref }}
+          FFBUILD_COMMIT: ${{ needs.select.outputs.commit }}
+          FFBUILD_SHA512: ${{ needs.select.outputs.sha512 }}
+        run: |
+          $arguments = @('generate', '--all', '--include-master')
+          if ($env:FFBUILD_VERSION -eq 'master') {
+            $arguments += @('--describe', $env:FFBUILD_REF,
+                            '--commit', $env:FFBUILD_COMMIT, '--sha512', $env:FFBUILD_SHA512)
+          }
+          $arguments += @('--master-snapshot-file', 'ffbuild-master-snapshot.json')
+          python -m ffbuild @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Align ARM SDK selection with Prepare and Build workers
+        shell: pwsh
+        run: |
+          python -m ffbuild.ci prepare-host --triplet=arm-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Scan exact native vcpkg dependency ABIs (no build)
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          FFBUILD_VERSION: ${{ needs.select.outputs.version }}
+          FFBUILD_REF: ${{ needs.select.outputs.ref }}
+          FFBUILD_COMMIT: ${{ needs.select.outputs.commit }}
+          FFBUILD_SHA512: ${{ needs.select.outputs.sha512 }}
+          FFBUILD_TARGET_ARCH: ${{ '' }}
+          FFBUILD_TARGET_LICENSE: ${{ '' }}
+        run: |
+          @'
+          targets:
+            - {package: 'ffmpeg[all-lgpl]', triplet: x64-windows}
+            - {package: 'ffmpeg[all-gpl,static]', triplet: x86-windows}
+            - {package: 'ffmpeg[all-gpl]', triplet: arm64-windows}
+            - {package: 'ffmpeg[all-lgpl,static]', triplet: arm-windows}
+          '@ | Set-Content -Encoding utf8 ci-targets.yaml
+          $arguments = @('scan', '--output', 'ffbuild-abi.json', '--abi-evidence', 'abi-evidence/targets',
+                         '--targets-file', 'ci-targets.yaml', '--master-snapshot-file', 'ffbuild-master-snapshot.json', '--release-date', '${{ needs.select.outputs.date }}')
+          $arguments += @('--version', $env:FFBUILD_VERSION)
+          if ($env:FFBUILD_TARGET_ARCH) { $arguments += @('--target-arch', $env:FFBUILD_TARGET_ARCH) }
+          if ($env:FFBUILD_TARGET_LICENSE) { $arguments += @('--target-license', $env:FFBUILD_TARGET_LICENSE) }
+          if ($env:FFBUILD_VERSION -eq 'master') {
+            $arguments += @('--describe', $env:FFBUILD_REF,
+                            '--commit', $env:FFBUILD_COMMIT, '--sha512', $env:FFBUILD_SHA512)
+          }
+          python -m ffbuild @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Plan only unpublished native ABIs
+        id: plan
+        shell: pwsh
+        env:
+          FFBUILD_FORCE: ${{ true }}
+          FFBUILD_VALIDATION_ONLY: ${{ true }}
+          FFBUILD_TARGET_ARCH: ${{ '' }}
+          FFBUILD_TARGET_LICENSE: ${{ '' }}
+        run: |
+          $arguments = @('plan', '--abi-file', 'ffbuild-abi.json',
+                         '--state-dir', 'data', '--github-output')
+          if ($env:FFBUILD_FORCE -eq 'true') { $arguments += '--force' }
+          python -m ffbuild @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $plan = Get-Content ffbuild-plan.json -Raw | ConvertFrom-Json
+          $seedMaster = Get-Content ffbuild-master-snapshot.json -Raw | ConvertFrom-Json
+          $plan | Add-Member -NotePropertyName request -NotePropertyValue ([ordered]@{
+            yaml = '${{ needs.select.outputs.version }}'
+            date = '${{ needs.select.outputs.date }}'
+            repository_commit = $env:GITHUB_SHA
+            pr_head = '${{ github.event.pull_request.head.sha }}'
+            pr_base = '${{ github.event.pull_request.base.sha }}'
+            production = ('${{ needs.select.outputs.production }}' -eq 'true')
+            plan_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            ref = '${{ needs.select.outputs.ref }}'
+            commit = '${{ needs.select.outputs.commit }}'
+            sha512 = '${{ needs.select.outputs.sha512 }}'
+            seed_master = $seedMaster
+          }) -Force
+          $plan | ConvertTo-Json -Depth 100 | Set-Content ffbuild-plan.json -Encoding utf8
+          "plan_attempt=$env:GITHUB_RUN_ATTEMPT" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            if ($plan.jobs.Count -ne 16) { throw 'Automatic PR must validate the complete single-version matrix' }
+          } elseif ($env:FFBUILD_VALIDATION_ONLY -eq 'true') {
+            $expected = 4
+            if ($env:FFBUILD_TARGET_ARCH) { $expected /= 4 }
+            if ($env:FFBUILD_TARGET_LICENSE) { $expected /= 2 }
+            if ($plan.jobs.Count -ne $expected) { throw 'Manual validation scope is incomplete' }
+          }
+      - name: Resolve actual native Seed ABI cache keys
+        id: seed-identity
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          $plan = Get-Content ffbuild-plan.json -Raw | ConvertFrom-Json
+          $triplets = @()
+          if ($plan.jobs.Count -gt 0) { $triplets = @('arm-windows', 'arm64-windows', 'x86-windows', 'x64-windows') }
+          $keys = '{}'
+          if ($triplets.Count -gt 0) {
+            $arguments = @('seed-identity', '--evidence', 'abi-evidence/seed', '--plan-file',
+                           '_work/ffbuild/generated-ports/seed-plan.json', '--github-output', '--target-evidence', 'abi-evidence/targets')
+            foreach ($triplet in $triplets) { $arguments += @('--triplet', $triplet) }
+            $keys = python -m ffbuild.ci @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if ($triplets.Count -eq 0) { 'seed_keys={}' >> $env:GITHUB_OUTPUT }
+          $parsed = $keys | ConvertFrom-Json -AsHashtable
+          if ($parsed.Count -ne $triplets.Count) { throw 'Incomplete native Seed identities' }
+          if ($triplets.Count -gt 0) {
+            $downloadLine = Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -match '^download_specs=[0-9a-f]{64}$' } | Select-Object -Last 1
+            if (-not $downloadLine) { throw 'Missing native source download spec identity' }
+            $plan.request | Add-Member -NotePropertyName download_specs -NotePropertyValue ($downloadLine.Split('=')[1]) -Force
+          }
+          $plan | Add-Member -NotePropertyName seed_keys -NotePropertyValue $parsed -Force
+          $plan | ConvertTo-Json -Depth 100 | Set-Content ffbuild-plan.json -Encoding utf8
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ffbuild-generated-ports-a${{ github.run_attempt }}
+          path: _work/ffbuild/generated-ports/
+          retention-days: 5
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-abi-plan-a${{ github.run_attempt }}
+          path: abi-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ffbuild-plan-a${{ github.run_attempt }}
+          path: ffbuild-plan.json
+          retention-days: 30
+
+  download:
+    needs: plan
+    if: ${{ needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - uses: actions/download-artifact@v8
+        with:
+          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          path: _work/ffbuild/generated-ports
+      - name: Restore dependency source downloads
+        id: download-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          key: ffbuild-downloads-2026.06.01-${{ needs.plan.outputs.download_specs }}-${{ hashFiles('ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            ffbuild-downloads-2026.06.01-
+      - name: Reuse legacy dependency source downloads
+        if: steps.download-cache.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg/downloads
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          prefix: vcpkg-dl-all-2026.06.01-
+      - name: Download sources once for all Triplets
+        if: steps.download-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          python -m ffbuild.ci prepare-host --triplet=arm-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($triplet in @('arm-windows', 'arm64-windows', 'x86-windows', 'x64-windows')) {
+            python -m ffbuild prepare --triplet $triplet --only-downloads --plan-file _work/ffbuild/generated-ports/seed-plan.json
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Save consolidated dependency source downloads
+        if: steps.download-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          key: ffbuild-downloads-2026.06.01-${{ needs.plan.outputs.download_specs }}-${{ hashFiles('ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
+
+  prepare:
+    name: prepare-${{ matrix.triplet }}
+    needs: [plan, download]
+    if: ${{ needs.plan.result == 'success' && needs.download.result == 'success' && needs.plan.outputs.matrix != '[]' }}
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        triplet: ${{ fromJSON(needs.plan.outputs.triplets) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - uses: actions/download-artifact@v8
+        with:
+          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          path: _work/ffbuild/generated-ports
+      - name: Prepare architecture-specific MSVC host
+        shell: pwsh
+        run: |
+          python -m ffbuild.ci prepare-host "--triplet=${{ matrix.triplet }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Restore shared dependency source downloads
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
+          key: ffbuild-downloads-2026.06.01-${{ needs.plan.outputs.download_specs }}-${{ hashFiles('ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
+          fail-on-cache-miss: true
+      - name: Verify Seed runner native ABI equals planned ABI
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          SEED_EXPECTED: ${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}
+        run: |
+          python -m ffbuild.ci seed-identity --triplet "${{ matrix.triplet }}" --evidence abi-evidence/seed --expected $env:SEED_EXPECTED --read-plan --plan-file _work/ffbuild/generated-ports/seed-plan.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Restore previously prebuilt dependency binaries
+        id: seed-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-${{ matrix.triplet }}-
+            ffbuild-native-2026.06.01-${{ matrix.triplet }}-
+      - name: Reuse legacy dependency binaries
+        if: steps.seed-cache.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-${{ matrix.triplet }}-
+      - name: Build all shared dependencies once for this Triplet
+        if: steps.seed-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          VCPKG_BINARY_SOURCES: clear;files,${{ runner.temp }}/ffbuild/vcpkg-cache,readwrite
+        run: |
+          python -m ffbuild prepare --triplet "${{ matrix.triplet }}" --plan-file _work/ffbuild/generated-ports/seed-plan.json --expected "${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}" --abi-evidence abi-evidence/seed-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify prepared Seed has every native ABI archive
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          SEED_EXPECTED: ${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}
+        run: |
+          python -m ffbuild prepare --triplet "${{ matrix.triplet }}" --plan-file _work/ffbuild/generated-ports/seed-plan.json --expected $env:SEED_EXPECTED --abi-evidence abi-evidence/seed-verified --cache-only --finalize-cache "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-abi-seed-a${{ github.run_attempt }}-${{ matrix.triplet }}
+          path: abi-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Save completed shared dependency cache
+        if: steps.seed-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: build-logs-seed-a${{ github.run_attempt }}-${{ matrix.triplet }}
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
+          retention-days: 7
+          if-no-files-found: ignore
+
+  build:
+    name: ffbuild-${{ matrix.id }}
+    needs: [plan, prepare]
+    if: ${{ needs.plan.result == 'success' && needs.prepare.result == 'success' && needs.plan.outputs.matrix != '[]' }}
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - uses: actions/download-artifact@v8
+        with:
+          name: ffbuild-generated-ports-a${{ needs.plan.outputs.plan_attempt }}
+          path: _work/ffbuild/generated-ports
+      - name: Restore centrally prebuilt dependencies
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ fromJSON(needs.plan.outputs.seed_keys)[matrix.triplet] }}
+          fail-on-cache-miss: true
+      - name: Prepare architecture-specific MSVC host
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        shell: pwsh
+        run: |
+          $job = $env:FFBUILD_JOB | ConvertFrom-Json
+          python -m ffbuild.ci prepare-host "--triplet=$($job.triplet)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify worker vcpkg ABI equals planned ABI
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: python -m ffbuild scan --job-env FFBUILD_JOB --abi-evidence abi-evidence/target
+      # The Seed must contain the exact native ABI archives of EVERY external
+      # dependency needed by this Worker, not just a matching GitHub cache key.
+      - name: Require exact third-party binary cache coverage
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          python -m ffbuild.ci restore-dependencies --job-env FFBUILD_JOB --abi-evidence abi-evidence/dependencies "--cache-dir=${{ runner.temp }}/ffbuild/vcpkg-cache"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and test via native vcpkg
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          # Prepare owns GitHub cache population. Workers only restore the
+          # cache; writing new FFmpeg package ZIPs here wastes local disk.
+          VCPKG_BINARY_SOURCES: clear;files,${{ runner.temp }}/ffbuild/vcpkg-cache,read
+        shell: pwsh
+        run: |
+          $job = $env:FFBUILD_JOB | ConvertFrom-Json
+          # A direct overlay Port directory selects one version whose manifest
+          # still names the native vcpkg package "ffmpeg".
+          $versionPort = "_work/ffbuild/generated-ports/ffmpeg-$($job.yaml.Replace('.', '-'))"
+          python -m ffvcpkg install $job.package $job.tester_port "--triplet=$($job.triplet)" `
+            "--overlay-ports=$versionPort" "--overlay-ports=ports"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify no external dependencies were compiled by Worker
+        shell: pwsh
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: |
+          python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate independent installed SDK consumers
+        if: ${{ matrix.linkage == 'static' || false }}
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: python -m ffbuild.ci verify-installed-sdk --job-env FFBUILD_JOB --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report installed-sdk-tests.json
+      - name: Verify and package installed vcpkg result
+        if: ${{ !false }}
+        env:
+          FFBUILD_JOB: ${{ toJSON(matrix) }}
+        run: python -m ffbuild package --job-env FFBUILD_JOB --port-dir "${{ runner.temp }}/ffbuild/vcpkg/packages/${{ matrix.port }}_${{ matrix.triplet }}" --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --buildtrees "${{ runner.temp }}/ffbuild/vcpkg/buildtrees" --output-dir Release
+      - name: Validate packaged ZIPs with the publication gate
+        if: ${{ !false }}
+        run: python -m ffbuild publish --artifacts-dir Release --dry-run
+      - name: Validate extracted public SDK and CLI
+        if: ${{ !false }}
+        run: python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report public-sdk-tests.json
+      - name: Upload independent SDK acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: sdk-consumer-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            installed-sdk-tests.json
+            public-sdk-tests.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload installed license evidence on packaging failure
+        if: ${{ failure() && !false }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: license-evidence-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/status
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/vcpkg/info/*.list
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/copyright
+            ${{ runner.temp }}/ffbuild/vcpkg/installed/*/share/*/vcpkg.spdx.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload distribution and internal audit evidence
+        uses: actions/upload-artifact@v6
+        if: ${{ !false }}
+        with:
+          name: ${{ matrix.id }}-a${{ github.run_attempt }}
+          # Includes the internal *.audit.zip; only record.assets is published.
+          path: |
+            Release/*.zip
+            Release/*.var.yaml
+          if-no-files-found: error
+          retention-days: 5
+          compression-level: 0
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-abi-worker-a${{ github.run_attempt }}-${{ matrix.id }}
+          path: abi-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v6
+        if: success() || failure()
+        with:
+          name: build-logs-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
+            ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
+          retention-days: 7
+          if-no-files-found: ignore
+
+  native-fixture:
+    name: Native ABI cache regression
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - name: Run actual vcpkg native Seed and corruption tests
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+        run: |
+          $env:FFBUILD_TEST_VCPKG_BIN = Join-Path $env:VCPKG_ROOT 'vcpkg.exe'
+          $env:PYTHONPATH = 'scripts;tests'
+          python -m unittest test_ffbuild_seed test_ci_native_policy test_cache_guard -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
