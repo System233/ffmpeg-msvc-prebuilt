@@ -10,7 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    name: Windows MSVC contracts
+    runs-on: windows-2022
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -18,11 +20,77 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           requirements: requirements.txt
+      - uses: ./.github/actions/vcpkg-bootstrap
+        with:
+          tag: 2026.06.01
+          vcpkg-root: ${{ runner.temp }}/ffbuild/vcpkg
+      - name: Restore existing x64 Seed for contract tools
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          key: ffbuild-seed-2026.06.01-x64-windows-2b84adf9078ca2e93e1f6b7de43a2e03b1935e4447499993327cce4a587f8b13
+          fail-on-cache-miss: true
+      - name: Restore native pkgconf without compilation
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ runner.temp }}/ffbuild/vcpkg
+          VCPKG_BINARY_SOURCES: clear;files,${{ runner.temp }}/ffbuild/vcpkg-cache,read
+        run: |
+          python -m ffvcpkg install pkgconf:x64-windows --only-binarycaching --no-print-usage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pkgconf = "$env:VCPKG_ROOT/installed/x64-windows/tools/pkgconf/pkgconf.exe"
+          if (!(Test-Path $pkgconf)) { throw 'Native pkgconf not restored' }
+          "FFBUILD_TEST_PKGCONF=$pkgconf" >> $env:GITHUB_ENV
+          "FFBUILD_TEST_VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $lib = (& $vswhere -latest -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1)
+          if (!$lib -or !(Test-Path $lib)) { throw 'Native MSVC lib.exe missing' }
+          "FFBUILD_TEST_LIB_EXE=$lib" >> $env:GITHUB_ENV
+      - name: Set up GNU shell tools for generated Port contracts
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: false
+          install: make
+          cache: false
+      - name: Locate native shell prerequisites
+        shell: msys2 {0}
+        run: |
+          test -x /usr/bin/bash.exe && test -x /usr/bin/make.exe
+          echo "FFBUILD_TEST_BASH=$(cygpath -w /usr/bin/bash.exe)" >> "$(cygpath -u "$GITHUB_ENV")"
       - run: python -m ffbuild validate
-      - name: Run independent unit tests
-        run: python -m unittest discover -s tests
-      - name: Run strict parallel CMake quick contracts
-        run: python tests/run_cmake_contracts.py --tier quick --jobs 4 --report cmake-quick.json
+      - name: Run unit tests outside the CMake contract tiers
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = 'scripts;tests'
+          @'
+          import pathlib
+          import sys
+          import unittest
+          from run_cmake_contracts import QUICK, NATIVE, REAL, REAL_STATIC
+          contract = set(QUICK + NATIVE + REAL + REAL_STATIC)
+          modules = sorted(p.stem for p in pathlib.Path("tests").glob("test_*.py"))
+          remaining = [m for m in modules if m not in contract]
+          assert set(modules) == set(remaining) | contract
+          suite = unittest.defaultTestLoader.loadTestsFromNames(remaining)
+          if unittest.defaultTestLoader.errors:
+              raise RuntimeError(unittest.defaultTestLoader.errors)
+          print(f"Independent unit tests: {suite.countTestCases()} across {len(remaining)} modules", flush=True)
+          sys.exit(not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful())
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run strict parallel native MSVC contracts
+        shell: pwsh
+        run: |
+          python tests/run_cmake_contracts.py --tier native --jobs 8 --native-jobs 4 --group-timeout 300 --report cmake-native.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: cmake-native-contract-report
+          path: cmake-native.json
+          retention-days: 7
+          if-no-files-found: ignore
   build:
     needs: validate
     runs-on: windows-2022
@@ -110,12 +178,8 @@ jobs:
           FFBUILD_TEST_REAL_STATIC_INSTALLED: ${{ runner.temp }}/ffbuild/vcpkg/installed/${{ matrix.triplet }}
           FFBUILD_TEST_PKGCONF: ${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe
         run: |
-          # Strict runner: missing prerequisites or skipped tests fail CI.
-          # Use the same installed dependency cache and actual FFmpeg Port.
-          $env:FFBUILD_TEST_VCPKG_ROOT = $env:VCPKG_ROOT
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          $env:FFBUILD_TEST_LIB_EXE = (& $vswhere -latest -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1)
-          $env:FFBUILD_TEST_BASH = (Get-ChildItem "$env:VCPKG_ROOT/downloads/tools/msys2" -Filter bash.exe -Recurse -File | Select-Object -First 1).FullName
+          # Genuine static acceptance needs the installed SDK and native
+          # compiler/pkgconf only; the strict runner rejects any skipped case.
           python tests/run_cmake_contracts.py --tier real-static --module test_cmake_real_static_sdk --jobs 2 --native-jobs 2 --group-timeout 1200 --report cmake-real-static.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package installed vcpkg result
