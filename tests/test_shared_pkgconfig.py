@@ -19,7 +19,7 @@ class SharedPkgConfigTests(unittest.TestCase):
         block = recipe.split("# BEGIN shared pkg-config normalization", 1)[1].split(
             "# END shared pkg-config normalization", 1)[0]
         script = root / "normalize.cmake"
-        script.write_text("cmake_minimum_required(VERSION 3.20)\n" + block, encoding="utf-8")
+        script.write_text("cmake_minimum_required(VERSION 3.21)\n" + block, encoding="utf-8")
         run_command(["cmake", f"-DCURRENT_PACKAGES_DIR={root.as_posix()}",
                         f"-DVCPKG_LIBRARY_LINKAGE={linkage}", "-P", str(script)],
                        check=True)

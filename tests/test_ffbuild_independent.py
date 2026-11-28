@@ -19,6 +19,7 @@ from compliance_fixture import make_compliance_fixture
 from ffbuild.identity import variant_name, archive_name
 from ffbuild.package import package_job
 from ffbuild.port import generate_port
+from ffbuild.process import run_bounded
 from ffbuild.spec import FeatureSet, read_spec, resolve_features
 from ffbuild.state import PublishedState
 from ffbuild.catalog import register_release
@@ -72,6 +73,7 @@ def isolated(name, *args, **kwargs):
 builtins.__import__ = isolated
 from ffbuild.native_abi import build_requests
 from ffbuild.port import generate_port
+from ffbuild.process import run_bounded
 from ffbuild.state import PublishedState
 with TemporaryDirectory() as temporary:
     from ffbuild.targets import Target
@@ -116,20 +118,27 @@ with TemporaryDirectory() as temporary:
             (root / "vars.cmake").write_text("# Stub compiler variables\n", encoding="utf-8")
             script = root / "probe.cmake"
             fixtures = [
-                ("all-lgpl;lgpl;openssl", False),
-                ("all-nonfree;openssl;license-gpl;license-nonfree", True),
-                ("all-gpl;gpl;x264;license-gpl", True),
-                ("all-lgpl;lgpl;x264", False),
+                ("all-lgpl;lgpl;openssl", "openssl requires explicit nonfree license mode"),
+                ("all-nonfree;openssl;license-gpl;license-nonfree", None),
+                ("all-gpl;gpl;x264;license-gpl", None),
+                ("all-lgpl;lgpl;x264", "x264 requires explicit gpl license mode"),
             ]
-            for enabled, expected in fixtures:
-                script.write_text('\n'.join([
-                    f'set(FEATURES "{enabled}")',
-                    f'include("{(port / "constraints.cmake").as_posix()}")',
-                ]) + '\n', encoding="utf-8")
-                result = subprocess.run(["cmake", "-P", str(script)],
-                                        capture_output=True, text=True)
-                self.assertEqual(expected, result.returncode == 0,
-                                 f"{enabled}: {result.stderr}")
+            for enabled, diagnostic in fixtures:
+                with self.subTest(features=enabled):
+                    script.write_text('\n'.join([
+                        'cmake_minimum_required(VERSION 3.21)',
+                        f'set(FEATURES "{enabled}")',
+                        f'include("{(port / "constraints.cmake").as_posix()}")',
+                        'message(STATUS "POLICY_PROBE_ACCEPTED")',
+                    ]) + '\n', encoding="utf-8")
+                    result = run_bounded(["cmake", "-P", script])
+                    self.assertEqual(diagnostic is None, result.returncode == 0,
+                                     result.stdout + result.stderr)
+                    if diagnostic is None:
+                        self.assertIn("POLICY_PROBE_ACCEPTED", result.stdout)
+                    else:
+                        self.assertIn(diagnostic, result.stderr)
+                        self.assertNotIn("POLICY_PROBE_ACCEPTED", result.stdout)
 
 
 class PackageRoundTrip(unittest.TestCase):

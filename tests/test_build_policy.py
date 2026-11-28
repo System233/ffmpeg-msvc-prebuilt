@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import hashlib
 import shutil
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +19,7 @@ from ffbuild.versions import generate, validate_variant
 from ffvcpkg import command
 from ffbuild.spec import FeatureSet, _platform_applies
 from ffbuild.port import _policy_script
+from ffbuild.process import run_bounded
 from ffbuild.package import package_job
 from ffbuild.targets import Target, compile_target
 from ffbuild.versions import config
@@ -74,15 +74,22 @@ class PolicyTests(unittest.TestCase):
             script = Path(tmp) / "check.cmake"
             for flags, allowed in (("all-lgpl;lgpl;openssl", False),
                                    ("all-nonfree;openssl;license-gpl;license-nonfree", True)):
+                # Match pinned vcpkg scripts/ports.cmake. Script mode does
+                # not inherit its policy initialization automatically.
                 script.write_text(
-                    f'set(FEATURES "{flags}")\ninclude("{constraints.as_posix()}")\n',
+                    'cmake_minimum_required(VERSION 3.21)\n'
+                    f'set(FEATURES "{flags}")\n'
+                    f'include("{constraints.as_posix()}")\n'
+                    'message(STATUS "POLICY_PROBE_ACCEPTED")\n',
                     encoding="utf-8",
                 )
-                result = subprocess.run(["cmake", "-P", str(script)],
-                                        capture_output=True, text=True)
-                self.assertEqual(result.returncode == 0, allowed, result.stderr)
-                if not allowed:
-                    self.assertIn("requires explicit nonfree", result.stderr)
+                result = run_bounded(["cmake", "-P", script])
+                self.assertEqual(result.returncode == 0, allowed, result.stdout + result.stderr)
+                if allowed:
+                    self.assertIn("POLICY_PROBE_ACCEPTED", result.stdout)
+                else:
+                    self.assertIn("openssl requires explicit nonfree license mode", result.stderr)
+                    self.assertNotIn("POLICY_PROBE_ACCEPTED", result.stdout)
 
     def test_generated_arbitrary_feature_package_guards(self):
         with tempfile.TemporaryDirectory() as tmp:

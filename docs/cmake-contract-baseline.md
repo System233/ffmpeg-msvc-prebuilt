@@ -373,3 +373,23 @@ latest results: 163/163 methods passed. Nine autoheal-native tests and the
 26 source-backed Port / 3 YAML template configuration check also passed.
 Two actual static-source acceptance methods remain unexecuted; the cache
 preflight failed before compilation, and no remote CI was dispatched.
+
+## Native Windows CI policy initialization
+
+CI is restricted to Windows for the CMake/MSVC contracts; the metadata-only
+fixtures use the host's native Windows platform semantics, not a forced
+cross-compilation configuration. The previous Linux-oriented repeated
+escape loop was reverted after a native timeout. The Windows native tier
+passed 159/159 (no skips) after the correction.
+
+The Windows runner then reported two independent licensing-probe failures:
+both generated script-mode entrypoints lacked a CMake policy baseline.
+Local CMake 4.3.3 already reports CMP0057 NEW in uninitialized script mode,
+whereas the runner reported it unset and rejected IN_LIST. The pinned vcpkg
+scripts/ports.cmake explicitly establishes CMake 3.21. Both probes now
+declare that same baseline, verify a success marker after executing the
+actual generated guard, and require the exact license diagnostic on
+rejection. The shared pkg-config script-mode probe also uses 3.21.
+The remaining script-mode test entrypoints were audited and already
+declare 3.21. The production builder and license rules are unchanged.
+All three affected test modules passed locally (33/33).
