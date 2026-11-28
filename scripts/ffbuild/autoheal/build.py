@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from ffvcpkg import command as vcpkg_command
+from ffvcpkg import command as vcpkg_command, environment
 from ..cache_guard import (verify_dependency_cache, verify_no_dependency_builds, restore_dependencies,
                            installed_abis, require_target_plan)
 from ..native_abi import native_abi_query
@@ -160,7 +160,10 @@ def prepare_port(data: dict) -> Path:
 def cached_abis(job: dict, port: Path) -> dict[str, str]:
     cache = cache_dir(job["triplet"])
     try:
-        abis = native_abi_query([job["package"], "ffmpeg-tester"], job["triplet"], port_overlay=port, env=build_env(job["triplet"]))
+        abis = native_abi_query([job["package"], "ffmpeg-tester"], job["triplet"],
+                                port_overlay=port, env=build_env(job["triplet"]),
+                                evidence=runtime_dir() / "abi-evidence" / "targets" / job["triplet"] /
+                                (job["license"] + "-" + job["linkage"]))
         verify_dependency_cache(job, cache, abi_map=abis)
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         raise EnvironmentFailure(str(exc)) from exc
@@ -197,7 +200,7 @@ def prefetch_source(data: dict) -> None:
 
 def preflight(data: dict) -> None:
     """Restore exact dependency graphs before invoking the model. Fill a missing Seed locally."""
-    from ..seed import prepare_seed
+    from ..seed import prepare_seed, load_seed_plan, DEFAULT_PLAN
     from ..builder import patch_arm_sdk
     if "arm-windows" in data["triplets"]:
         patch_arm_sdk()
@@ -222,7 +225,9 @@ def preflight(data: dict) -> None:
             old = os.environ.get("VCPKG_BINARY_SOURCES")
             os.environ["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache},readwrite"
             try:
-                prepare_seed(triplet=triplet)
+                prepare_seed(triplet=triplet,
+                             plan=load_seed_plan(DEFAULT_PLAN, triplet) if DEFAULT_PLAN.is_file() else None,
+                             cache_dir=cache)
             finally:
                 if old is None:
                     os.environ.pop("VCPKG_BINARY_SOURCES", None)
@@ -263,7 +268,7 @@ def _run(args: list[str], *, env: dict, log: Path, cwd: Path = ROOT, timeout: fl
 def build_env(triplet: str) -> dict:
     env = {key: value for key, value in os.environ.items() if key.upper() not in _PRIVATE_RUNNER_ENV}
     env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache_dir(triplet)},read"
-    return env
+    return environment(env)
 
 
 def _remove(path: Path) -> None:

@@ -42,7 +42,9 @@ class WorkflowReleasePolicyTests(unittest.TestCase):
     def test_production_build_requires_dispatch_and_single_version(self):
         ci = workflow("build-release.yml")
         self.assertEqual({"workflow_dispatch", "workflow_call"}, set(ci["on"]))
-        self.assertEqual({"yaml"}, set(ci["on"]["workflow_dispatch"]["inputs"]))
+        self.assertEqual({"yaml", "dry_run", "target_arch", "target_license"},
+                         set(ci["on"]["workflow_dispatch"]["inputs"]))
+        self.assertEqual("false", ci["on"]["workflow_dispatch"]["inputs"]["dry_run"]["default"])
         self.assertEqual("true", ci["on"]["workflow_dispatch"]["inputs"]["yaml"]["required"])
         self.assertEqual("select", ci["jobs"]["plan"]["needs"])
         self.assertIn("release_trigger build-gate", str(ci["jobs"]["select"]["steps"]))

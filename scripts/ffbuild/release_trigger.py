@@ -142,18 +142,36 @@ def build_gate(payload: dict, environ: dict[str, str]) -> dict:
     if history:
         raise ValueError("History-wide builds are prohibited")
     event_name = environ.get("GITHUB_EVENT_NAME")
-    production = event_name in ("workflow_dispatch", "schedule") and ref == "refs/heads/main"
-    if production:
-        if (validation or skip or shards != "1" or
-                (environ.get("REQUESTED_SHARD_INDEX") or "0") != "0" or
-                environ.get("REQUESTED_FORCE", "").lower() == "true" or
-                environ.get("SKIP_RELEASE", "").lower() == "true"):
+    target_arch = environ.get("TARGET_ARCH", "")
+    target_license = environ.get("TARGET_LICENSE", "")
+    from .versions import TRIPLETS
+    if target_arch and target_arch not in TRIPLETS:
+        raise ValueError("Unknown validation target architecture")
+    if target_license and target_license not in ("lgpl", "gpl"):
+        raise ValueError("Unknown validation target license")
+    manual_validation = (event_name == "workflow_dispatch" and ref == "refs/heads/main"
+                         and validation and skip)
+    production = (event_name in ("workflow_dispatch", "schedule")
+                  and ref == "refs/heads/main" and not manual_validation)
+    if (target_arch or target_license) and not manual_validation:
+        raise ValueError("Selective targets are allowed only for explicit manual validation")
+    if production or manual_validation:
+        if (shards != "1" or (environ.get("REQUESTED_SHARD_INDEX") or "0") != "0" or
+                (production and (validation or skip or
+                    environ.get("REQUESTED_FORCE", "").lower() == "true" or
+                    environ.get("SKIP_RELEASE", "").lower() == "true"))):
             raise ValueError("Production requires the complete single-version publication scope")
         version = version_name(requested)
         if event_name == "schedule" and version != "master":
             raise ValueError("Only Master may build on a schedule")
-        if event_name == "workflow_dispatch" and payload.get("inputs", {}).get("yaml") != version:
-            raise ValueError("Dispatch target differs from requested version")
+        if event_name == "workflow_dispatch":
+            inputs = payload.get("inputs", {})
+            if inputs.get("yaml") != version:
+                raise ValueError("Dispatch target differs from requested version")
+            if manual_validation and (str(inputs.get("dry_run", "")).lower() != "true"
+                    or (inputs.get("target_arch") or "") != target_arch
+                    or (inputs.get("target_license") or "") != target_license):
+                raise ValueError("Validation scope differs from explicit dispatch inputs")
         actual = commit_sha(git("rev-parse", "HEAD"))
         if actual != commit_sha(environ.get("GITHUB_SHA")):
             raise ValueError("Checkout differs from the dispatch source")
@@ -172,7 +190,7 @@ def build_gate(payload: dict, environ: dict[str, str]) -> dict:
         base = commit_sha(pr["base"]["sha"])
         check_pr(requested, base, git("rev-parse", "HEAD"), Path.cwd(),
                  allow_new=selected[1] == "new")
-    elif not production:
+    elif not production and not manual_validation:
         raise ValueError("Unauthorized native build event")
     version = version_name(requested)
     from .versions import versions, has_source

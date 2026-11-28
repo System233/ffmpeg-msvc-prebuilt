@@ -17,6 +17,9 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Preserve Python UTF-8 output on all runners
+      shell: bash
+      run: echo 'PYTHONIOENCODING=utf-8' >> "$GITHUB_ENV"
     - uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}

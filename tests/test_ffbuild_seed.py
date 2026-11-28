@@ -1,11 +1,11 @@
-"""Regression checks for the original CI dependency prebuild architecture.
-
-All tests are offline. In particular, they never invoke a compiler or vcpkg.
-"""
+"""Dependency Seed contracts; native fixture enabled explicitly via environment."""
 
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,85 +13,229 @@ from unittest import mock
 
 import yaml
 
-from ffbuild.port import generate_seed_port
-from ffbuild.seed import prepare_seed, seed_profiles
-from ffbuild.versions import ROOT
+from ffbuild.seed import (prepare_seed, seed_identity, external_batch, seed_hash,
+                          merge_batches, validate_plan, verify_batch, require_seed_archives,
+                          _manifest_signature, load_seed_plan, prune_seed_cache, verify_target_coverage)
+from ffbuild.versions import ROOT, generate_all
+from ffbuild.targets import Target
+
+
+def batch(*rows):
+    return {"abis": {f"{name}_{arch}": abi * 64 for name, arch, abi, features in rows},
+            "specs": {f"{name}_{arch}": f"{name}[{features}]:{arch}" for name, arch, abi, features in rows}}
+
+
+def plan_for(batches, triplet="x64-windows"):
+    return {"triplet": triplet, "batches": batches, "key": seed_hash(batches),
+            "required": [list(p) for p in sorted({p for b in batches for p in b["abis"].items()})]}
 
 
 class SharedDependencySeedTests(unittest.TestCase):
-    def test_conflicting_dependencies_and_platform_restrictions(self):
+    def test_generated_ports_remove_obsolete_virtual_port(self):
         with tempfile.TemporaryDirectory() as temporary:
             overlay = Path(temporary)
-            seed = generate_seed_port(overlay)
-            manifest = json.loads((seed / "vcpkg.json").read_text(encoding="utf-8"))
-            self.assertEqual("ffmpeg-deps", manifest["name"])
-            self.assertEqual(("all", "ffnvcodec", "ffnvcodec-11", "libvpl", "mfx-dispatch"),
-                             seed_profiles(overlay))
-            normal = {entry["name"]: entry for entry in
-                      manifest["features"]["all"]["dependencies"]}
-            self.assertNotIn("ffnvcodec", normal)
-            self.assertNotIn("ffnvcodec-11", normal)
-            self.assertNotIn("libvpl", normal)
-            self.assertNotIn("mfx-dispatch", normal)
-            self.assertEqual("!arm", normal["lensfun"]["platform"])
-            self.assertEqual("!uwp & !xbox", normal["libbluray"]["platform"])
-            self.assertEqual("!x86 & !arm32 & !uwp", normal["svt-av1"]["platform"])
-            self.assertTrue(normal["ffmpeg-bin2c"]["host"])
-            self.assertTrue(normal["vcpkg-cmake-get-vars"]["host"])
-            self.assertTrue(normal["vcpkg-pkgconfig-get-modules"]["host"])
-            # Regenerating must be deterministic, including dependency order.
-            first = (seed / "vcpkg.json").read_bytes()
-            generate_seed_port(overlay)
-            self.assertEqual(first, (seed / "vcpkg.json").read_bytes())
+            old = overlay / "ffmpeg-deps"
+            old.mkdir()
+            (old / "vcpkg.json").write_text('{"name":"ffmpeg-deps"}')
+            ports = generate_all(output=overlay)
+            self.assertFalse(old.exists())
+            self.assertTrue(ports)
+            self.assertEqual(set(ports), set(overlay.iterdir()))
 
-    def test_prepare_isolates_features_and_writes_no_install_tree(self):
+    def test_hash_ignores_target_abis_order_and_duplicate_batches(self):
+        dep = batch(("zlib", "x64-windows", "b", "core"))
+        targets = {"ffmpeg_x64-windows": "a"*64, "ffmpeg-tester_x64-windows": "c"*64}
+        specs = dict(dep["specs"], **{k: k.split("_")[0]+"[core]:x64-windows" for k in targets})
+        a = external_batch(dict(dep["abis"], **targets), specs, "x64-windows")
+        b = external_batch(dict(dep["abis"], **{k:"d"*64 for k in targets}), specs, "x64-windows")
+        self.assertEqual(a,b)
+        self.assertEqual(seed_hash([a]), seed_hash([b,a,b]))
+        changed = batch(("zlib", "x64-windows", "e", "core"))
+        self.assertNotEqual(seed_hash([a]),seed_hash([changed]))
+        self.assertNotEqual(seed_hash([a]),seed_hash([a,changed]))
+        self.assertEqual(seed_hash([a,changed]),seed_hash([changed,a]))
+        self.assertRaises(ValueError, external_batch, dep["abis"],dep["specs"],"x64-windows")
+
+    def test_merge_keeps_distinct_abis_and_exact_host_specs(self):
+        a=batch(("lib", "arm64-windows","a","core"),("tool","x64-windows","b","core"))
+        b=batch(("lib", "arm64-windows","c","core,extra"),("tool","x64-windows","b","core"))
+        c=batch(("other", "arm64-windows","d","core"))
+        merged=merge_batches([a,b,c,a])
+        self.assertEqual(2,len(merged))
+        self.assertEqual(seed_hash([a,b,c]),seed_hash(merged))
+        self.assertEqual({"a"*64,"c"*64},{p["abis"]["lib_arm64-windows"] for p in merged})
+        self.assertTrue(all(p["specs"]["tool_x64-windows"]=="tool[core]:x64-windows" for p in merged))
+
+    def test_manifest_dedup_only_dependency_invariant_features(self):
+        m={"name":"ffmpeg","version":"1","default-features":["base"],
+           "features":{"base":{"dependencies":["zlib"]},"static":{"description":"static"},
+                       "extra":{"dependencies":[{"name":"lib","platform":"!arm"}]}}}
+        changed=json.loads(json.dumps(m)); changed["version"]="2"
+        self.assertEqual(_manifest_signature(m,("base","static")),_manifest_signature(changed,("base",)))
+        self.assertNotEqual(_manifest_signature(m,("base",)),_manifest_signature(m,("base","extra")))
+        changed["features"]["extra"]["dependencies"][0]["platform"]="arm"
+        self.assertNotEqual(_manifest_signature(m,("base",)),_manifest_signature(changed,("base",)))
+
+    def test_planner_resolves_every_manifest_and_falls_back_on_merge_drift(self):
         with tempfile.TemporaryDirectory() as temporary:
-            overlay = Path(temporary) / "ports"
-            generate_seed_port(overlay)
-            roots = Path(temporary) / "installed"
-            commands: list[list[str]] = []
+            overlay=Path(temporary)
+            for name in ("ffmpeg-1-0","ffmpeg-2-0"):
+                p=overlay/name;p.mkdir()
+                (p/"vcpkg.json").write_text(json.dumps({"name":"ffmpeg","version":name,
+                    "features":{"base":{"dependencies":[name]}}}))
+            a=batch(("lib","x64-windows","a","core"))
+            b=batch(("other","x64-windows","b","core"))
+            def query(packages,triplet,**kw):
+                if kw.get("port_overlay"):
+                    x=a if kw["port_overlay"].name=="ffmpeg-1-0" else b
+                    targets={"ffmpeg_x64-windows":"c"*64,"ffmpeg-tester_x64-windows":"d"*64}
+                    kw["specs"].update(dict(x["specs"],**{k:k.split("_")[0]+"[core]:x64-windows" for k in targets}))
+                    return dict(x["abis"],**targets)
+                if len(packages)==2:
+                    kw["specs"].update(a["specs"])
+                    return a["abis"]  # merge loses a required package
+                x=a if packages[0].startswith("lib[") else b
+                kw["specs"].update(x["specs"]);return x["abis"]
+            with mock.patch("ffbuild.seed.versions",return_value=["1.0","2.0"]), \
+                 mock.patch("ffbuild.seed.has_source",return_value=True), \
+                 mock.patch("ffbuild.seed.load_targets",return_value=[Target("ffmpeg[base]","x64-windows",("base",))]), \
+                 mock.patch("ffbuild.seed.native_abi_query",side_effect=query) as scan:
+                key,plan=seed_identity(triplet="x64-windows",overlay=overlay)
+                self.assertEqual(5,scan.call_count)
+                self.assertEqual(seed_hash([a,b]),key)
+                self.assertEqual(2,len(plan["batches"]))
+                self.assertEqual(2,len(plan["coverage"]))
+                validate_plan(plan,"x64-windows",key)
+                with self.assertRaisesRegex(ValueError,"cover required"):
+                    validate_plan(dict(plan,required=[]),"x64-windows")
+                (overlay/"plan.json").write_text(json.dumps({"x64-windows":plan}))
+                self.assertEqual(plan,load_seed_plan(overlay/"plan.json","x64-windows",key))
+                (overlay/"ffmpeg-2-0"/"vcpkg.json").unlink()
+                with self.assertRaises(FileNotFoundError):
+                    seed_identity(triplet="x64-windows",overlay=overlay)
 
-            def fake_install(command: list[str], **kwargs):
+    def test_prepare_isolates_exact_batches_and_checks_installed_abis(self):
+        a=batch(("lib","x64-windows","a","core"))
+        b=batch(("lib","x64-windows","b","core,extra"))
+        plan=plan_for([a,b])
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)/"installed"
+            commands=[]
+            def install(command,**kwargs):
                 commands.append(command)
-                install_arg = next(x for x in command if x.startswith("--x-install-root="))
-                self.assertTrue(Path(install_arg.split("=", 1)[1]).is_dir())
-                self.assertIn("--recurse", command)
-                self.assertIn("--clean-buildtrees-after-build", command)
-                self.assertIn("--clean-packages-after-build", command)
-                self.assertNotIn("--clean-after-build", command)
-                self.assertEqual(kwargs["cwd"], ROOT)
+                self.assertTrue(Path(next(x.split("=",1)[1] for x in command if x.startswith("--x-install-root="))).is_dir())
+                self.assertIn("--recurse",command)
+                self.assertEqual(1,command.count("--x-abi-tools-use-exact-versions"))
+                self.assertEqual("1",kwargs["env"]["VCPKG_FORCE_DOWNLOADED_BINARIES"])
+                self.assertIn("--clean-buildtrees-after-build",command)
+                self.assertIn("--clean-packages-after-build",command)
+                self.assertNotIn("--clean-after-build",command)
+                self.assertEqual(ROOT,kwargs["cwd"])
                 self.assertTrue(kwargs["check"])
+            with mock.patch("ffbuild.seed.verify_batch") as verify, \
+                 mock.patch("ffbuild.seed.subprocess.run",side_effect=install), \
+                 mock.patch("ffbuild.cache_guard.installed_abis",side_effect=[a["abis"],b["abis"]]):
+                completed=prepare_seed(triplet="x64-windows",plan=plan,binary=Path("fake-vcpkg.exe"),install_root=root)
+                self.assertEqual(2,verify.call_count)
+                self.assertEqual(2,len(completed))
+                self.assertEqual(["lib[core]:x64-windows","lib[core,extra]:x64-windows"],[c[2] for c in commands])
+                self.assertEqual([],list(root.iterdir()))
+            with mock.patch("ffbuild.seed.verify_batch",side_effect=RuntimeError("drift")), \
+                 mock.patch("ffbuild.seed.subprocess.run") as run:
+                with self.assertRaisesRegex(RuntimeError,"drift"):
+                    prepare_seed(triplet="x64-windows",plan=plan,install_root=root)
+                run.assert_not_called()
 
-            with mock.patch("ffbuild.seed.subprocess.run", side_effect=fake_install):
-                completed = prepare_seed(triplet="x64-windows", overlay=overlay,
-                                         binary=Path("fake-vcpkg.exe"), install_root=roots)
-            self.assertEqual(5, len(completed))
-            self.assertEqual(len(completed), len(commands))
-            self.assertEqual(0, len(list(roots.iterdir())))
-            self.assertEqual([f"ffmpeg-deps[{feature}]" for feature in completed],
-                             [command[2] for command in commands])
-            self.assertTrue(all("ffmpeg-8-1-3" not in command for command in commands))
-
-    def test_download_only_never_requests_compilation(self):
+    def test_download_only_and_cache_only(self):
+        a=batch(("lib","arm64-windows","a","core"),("tool","x64-windows","b","core"))
+        plan=plan_for([a],"arm64-windows")
         with tempfile.TemporaryDirectory() as temporary:
-            overlay = Path(temporary) / "ports"
-            generate_seed_port(overlay)
-            with mock.patch("ffbuild.seed.subprocess.run") as run:
-                prepare_seed(triplet="arm64-windows", overlay=overlay,
-                             binary=Path("fake-vcpkg.exe"),
-                             install_root=Path(temporary) / "installed",
-                             only_downloads=True)
-            self.assertEqual(5, run.call_count)
-            for call in run.call_args_list:
-                self.assertIn("--only-downloads", call.args[0])
-                self.assertNotIn("--clean-buildtrees-after-build", call.args[0])
-                self.assertNotIn("--clean-packages-after-build", call.args[0])
+            root=Path(temporary)
+            with mock.patch("ffbuild.seed.verify_batch"),mock.patch("ffbuild.seed.subprocess.run") as run:
+                prepare_seed(triplet="arm64-windows",plan=plan,binary=Path("fake-vcpkg.exe"),install_root=root,only_downloads=True)
+                self.assertIn("--only-downloads",run.call_args.args[0])
+                self.assertNotIn("--clean-buildtrees-after-build",run.call_args.args[0])
+                with self.assertRaisesRegex(RuntimeError,"Seed cache incomplete"):
+                    prepare_seed(triplet="arm64-windows",plan=plan,cache_only=True,cache_dir=root)
+                self.assertEqual(1,run.call_count)
+                for abi in a["abis"].values():
+                    d=root/abi[:2];d.mkdir();(d/(abi+".zip")).write_bytes(b"fixture")
+                with mock.patch("ffbuild.cache_guard.installed_abis",return_value=a["abis"]):
+                    prepare_seed(triplet="arm64-windows",plan=plan,binary=Path("fake-vcpkg.exe"),install_root=root,cache_only=True,cache_dir=root)
+                self.assertIn("--only-binarycaching",run.call_args.args[0])
+                self.assertTrue(run.call_args.kwargs["env"]["VCPKG_BINARY_SOURCES"].endswith(",read"))
+                with mock.patch("ffbuild.cache_guard.installed_abis",return_value={}):
+                    with self.assertRaisesRegex(RuntimeError,"Installed dependency ABIs differ"):
+                        prepare_seed(triplet="arm64-windows",plan=plan,binary=Path("fake-vcpkg.exe"),install_root=root,cache_only=True,cache_dir=root)
 
-    def test_invalid_triplet_rejected_before_any_vcpkg_call(self):
+    def test_actual_target_evidence_requires_full_seed_coverage(self):
+        a = batch(("zlib","x64-windows","a","core"))
+        plans = {"x64-windows": plan_for([a])}
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            path=root/"graph.json"
+            graph=dict(a["abis"],**{"ffmpeg_x64-windows":"b"*64,"ffmpeg-tester_x64-windows":"c"*64})
+            path.write_text(json.dumps(graph))
+            self.assertEqual(1,verify_target_coverage(plans,root))
+            graph["zlib_x64-windows"]="d"*64
+            path.write_text(json.dumps(graph))
+            with self.assertRaisesRegex(RuntimeError,"missing actual target ABI"):
+                verify_target_coverage(plans,root)
+            path.unlink()
+            with self.assertRaisesRegex(ValueError,"Missing actual target"):
+                verify_target_coverage(plans,root)
+
+    def test_finalize_dedicated_cache_keeps_only_required_abi_archives(self):
+        plan=plan_for([batch(("zlib","x64-windows","a","core"))])
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            files=[]
+            for abi in ("a"*64,"b"*64):
+                d=root/abi[:2];d.mkdir()
+                f=d/(abi+".zip");f.write_bytes(b"fixture");files.append(f)
+            other=root/"aa"/"notes.zip";other.write_bytes(b"not ABI")
+            self.assertEqual(1,prune_seed_cache(plan,root))
+            self.assertTrue(files[0].is_file())
+            self.assertFalse(files[1].exists())
+            self.assertTrue(other.is_file())
+            files[0].unlink()
+            with self.assertRaisesRegex(RuntimeError,"Seed cache incomplete"):
+                prune_seed_cache(plan,root)
+
+    def test_direct_graph_verification_rejects_missing_or_changed_abis(self):
+        a=batch(("lib","x64-windows","a","core"))
+        with mock.patch("ffbuild.seed.native_abi_query",return_value={"lib_x64-windows":"b"*64}):
+            with self.assertRaisesRegex(RuntimeError,"Direct dependency ABI drift"):
+                verify_batch(a,"x64-windows")
         with mock.patch("ffbuild.seed.subprocess.run") as run:
-            with self.assertRaisesRegex(ValueError, "Unsupported FFmpeg Triplet"):
+            with self.assertRaisesRegex(ValueError,"Unsupported FFmpeg Triplet"):
                 prepare_seed(triplet="x64-linux")
             run.assert_not_called()
+
+    def test_dependency_submission_uses_validated_manifest_not_virtual_port(self):
+        from ffbuild.builder import submit_dependencies
+        a=batch(("lib","arm64-windows","a","core,extra"),("tool","x64-windows","b","core"))
+        plan=plan_for([a],"arm64-windows")
+        calls=[]
+        def run(args,**kwargs):
+            project=kwargs["cwd"]
+            self.assertFalse((project/"portfile.cmake").exists())
+            manifest=json.loads((project/"vcpkg.json").read_text())
+            self.assertEqual({"dependencies":[{"name":"lib","default-features":False,"features":["extra"]},
+                                                {"name":"tool","default-features":False,"host":True}]},manifest)
+            self.assertIn("--dry-run",args)
+            calls.append(kwargs["env"]["VCPKG_FEATURE_FLAGS"])
+            for arg in args:
+                if arg.startswith("--x-write-nuget-packages-config="):
+                    path=Path(arg.split("=",1)[1])
+                    path.write_text("<packages>"+"".join(f'<package id="{k}" version="1.0-vcpkg{v}" />'
+                                    for k,v in a["abis"].items())+"</packages>")
+        with mock.patch("ffbuild.builder.bootstrap",return_value=Path("fake-vcpkg.exe")), \
+             mock.patch("ffbuild.versions.generate_all"),mock.patch("ffbuild.master.master_metadata",return_value={}), \
+             mock.patch("ffbuild.seed.seed_identity",return_value=(plan["key"],plan)), \
+             mock.patch("ffbuild.builder.subprocess.run",side_effect=run):
+            submit_dependencies(vcpkg_root=Path("vcpkg"),triplet="arm64-windows")
+        self.assertEqual(["","dependencygraph"],calls)
 
     def test_workflow_prebuilds_seed_once_per_needed_triplet(self):
         workflow = yaml.safe_load(
@@ -137,6 +281,73 @@ class SharedDependencySeedTests(unittest.TestCase):
         self.assertTrue(worker_install["env"]["VCPKG_BINARY_SOURCES"].endswith(",read"))
         self.assertTrue(any("python -m ffbuild prepare" in step.get("run", "")
                             for step in prepare_steps))
+
+
+@unittest.skipUnless(os.environ.get("FFBUILD_TEST_VCPKG_BIN"), "Set native vcpkg binary for real Seed fixture")
+class NativeSeedFixture(unittest.TestCase):
+    def test_direct_feature_batches_build_restore_and_reject_corruption(self):
+        from ffbuild import native_abi, seed
+        import ffvcpkg
+        binary=Path(os.environ["FFBUILD_TEST_VCPKG_BIN"]).resolve()
+        with tempfile.TemporaryDirectory(prefix="ffbuild-seed-native-") as temporary:
+            root=Path(temporary)
+            ports=root/"ports"; ports.mkdir()
+            cache=root/"cache";cache.mkdir()
+            shutil.copytree(ROOT/"triplets",root/"triplets")
+            marker=root/"dependency-built"
+            target_marker=root/"target-built"
+            payload=('file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/include")\n'
+                     'file(WRITE "${CURRENT_PACKAGES_DIR}/include/${PORT}.h" "/* native fixture */")\n'
+                     'file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/copyright" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")\n')
+            def make(name,fields,mark):
+                p=ports/name;p.mkdir()
+                (p/"vcpkg.json").write_text(json.dumps(dict(name=name,version="1.0.0",license="MIT",**fields)))
+                (p/"portfile.cmake").write_text(payload+f'file(WRITE "{mark.as_posix()}" "built")\n')
+                (p/"copyright").write_text("MIT fixture")
+                return p
+            make("seed-audit-dep",{"features":{"extra":{"description":"extra"},"default-extra":{"description":"default"}},
+                                   "default-features":["default-extra"]},marker)
+            ffmpeg=make("ffmpeg",{"dependencies":[{"name":"seed-audit-dep","default-features":False}],
+                                 "features":{"extra":{"description":"extra","dependencies":[{"name":"seed-audit-dep",
+                                     "default-features":False,"features":["extra"]}]} }},target_marker)
+            tester=make("ffmpeg-tester",{"dependencies":[{"name":"ffmpeg","default-features":False}]},target_marker)
+            env=dict(os.environ,VCPKG_ROOT=str(binary.parent),FFVCPKG_BIN=str(binary),
+                     VCPKG_BINARY_SOURCES=f"clear;files,{cache},readwrite")
+            def graph(spec):
+                specs={}
+                result=native_abi.native_abi_query([spec,"ffmpeg-tester"],"x64-windows",
+                            port_overlay=ffmpeg,binary=binary,specs=specs)
+                return result,external_batch(result,specs,"x64-windows")
+            with mock.patch.object(native_abi,"ROOT",root),mock.patch.object(seed,"ROOT",root), \
+                 mock.patch.object(ffvcpkg,"ROOT",root),mock.patch.dict(os.environ,env):
+                original,a=graph("ffmpeg[core]")
+                _,b=graph("ffmpeg[core,extra]")
+                self.assertNotEqual(a["abis"],b["abis"])
+                plans=merge_batches([a,b]); self.assertEqual(2,len(plans))
+                plan=plan_for(plans)
+                # Real source-only changes affect FFmpeg/Tester ABIs but not Seed.
+                for p in (ffmpeg,tester):
+                    f=p/"portfile.cmake"; f.write_text(f.read_text()+"# changed source\n")
+                changed,a2=graph("ffmpeg[core]")
+                self.assertNotEqual(original["ffmpeg_x64-windows"],changed["ffmpeg_x64-windows"])
+                self.assertNotEqual(original["ffmpeg-tester_x64-windows"],changed["ffmpeg-tester_x64-windows"])
+                self.assertEqual(a,a2)
+                self.assertEqual(seed_hash([a,b]),seed_hash([a2,b]))
+                prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,install_root=root/"roots")
+                self.assertTrue(marker.exists());marker.unlink()
+                self.assertFalse(target_marker.exists())
+                require_seed_archives(plan,cache)
+                prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                             install_root=root/"roots",cache_only=True)
+                self.assertFalse(marker.exists())
+                self.assertFalse(target_marker.exists())
+                abi=next(iter(a["abis"].values()))
+                (cache/abi[:2]/(abi+".zip")).write_bytes(b"not a ZIP")
+                with self.assertRaises(subprocess.CalledProcessError):
+                    prepare_seed(triplet="x64-windows",plan=plan,binary=binary,cache_dir=cache,
+                                 install_root=root/"roots",cache_only=True)
+                self.assertFalse(marker.exists())
+                self.assertFalse(target_marker.exists())
 
 
 if __name__ == "__main__":

@@ -210,7 +210,8 @@ class VcpkgWrapperTests(unittest.TestCase):
                         "--overlay-triplets=other"], binary=Path("vcpkg.exe"))
         self.assertIn("--overlay-ports=custom", args)
         self.assertIn("--overlay-triplets=other", args)
-        self.assertEqual(5, len(args))
+        self.assertEqual(6, len(args))
+        self.assertEqual(1, args.count("--x-abi-tools-use-exact-versions"))
 
     def test_non_build_commands_pass_through_unchanged(self):
         self.assertEqual(["vcpkg.exe", "version"],

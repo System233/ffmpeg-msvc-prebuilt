@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .port import ffmpeg_port_name, generate_port, generate_seed_port
+from .port import ffmpeg_port_name, generate_port
 from .spec import read_spec, resolve_features
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,7 +75,17 @@ def generate_all(*, output: Path | None = None, master: dict[str, str] | None = 
         results.append(generate("master", output=destination,
                                 source_version=master["ref"], ref=master["commit"],
                                 sha512=master["sha512"]))
-    generate_seed_port(destination)
+    # Regeneration invalidates the previously generated dependency plan.
+    (destination / "seed-plan.json").unlink(missing_ok=True)
+    # Remove only recognized obsolete generated artifacts, never authored Ports.
+    obsolete = destination / "ffmpeg-deps"
+    manifest = obsolete / "vcpkg.json"
+    if manifest.is_file() and json.loads(manifest.read_text(encoding="utf-8")).get("name") == "ffmpeg-deps":
+        shutil.rmtree(obsolete)
+    stale_master = destination / "ffmpeg-master"
+    if master is None and (stale_master / "vcpkg.json").is_file():
+        if json.loads((stale_master / "vcpkg.json").read_text(encoding="utf-8")).get("name") == "ffmpeg":
+            shutil.rmtree(stale_master)
     return results
 
 

@@ -17,12 +17,27 @@ def main(argv: list[str] | None = None) -> None:
     submission.add_argument("--triplet", required=True)
     prepare = command.add_parser("prepare-host")
     prepare.add_argument("--triplet", required=True)
+    seed = command.add_parser("seed-identity")
+    seed.add_argument("--triplet", action="append", required=True)
+    seed.add_argument("--evidence", type=Path, required=True)
+    seed.add_argument("--github-output", action="store_true")
+    seed.add_argument("--expected")
+    seed.add_argument("--cache-dir", type=Path)
+    seed.add_argument("--plan-file", type=Path, required=True)
+    seed.add_argument("--read-plan", action="store_true", help="Verify a previously emitted dependency plan")
+    seed.add_argument("--vcpkg-bin", type=Path)
+    seed.add_argument("--target-evidence", type=Path)
+    compare = command.add_parser("compare-abi")
+    compare.add_argument("before", type=Path)
+    compare.add_argument("after", type=Path)
+    compare.add_argument("--output", type=Path)
     cache = command.add_parser("verify-cache")
     cache.add_argument("--job-env", required=True)
     cache.add_argument("--cache-dir", required=True, type=Path)
     restore = command.add_parser("restore-dependencies")
     restore.add_argument("--job-env", required=True)
     restore.add_argument("--cache-dir", required=True, type=Path)
+    restore.add_argument("--abi-evidence", type=Path)
     audit = command.add_parser("audit-worker")
     audit.add_argument("--job-env", required=True)
     audit.add_argument("--buildtrees", required=True, type=Path)
@@ -43,6 +58,48 @@ def main(argv: list[str] | None = None) -> None:
         submit_dependencies(vcpkg_root=runtime / "vcpkg", triplet=args.triplet)
     elif args.command == "prepare-host" and args.triplet == "arm-windows":
         patch_arm_sdk()
+    elif args.command == "seed-identity":
+        from .seed import seed_identity, require_seed_archives, load_seed_plan, verify_batch, verify_target_coverage
+        from .native_abi import graph_digest
+        keys, plans = {}, {}
+        for triplet in args.triplet:
+            if args.read_plan:
+                plan = load_seed_plan(args.plan_file, triplet, args.expected)
+                for index, batch in enumerate(plan["batches"]):
+                    verify_batch(batch, triplet, binary=args.vcpkg_bin,
+                                 evidence=args.evidence / triplet / f"direct-{index}")
+                digest = plan["key"]
+            else:
+                digest, plan = seed_identity(triplet=triplet, binary=args.vcpkg_bin,
+                                             evidence=args.evidence / triplet)
+                if args.expected and digest != args.expected:
+                    raise RuntimeError(f"Seed native ABI drift for {triplet}: planned {args.expected}, actual {digest}")
+            keys[triplet], plans[triplet] = digest, plan
+            if args.cache_dir:
+                require_seed_archives(plan, args.cache_dir)
+        if args.target_evidence is not None:
+            import sys
+            count = verify_target_coverage(plans, args.target_evidence)
+            print(f"Verified exact dependency coverage of {count} actual target graphs", file=sys.stderr)
+        if not args.read_plan:
+            args.plan_file.parent.mkdir(parents=True, exist_ok=True)
+            args.plan_file.write_text(json.dumps(plans, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        # Source-download cache identity depends on selected specs and recipe
+        # files, not the compiler/tool ABIs of the binary cache.
+        download_specs = sorted({spec for plan in plans.values()
+                                 for batch in plan["batches"] for spec in batch["specs"].values()})
+        print(json.dumps(keys, sort_keys=True))
+        if args.github_output:
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                output.write("seed_keys=" + json.dumps(keys, separators=(",", ":")) + "\n")
+                output.write("download_specs=" + graph_digest({"specs": download_specs}) + "\n")
+    elif args.command == "compare-abi":
+        from .native_abi import compare_abi_evidence
+        report = json.dumps(compare_abi_evidence(args.before, args.after), indent=2)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(report + "\n", encoding="utf-8")
+        print(report)
     elif args.command == "verify-cache":
         from .cache_guard import verify_from_environment
         verify_from_environment(job_env=args.job_env, cache_dir=args.cache_dir)
@@ -54,7 +111,8 @@ def main(argv: list[str] | None = None) -> None:
         root = Path(os.environ["VCPKG_ROOT"])
         env = dict(os.environ, VCPKG_BINARY_SOURCES=f"clear;files,{args.cache_dir.resolve()},read")
         restore_dependencies(job, args.cache_dir, port=GENERATED_PORTS / ffmpeg_port_name(job["yaml"]),
-                             installed=root / "installed", paths=[f"--x-install-root={root / 'installed'}"], env=env)
+                             installed=root / "installed", paths=[f"--x-install-root={root / 'installed'}"], env=env,
+                             evidence=args.abi_evidence)
     elif args.command == "audit-worker":
         from .cache_guard import load_job, verify_no_dependency_builds
         verify_no_dependency_builds(load_job(args.job_env), args.buildtrees)

@@ -12,8 +12,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from .native_abi import native_abi_query, planned_specs
-from ffvcpkg import command as vcpkg_command
+from .native_abi import native_abi_query, planned_specs, verify_graph_digest
+from ffvcpkg import command as vcpkg_command, environment
 from .port import ffmpeg_port_name
 from .versions import GENERATED_PORTS, ROOT
 
@@ -43,6 +43,12 @@ def verify_dependency_cache(job: dict, cache_dir: Path, *, abi_map: dict[str, st
     if not external:
         raise RuntimeError("Refusing to claim cache reuse without an external dependency graph")
     cache_dir = cache_dir.resolve()
+    for key in (target, tester):
+        abi = abi_map[key]
+        if not isinstance(abi, str) or len(abi) != 64 or any(c not in "0123456789abcdef" for c in abi):
+            raise ValueError(f"Invalid native ABI for {key}: {abi!r}")
+        if (cache_dir / abi[:2] / f"{abi}.zip").exists():
+            raise RuntimeError(f"Dependency Seed contains a target/Tester archive: {key}")
     missing = []
     for name, abi in sorted(external.items()):
         if not isinstance(abi, str) or len(abi) != 64 or any(
@@ -114,14 +120,14 @@ def require_target_plan(job: dict, *, port: Path, paths: list[str], env: dict,
     args = ["install", job["package"], job["tester_port"], f"--triplet={job['triplet']}",
             f"--overlay-ports={port}", f"--overlay-ports={ROOT / 'ports'}", *paths,
             "--no-print-usage", "--dry-run"]
-    result = subprocess.run(vcpkg_command(args), cwd=ROOT, env=env, capture_output=True, text=True, check=True)
+    result = subprocess.run(vcpkg_command(args), cwd=ROOT, env=environment(env), capture_output=True, text=True, check=True)
     if (any(line.startswith(("The following packages will be removed", "The following packages will be rebuilt"))
             for line in result.stdout.splitlines()) or set(planned_specs(result.stdout)) != expected):
         raise RuntimeError("Native target plan would install or rebuild an external dependency")
 
 
 def restore_dependencies(job: dict, cache: Path, *, port: Path, installed: Path,
-                         paths: list[str], env: dict, run=None) -> dict[str, str]:
+                         paths: list[str], env: dict, run=None, evidence: Path | None = None) -> dict[str, str]:
     """Install exactly the external native feature graph, cache-only, before any target build.
 
     A failed binary restore cannot invoke the dependency's build. Then check
@@ -131,7 +137,8 @@ def restore_dependencies(job: dict, cache: Path, *, port: Path, installed: Path,
     specs: dict[str, str] = {}
     triplet = job["triplet"]
     packages = [job["package"], job["tester_port"]]
-    abis = native_abi_query(packages, triplet, port_overlay=port, env=env, specs=specs)
+    abis = native_abi_query(packages, triplet, port_overlay=port, env=env, specs=specs, evidence=evidence)
+    verify_graph_digest(job, abis)
     verify_dependency_cache(job, cache, abi_map=abis)
     targets = {f"{job['port']}_{triplet}", f"{job['tester_port']}_{triplet}"}
     if job.get("abi_hash") and abis[f"{job['port']}_{triplet}"] != job["abi_hash"]:
@@ -144,7 +151,7 @@ def restore_dependencies(job: dict, cache: Path, *, port: Path, installed: Path,
         if run is not None:
             run(command)
         else:
-            subprocess.run(command, cwd=ROOT, env=env, check=True)
+            subprocess.run(command, cwd=ROOT, env=environment(env), check=True)
     if installed_abis(installed) != external:
         invoke(["install", *(specs[key] for key in sorted(external)), *options,
                 "--only-binarycaching", "--recurse"])

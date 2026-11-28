@@ -22,6 +22,7 @@ DIAGNOSTIC_PLAN_FIELDS = (
     "yaml", "id", "version", "source_version", "ref", "source_ref", "sha512",
     "release_date", "port", "tester_port", "triplet", "package", "features",
     "requested_features", "license", "linkage", "abi_hash", "expected_variants",
+    "native_graph_sha256",
 )
 
 

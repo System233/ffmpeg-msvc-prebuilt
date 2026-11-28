@@ -10,11 +10,11 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
-from ffvcpkg import command as vcpkg_command
+from ffvcpkg import command as vcpkg_command, environment
 
-from .port import generate_seed_port
 from .versions import ROOT
 
 
@@ -71,18 +71,50 @@ def patch_arm_sdk() -> None:
 
 def submit_dependencies(*, vcpkg_root: Path, triplet: str) -> None:
     """Request the native vcpkg dependency graph for GitHub submission."""
-    port = generate_seed_port()
+    from .seed import seed_identity
+    from .native_abi import read_nuget_abis
+    from .versions import generate_all
+    from .master import master_metadata
     executable = bootstrap(vcpkg_root)
-    manifest = json.loads((port / "vcpkg.json").read_text(encoding="utf-8"))
-    features = [f"--x-feature={name}" for name in manifest.get("features", {})]
-    if not features:
-        return
+    if triplet == "arm-windows":
+        patch_arm_sdk()
+    generate_all(master=master_metadata())
+    _, plan = seed_identity(triplet=triplet, binary=executable)
     env = os.environ.copy()
     env.pop("GITHUB_SERVER_URL", None)
     env.update({"VCPKG_FEATURE_FLAGS": "dependencygraph",
                 "VCPKG_OVERLAY_PORTS": str(ROOT / "ports"),
                 "VCPKG_OVERLAY_TRIPLETS": str(ROOT / "triplets"),
-                "VCPKG_ROOT": str(vcpkg_root),
-                "GITHUB_WORKFLOW": f"Dependency Submission ({triplet})"})
-    subprocess.run(vcpkg_command(["install", *features, f"--triplet={triplet}", "--dry-run"],
-                                 binary=executable), cwd=port, env=env, check=True)
+                "VCPKG_ROOT": str(vcpkg_root)})
+    # vcpkg's native dependency submission is manifest-only. Use a temporary
+    # consumer project per compatible batch, NOT a generated cache Port.
+    for index, batch in enumerate(plan["batches"]):
+        dependencies = []
+        for spec in sorted(batch["specs"].values()):
+            name, features, arch = re.fullmatch(r"([a-z0-9-]+)\[([a-z0-9,-]+)\]:([a-z0-9-]+)", spec).groups()
+            dep = {"name": name, "default-features": False}
+            if arch != triplet:
+                dep["host"] = True
+            selected = sorted(set(features.split(",")) - {"core"})
+            if selected:
+                dep["features"] = selected
+            dependencies.append(dep)
+        with tempfile.TemporaryDirectory(prefix="ffbuild-dependency-submission-") as scratch:
+            project = Path(scratch)
+            (project / "vcpkg.json").write_text(json.dumps({"dependencies": dependencies}), encoding="utf-8")
+            # Use the same pinned built-in registry as classic-mode Seed
+            # installs. Importing a separate manifest registry baseline would
+            # silently select different ports (and can require a network fetch).
+            env["GITHUB_WORKFLOW"] = f"Dependency Submission ({triplet}, batch {index + 1})"
+            args = ["install", f"--triplet={triplet}", "--dry-run",
+                    f"--x-manifest-root={project}", f"--x-install-root={project / 'installed'}"]
+            output = project / "packages.config"
+            # Validate manifest mode against the classic native plan before
+            # enabling GitHub submission. No network submission during probe.
+            subprocess.run(vcpkg_command([*args, f"--x-write-nuget-packages-config={output}"],
+                                          binary=executable), cwd=project,
+                           env=environment(dict(env, VCPKG_FEATURE_FLAGS="")), check=True)
+            if read_nuget_abis(output) != batch["abis"]:
+                raise RuntimeError("Dependency submission graph differs from native Seed plan")
+            subprocess.run(vcpkg_command(args, binary=executable), cwd=project,
+                           env=environment(env), check=True)

@@ -31,10 +31,4 @@ class PortBaseline(unittest.TestCase):
                     unchanged += 1
             if not unchanged:
                 self.skipTest("All baseline authored inputs have changed")
-            yaml_inputs = {p.relative_to(ROOT).as_posix(): digest(p) for p in (ROOT / "ffmpeg").glob("*.yaml")}
-            if (unchanged == len(fixture["versions"]) - 1
-                    and len(list(output.iterdir())) == len(fixture["versions"])
-                    and yaml_inputs == fixture["seed_yaml_inputs"]):
-                seed = output / "ffmpeg-deps"
-                self.assertEqual(fixture["versions"]["ffmpeg-deps"]["files"],
-                                 {p.relative_to(seed).as_posix(): digest(p) for p in seed.rglob("*") if p.is_file()})
+            self.assertFalse((output / "ffmpeg-deps").exists())

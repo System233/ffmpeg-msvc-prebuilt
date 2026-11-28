@@ -45,7 +45,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
-        key: ffbuild-downloads-2026.06.01-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
+        key: ffbuild-downloads-2026.06.01-${{ steps.source.outputs.download_specs }}-${{ hashFiles('ports/**', '!ports/ffmpeg-tester/**', 'vcpkg-configuration.json') }}
         restore-keys: |
           ffbuild-downloads-2026.06.01-
     - name: Reuse legacy dependency downloads
@@ -55,6 +55,21 @@ runs:
         legacy-path: ${{ runner.temp }}/vcpkg/downloads
         path: ${{ runner.temp }}/ffbuild/vcpkg/downloads
         prefix: vcpkg-dl-all-2026.06.01-
+    - name: Resolve exact native Seed ABI identities for repair
+      id: seed-identity
+      shell: pwsh
+      env:
+        REPAIR_TRIPLETS: ${{ steps.source.outputs.triplets }}
+      run: |
+        $triplets = @($env:REPAIR_TRIPLETS | ConvertFrom-Json)
+        $arguments = @('seed-identity', '--evidence', "$env:FFBUILD_REPAIR_DIR/abi-evidence/seed", '--github-output', '--plan-file', '_work/ffbuild/generated-ports/seed-plan.json')
+        foreach ($triplet in $triplets) {
+          python -m ffbuild.ci prepare-host "--triplet=$triplet"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $arguments += @('--triplet', $triplet)
+        }
+        python -m ffbuild.ci @arguments
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     # Restore into the production cache path (part of the Actions cache version).
     # The ABI-addressed archives from all required triplets form one cache.
     - name: Restore x64-windows dependency Seed
@@ -63,7 +78,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-x64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-x64-windows-${{ fromJSON(steps.seed-identity.outputs.seed_keys)['x64-windows'] }}
         restore-keys: |
           ffbuild-seed-2026.06.01-x64-windows-
           ffbuild-native-2026.06.01-x64-windows-
@@ -80,7 +95,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-x86-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-x86-windows-${{ fromJSON(steps.seed-identity.outputs.seed_keys)['x86-windows'] }}
         restore-keys: |
           ffbuild-seed-2026.06.01-x86-windows-
           ffbuild-native-2026.06.01-x86-windows-
@@ -97,7 +112,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-arm64-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-arm64-windows-${{ fromJSON(steps.seed-identity.outputs.seed_keys)['arm64-windows'] }}
         restore-keys: |
           ffbuild-seed-2026.06.01-arm64-windows-
           ffbuild-native-2026.06.01-arm64-windows-
@@ -114,7 +129,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-        key: ffbuild-seed-2026.06.01-arm-windows-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+        key: ffbuild-seed-2026.06.01-arm-windows-${{ fromJSON(steps.seed-identity.outputs.seed_keys)['arm-windows'] }}
         restore-keys: |
           ffbuild-seed-2026.06.01-arm-windows-
           ffbuild-native-2026.06.01-arm-windows-

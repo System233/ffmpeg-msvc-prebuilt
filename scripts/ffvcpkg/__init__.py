@@ -39,8 +39,19 @@ def executable() -> Path:
     raise FileNotFoundError("Cannot locate vcpkg. Set FFVCPKG_BIN or VCPKG_ROOT.")
 
 
+EXACT_ABI_TOOLS = "--x-abi-tools-use-exact-versions"
+
+
+def environment(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Use vcpkg-managed tools consistently in every native build subprocess."""
+    result = dict(os.environ if env is None else env)
+    result["VCPKG_FORCE_DOWNLOADED_BINARIES"] = "1"
+    result["PYTHONIOENCODING"] = "utf-8"
+    return result
+
+
 def command(arguments: list[str], *, binary: Path | None = None) -> list[str]:
-    """Forward untouched native arguments, adding only missing overlay paths."""
+    """Forward native arguments with project overlays and historical ABI tool policy."""
     if not arguments:
         raise ValueError("A native vcpkg command is required")
     args = list(arguments)
@@ -74,6 +85,8 @@ def command(arguments: list[str], *, binary: Path | None = None) -> list[str]:
             args.append(f"--overlay-ports={ROOT / 'ports'}")
         if not any(a == "--overlay-triplets" or a.startswith("--overlay-triplets=") for a in args):
             args.append(f"--overlay-triplets={ROOT / 'triplets'}")
+    if args[0] == "install" and EXACT_ABI_TOOLS not in args:
+        args.append(EXACT_ABI_TOOLS)
     return [str(binary or executable()), *args]
 
 
@@ -83,6 +96,6 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args == ["--help"]:
         print("Usage: python -m ffvcpkg <native-vcpkg-command> [arguments...]\n"
-              "Adds the project's overlay ports and triplets; all other flags pass through.")
+              "Adds project overlays and exact ABI tool policy; all other flags pass through.")
         return 0 if args else 2
-    return subprocess.run(command(args), cwd=ROOT, check=False).returncode
+    return subprocess.run(command(args), cwd=ROOT, env=environment(), check=False).returncode

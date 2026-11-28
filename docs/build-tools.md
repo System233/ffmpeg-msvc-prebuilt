@@ -23,7 +23,7 @@ python -m ffbuild generate --all
 
 The generated Overlay lives under `_work/ffbuild/generated-ports/`.
 It contains one directory per source-backed FFmpeg release (`ffmpeg-8-1-3`,
-`ffmpeg-9-1`, etc.) and a shared virtual `ffmpeg-deps` Seed. As of November
+`ffmpeg-9-1`, etc.) with no generated dependency aggregator Port. As of November
 2026 there are 26 source-backed releases and three YAML-only inheritance
 templates. Every generated FFmpeg directory has **`name: ffmpeg`** in its
 vcpkg manifest. The directory names select source versions; they are **not**
@@ -116,7 +116,10 @@ reflected in every generated Port without silently dropping its behavior.
 ## Validation without publication
 
 The reusable build workflow accepts explicit validation-only controls for
-authorized Bot PRs: dry_run, force, skip_publish and skip_release. Ordinary
+authorized Bot PRs: dry_run, force, skip_publish and skip_release. Explicit
+manual dispatches on main can also select dry_run with target_arch and/or
+target_license; these runs never publish and do not narrow the production
+or Bot PR matrix. Ordinary
 branch pushes cannot use this entrypoint to run native builds. The temporary
 branch-driven E2E workflow is not part of the production tree. Any additional
 remote smoke harness belongs on an isolated, separately reviewed test branch.
@@ -129,20 +132,25 @@ FFmpeg Workers start. Dependency DLLs are **not** collected or packaged as
 Release artifacts; only FFmpeg Port outputs are packaged. Versioned FFmpeg
 Ports do not imply version-specific copies of identical dependencies.
 
-The generated `ffmpeg-deps` Port has an `all` feature containing the compatible
-external libraries, with alternative dependency names in separate features.
-Its dependencies are derived from the actual compiled feature definitions for
-every source-backed FFmpeg version, including platform expressions, version
-overrides and host tools. The original mutual-exclusion groups (`ffnvcodec`,
-`ffnvcodec-11`, `libvpl`, `mfx-dispatch`) are preserved. Individual profiles
-use separate temporary install roots so vcpkg never combines conflicting
-features into one dependency graph.
+The dependency Seed is an archive set, not a vcpkg Port. Plan scans every
+source-backed release and the pinned Master recipe against the declared CI
+target matrix using vcpkg's native install plan. Identical dependency
+declarations are scanned once, including linkage-only variants whose
+requested Features have no dependency edges. Each native plan records the
+complete package specs (including explicit core, Features and host Triplet)
+and ABI hashes, excluding only the two FFmpeg target packages. Compatible
+graphs may be merged into a batch, but vcpkg must independently reproduce the
+exact ABI and spec graph when invoked without an FFmpeg overlay. If a merge
+changes the graph, the original independent batches must pass instead.
+No packages outside the declared CI matrix are intentionally prebuilt.
 
 CI's work order is:
 
-1. `plan` generates all versioned Ports and `ffmpeg-deps`, but only scans
-   the **one selected release version** for a production request or automatic PR;
-   it outputs only the Triplets with unpublished native ABI work. The ARM SDK
+1. `plan` generates all versioned Ports including a pinned Master. It scans
+   only the **one selected release version** for publication scheduling, but
+   derives the shared dependency plan for all versions and all four Triplets
+   when there is work. Actual selected target graphs must be covered by that
+   dependency plan. It outputs only the Triplets with unpublished native ABI work. The ARM SDK
    selection workaround is applied **before** the ABI scan, matching Prepare
    and Build runners so the planned compiler ABI does not depend on a different
    SDK selection.
@@ -151,8 +159,13 @@ CI's work order is:
    saves the consolidated downloads. Previously published download caches are
    used as fallback sources.
 3. `prepare` runs once per **needed Triplet**, restoring a prior binary Seed
-   when possible. Otherwise it runs `ffbuild prepare --triplet <triplet>` and
-   saves a consolidated native vcpkg binary cache under a new immutable key.
+   when possible, after verifying direct dependency batch ABIs against Plan.
+   On a cache miss, it builds only those external batches. Before saving or
+   releasing Workers, it restores every batch in cache-only mode into fresh
+   install roots and compares the actually installed ABIs, rejecting incomplete
+   or corrupt archives even on an exact GitHub cache hit. After verification,
+   obsolete vcpkg ABI archives from the legacy fallback are removed only from
+   the dedicated CI cache; local and shared repair caches are not pruned.
 4. Each `build` Worker restores the **exact same completed Seed key, read-only
    from GitHub Actions**. A missing cache fails the job instead of silently
    rebuilding all dependencies independently. The worker vcpkg binary source
@@ -167,11 +180,15 @@ CI's work order is:
    does not allow recursive replacement. **After building, the Worker checks
    buildtree logs** as defense in depth. Only FFmpeg and Tester may build.
 
-The cache namespace is scoped by pinned vcpkg version, Triplet and the
-generated Seed plus authored Port and Triplet inputs. Old `ffbuild-seed`,
-`ffbuild-native` and `vcpkg-seed` entries can supply existing binaries when
-preparing a new Seed; only `prepare` writes the consolidated GitHub cache.
-There is no independent compilation-environment fingerprint.
+The binary cache namespace is scoped by pinned vcpkg version, Triplet and
+SHA256 of the newline-joined, lexically sorted **unique external native ABIs**.
+It excludes FFmpeg, Tester, dependency grouping labels and any virtual Port.
+The dependency plan retains package names and specs for diagnostics and
+execution, not as additional cache-key inputs. Source download cache identity
+uses the union of native external specs and dependency recipe files, not
+compiler/tool ABI hashes. Old `ffbuild-seed`, `ffbuild-native` and
+`vcpkg-seed` entries may supply existing binaries; only `prepare` writes the
+consolidated GitHub cache. There is no independent environment fingerprint.
 
 Seed builds use `--clean-buildtrees-after-build` and
 `--clean-packages-after-build`, **not** `--clean-after-build`: the latter also
@@ -180,13 +197,16 @@ part of local Python tests or `generate --all`.
 
 ## Scan native ABIs without compiling
 
-The CI uses pinned vcpkg 2026.06.01. Its `install --dry-run` command supports
+The CI uses pinned vcpkg 2026.06.01. All install modes, including dry-run,
+download-only and cache-only restore, use the shared vcpkg wrapper with
+VCPKG_FORCE_DOWNLOADED_BINARIES=1 and --x-abi-tools-use-exact-versions.
+The setup action also preserves PYTHONIOENCODING=utf-8. Its `install --dry-run` command supports
 the experimental `--x-write-nuget-packages-config=<path>` option. The resulting
 NuGet `packages.config` gives each Port's full native ABI in its
 `<version>-vcpkg<sha256>` package version.
 
 ```powershell
-python -m ffbuild scan --version 8.1.3 --output ffbuild-abi.json
+python -m ffbuild scan --version 8.1.3 --output ffbuild-abi.json --abi-evidence abi-evidence
 python -m ffbuild plan --abi-file ffbuild-abi.json --state-dir data
 ```
 
@@ -206,6 +226,11 @@ is built or installed, but vcpkg can invoke CMake and compile compiler-ID
 probes when computing the triplet ABI. For each requested version/Triplet/Feature profile, the scanner reads vcpkg's actual
 dependency graph and ABI hash, not another Python dependency hash. Missing
 native ABI output is a hard error, never a reason to substitute a fake hash.
+Plan, Prepare, Worker and Auto-heal retain native ABI input files and graph.json
+as diagnostic artifacts. Each input file must match its native SHA256.
+Compare corresponding graph directories with
+python -m ffbuild.ci compare-abi BEFORE AFTER to identify per-package and
+per-component changes (including tools and transitive dependency ABIs).
 
 The scan output (`schema: 3`) contains `port`, `package`, `abi_hash`,
 `triplet`, `features`, `version`, `release_date`, and Master source information.
@@ -226,7 +251,8 @@ Each CI build runs on an isolated Windows Runner, so two different FFmpeg
 versions never install their overlapping include/library paths in one tree.
 The generated Overlay is uploaded once from CI planning and restored in each
 build Worker. Before installation the Worker repeats the read-only ABI query
-for its target; it fails if its native ABI differs from the planned ABI.
+for its target and Tester; it fails if either the target ABI or the complete
+native dependency graph differs from Plan.
 
 The centrally prebuilt native vcpkg binary cache remains active for dependency reuse; `data`
 tracks **published artifacts**, not whether a package is present in cache.

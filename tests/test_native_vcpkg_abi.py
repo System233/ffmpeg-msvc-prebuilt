@@ -50,7 +50,8 @@ class NativeABIQueries(unittest.TestCase):
 
         def native(specs, triplet, **kwargs):
             queries.append((tuple(specs), triplet, kwargs['port_overlay'].name))
-            self.assertEqual(1, len(specs))
+            self.assertEqual(2, len(specs))
+            self.assertEqual("ffmpeg-tester", specs[1])
             return {f"{spec.split('[', 1)[0]}_{triplet}":
                     str(len(queries)) * 64 for spec in specs}
 
@@ -59,6 +60,7 @@ class NativeABIQueries(unittest.TestCase):
         self.assertEqual(4, len(results))
         self.assertEqual(4, len(queries))
         self.assertEqual(4, len({item['id'] for item in results}))
+        self.assertEqual(4, len({item['native_graph_sha256'] for item in results}))
         self.assertEqual({'ffmpeg'}, {item['port'] for item in results})
         self.assertEqual({'ffmpeg-tester'}, {item['tester_port'] for item in results})
         self.assertEqual({'ffmpeg-8-1-3', 'ffmpeg-9-1'}, {entry[2] for entry in queries})
@@ -75,6 +77,8 @@ class NativeABIQueries(unittest.TestCase):
 
             def fake_run(args, **kwargs):
                 calls.append(args)
+                self.assertEqual(1, args.count('--x-abi-tools-use-exact-versions'))
+                self.assertEqual('1', kwargs['env']['VCPKG_FORCE_DOWNLOADED_BINARIES'])
                 output_arg = next(arg for arg in args if arg.startswith(
                     '--x-write-nuget-packages-config='))
                 output = Path(output_arg.split('=', 1)[1])
@@ -105,6 +109,20 @@ class NativeABIQueries(unittest.TestCase):
         with mock.patch('ffbuild.native_abi.native_abi_query', return_value={
                 'ffmpeg_x64-windows': 'b' * 64}):
             with self.assertRaisesRegex(ValueError, "ABI changed"):
+                verify_job_abi(job)
+
+
+    def test_preflight_rejects_tester_only_abi_drift(self):
+        from ffbuild.native_abi import graph_digest
+        planned = {"ffmpeg_x64-windows": "a"*64, "ffmpeg-tester_x64-windows": "b"*64}
+        job = {"yaml": "8.1.3", "port": "ffmpeg", "tester_port": "ffmpeg-tester",
+               "package": "ffmpeg[base]", "triplet": "x64-windows", "abi_hash": "a"*64,
+               "native_graph_sha256": graph_digest(planned)}
+        with mock.patch("ffbuild.native_abi.native_abi_query", return_value=planned):
+            self.assertEqual("a"*64, verify_job_abi(job))
+        with mock.patch("ffbuild.native_abi.native_abi_query",
+                        return_value=dict(planned, **{"ffmpeg-tester_x64-windows": "c"*64})):
+            with self.assertRaisesRegex(ValueError, "ABI graph changed"):
                 verify_job_abi(job)
 
 

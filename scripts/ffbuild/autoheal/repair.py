@@ -96,11 +96,20 @@ def prepare(report: dict, yaml: str) -> dict:
     runtime = native.runtime_dir()
     runtime.mkdir(parents=True, exist_ok=True)
     (runtime / "ready.json").unlink(missing_ok=True)
-    generate_all(master=data["source_snapshot"] if yaml == "master" else None)
+    # Use the same pinned Master recipe as the original Seed scan. The
+    # selected repair source remains unchanged; stable targets do not use it.
+    pin = data["source_snapshot"].get("seed_master")
+    if pin is None and yaml == "master":
+        pin = data["source_snapshot"]
+    generate_all(master=pin)
     contract = native.contract(GENERATED_PORTS / ffmpeg_port_name(yaml))
     contract_file = runtime / "contract.json"
     contract_file.write_text(json.dumps(contract, indent=2), encoding="utf-8")
+    download_specs = data["source_snapshot"].get("download_specs", "")
+    if download_specs and not re.fullmatch(r"[0-9a-f]{64}", download_specs):
+        raise ValueError("Invalid original source download cache identity")
     return {"base": data["base_sha"], "triplets": json.dumps(data["triplets"]),
+            "download_specs": download_specs,
             "context_sha256": hashlib.sha256(Path("agent_context.json").read_bytes()).hexdigest(),
             "contract_sha256": hashlib.sha256(contract_file.read_bytes()).hexdigest()}
 

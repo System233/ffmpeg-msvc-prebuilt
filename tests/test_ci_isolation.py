@@ -22,7 +22,15 @@ class IsolatedE2ETests(unittest.TestCase):
         for key in ("skip_release", "skip_publish"):
             self.assertIn(key, nested["on"]["workflow_call"]["inputs"])
             self.assertEqual("false", nested["on"]["workflow_call"]["inputs"][key]["default"])
-        self.assertEqual({"yaml"}, set(nested["on"]["workflow_dispatch"]["inputs"]))
+        dispatch = nested["on"]["workflow_dispatch"]["inputs"]
+        # Manual validation is explicit, non-publishing, and defaults off.
+        # It must not expose the reusable workflow's publication bypasses.
+        self.assertEqual({"yaml", "dry_run", "target_arch", "target_license"}, set(dispatch))
+        self.assertEqual("false", dispatch["dry_run"]["default"])
+        self.assertNotIn("skip_release", dispatch)
+        self.assertNotIn("skip_publish", dispatch)
+        self.assertNotIn("force", dispatch)
+        self.assertIn("!inputs.dry_run", nested["jobs"]["publish"]["if"])
         self.assertNotIn("workflow_dispatch", primary["on"])
         self.assertEqual("true", primary["jobs"]["build"]["with"]["skip_publish"])
 

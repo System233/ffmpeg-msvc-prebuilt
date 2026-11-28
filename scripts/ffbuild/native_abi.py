@@ -10,6 +10,7 @@ compiler identification programs without compiling an actual package.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -18,7 +19,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from ffvcpkg import executable
+from ffvcpkg import executable, command as vcpkg_command, environment
 
 from .identity import variant_name, utc_release_date
 from .port import ffmpeg_port_name
@@ -73,9 +74,10 @@ def planned_specs(transcript: str) -> dict[str, str]:
 
 
 def native_abi_query(packages: list[str], triplet: str, *,
-                     port_overlay: Path,
+                     port_overlay: Path | None = None,
                      binary: Path | None = None,
-                     env: dict[str, str] | None = None, specs: dict[str, str] | None = None) -> dict[str, str]:
+                     env: dict[str, str] | None = None, specs: dict[str, str] | None = None,
+                     evidence: Path | None = None) -> dict[str, str]:
     """Scan one dependency graph using one explicitly selected FFmpeg Port.
 
     Never supply the generated-ports parent: multiple version directories all
@@ -88,21 +90,31 @@ def native_abi_query(packages: list[str], triplet: str, *,
     tool = (binary or executable()).resolve()
     if not tool.is_file():
         raise FileNotFoundError(tool)
-    manifest = port_overlay / "vcpkg.json"
-    if not manifest.is_file():
-        raise FileNotFoundError(f"Select a generated FFmpeg Port directory: {manifest}")
-    if json.loads(manifest.read_text(encoding="utf-8")).get("name") != "ffmpeg":
-        raise ValueError(f"Expected stable ffmpeg package in {manifest}")
+    overlays = []
+    if port_overlay is not None:
+        manifest = port_overlay / "vcpkg.json"
+        if not manifest.is_file():
+            raise FileNotFoundError(f"Select a generated FFmpeg Port directory: {manifest}")
+        if json.loads(manifest.read_text(encoding="utf-8")).get("name") != "ffmpeg":
+            raise ValueError(f"Expected stable ffmpeg package in {manifest}")
+        overlays.append(f"--overlay-ports={port_overlay.resolve()}")
+    elif any(p.split("[", 1)[0].split(":", 1)[0] in {"ffmpeg", "ffmpeg-tester", "ffmpeg-deps"}
+             for p in packages):
+        raise ValueError("Direct dependency ABI queries cannot request FFmpeg target packages")
     with tempfile.TemporaryDirectory(prefix="ffbuild-native-abi-") as scratch:
         base = Path(scratch)
         output = base / "packages.config"
-        args = [str(tool), "install", *packages, f"--triplet={triplet}",
-                f"--overlay-ports={port_overlay.resolve()}",
+        args = ["install", *packages, f"--triplet={triplet}",
+                *overlays,
                 f"--overlay-ports={(ROOT / 'ports').resolve()}",
                 f"--overlay-triplets={(ROOT / 'triplets').resolve()}",
                 f"--x-install-root={base / 'installed'}", "--dry-run",
                 f"--x-write-nuget-packages-config={output}", "--no-print-usage"]
-        finished = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, **({"env": env} if env is not None else {}))
+        # Keep compiler detection cached in vcpkg's normal buildtrees. ABI
+        # files are checked against the exact native hashes before copying.
+        finished = subprocess.run(vcpkg_command(args, binary=tool), cwd=ROOT,
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", env=environment(env))
         if finished.returncode != 0:
             raise RuntimeError(f"Native vcpkg ABI query failed for {triplet}: "
                                f"{(finished.stderr + finished.stdout)[-4500:]}")
@@ -114,7 +126,74 @@ def native_abi_query(packages: list[str], triplet: str, *,
             if set(selected) != set(abis):
                 raise ValueError("Native vcpkg plan and ABI graph differ")
             specs.update(selected)
+        if evidence is not None:
+            collect_abi_evidence(abis, tool.parent / "buildtrees", evidence)
         return abis
+
+
+def graph_digest(graph: dict) -> str:
+    """Checksum a native graph for equality checks, never a substitute for package ABI."""
+    return hashlib.sha256(json.dumps(graph, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def collect_abi_evidence(abis: dict[str, str], buildtrees: Path, destination: Path) -> None:
+    """Retain every native ABI input file, verifying its SHA256 before use."""
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination / "graph.json").unlink(missing_ok=True)
+    for identifier, abi in sorted(abis.items()):
+        port, triplet = abi_identifier(identifier)
+        source = buildtrees / port / (triplet + ".vcpkg_abi_info.txt")
+        content = source.read_bytes()
+        if hashlib.sha256(content).hexdigest() != abi:
+            raise RuntimeError(f"Native ABI input file differs from emitted ABI: {identifier}")
+        (destination / (identifier + ".txt")).write_bytes(content)
+    (destination / "graph.json").write_text(json.dumps(abis, sort_keys=True, indent=2) + "\n",
+                                            encoding="utf-8")
+
+
+def abi_identifier(value: str) -> tuple[str, str]:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*_[a-z0-9][a-z0-9-]*", value):
+        raise ValueError("Invalid native package ABI identity")
+    return tuple(value.rsplit("_", 1))
+
+
+def load_abi_evidence(directory: Path) -> tuple[dict, dict]:
+    graph = json.loads((directory / "graph.json").read_text(encoding="utf-8"))
+    if not isinstance(graph, dict) or not graph:
+        raise ValueError("Invalid or empty native ABI graph")
+    entries = {}
+    for identifier, digest in graph.items():
+        abi_identifier(identifier)
+        content = (directory / (identifier + ".txt")).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digest:
+            raise ValueError(f"Native ABI evidence hash mismatch: {identifier}")
+        components: dict[str, list[str]] = {}
+        for line in content.decode("utf-8").splitlines():
+            key, value = line.split(" ", 1)
+            components.setdefault(key, []).append(value)
+        entries[identifier] = components
+    return graph, entries
+
+
+def compare_abi_evidence(before: Path, after: Path) -> dict:
+    """Compare all recorded vcpkg ABI entries, including transitive packages."""
+    left, left_entries = load_abi_evidence(before)
+    right, right_entries = load_abi_evidence(after)
+    changed = {}
+    for package in sorted(left.keys() & right.keys()):
+        if left[package] == right[package]:
+            continue
+        old, new = left_entries[package], right_entries[package]
+        changed[package] = {
+            "before": left[package], "after": right[package],
+            "entries": {key: {"before": old.get(key), "after": new.get(key)}
+                        for key in sorted(old.keys() | new.keys())
+                        if old.get(key) != new.get(key)},
+        }
+    return {"added": {key: right[key] for key in sorted(right.keys() - left.keys())},
+            "removed": {key: left[key] for key in sorted(left.keys() - right.keys())},
+            "changed": changed,
+            "unchanged": sum(left[key] == right[key] for key in left.keys() & right.keys())}
 
 
 def build_requests(*, version: str = "", history: bool = False,
@@ -173,7 +252,7 @@ def build_requests(*, version: str = "", history: bool = False,
 
 
 def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
-                     binary: Path | None = None) -> list[dict]:
+                     binary: Path | None = None, evidence: Path | None = None) -> list[dict]:
     """Resolve each variant with its corresponding version-directory overlay.
 
     Every query uses one ffmpeg identity and one selected recipe. Never combine
@@ -182,15 +261,18 @@ def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
     results: list[dict] = []
     for request in requests:
         triplet = request["triplet"]
-        all_abis = native_abi_query([request["package"]], triplet,
+        all_abis = native_abi_query([request["package"], request["tester_port"]], triplet,
                                     port_overlay=overlay / ffmpeg_port_name(request["yaml"]),
-                                    binary=binary)
+                                    binary=binary, evidence=(evidence / request["yaml"] /
+                                        triplet / (request["license"] + "-" + request["linkage"]))
+                                    if evidence is not None else None)
         key = f"{request['port']}_{triplet}"
-        if key not in all_abis:
-            raise RuntimeError(f"Native vcpkg ABI missing for {key}; refusing to invent one")
+        if not {key, f"{request['tester_port']}_{triplet}"}.issubset(all_abis):
+            raise RuntimeError(f"Native vcpkg ABI missing FFmpeg or Tester for {triplet}")
         abi = all_abis[key]
         result = dict(request)
         result["abi_hash"] = abi
+        result["native_graph_sha256"] = graph_digest(all_abis)
         result["id"] = variant_name(request["version"], 0,
                                     triplet, request["linkage"], request["license"],
                                     abi_hash=abi)
@@ -199,13 +281,23 @@ def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
 
 
 def verify_job_abi(job: dict, *, overlay: Path = GENERATED_PORTS,
-                   binary: Path | None = None) -> str:
+                   binary: Path | None = None, evidence: Path | None = None) -> str:
     """Fail before installing if worker-resolved native ABI differs from plan."""
-    abis = native_abi_query([job["package"]], job["triplet"],
+    abis = native_abi_query([job["package"], job.get("tester_port", "ffmpeg-tester")], job["triplet"],
                             port_overlay=overlay / ffmpeg_port_name(job["yaml"]),
-                            binary=binary)
+                            binary=binary, evidence=evidence)
     actual = abis.get(f"{job['port']}_{job['triplet']}")
     if actual != job["abi_hash"]:
         raise ValueError(f"vcpkg ABI changed between planning and building: "
                          f"planned {job['abi_hash']}, current {actual}")
+    verify_graph_digest(job, abis)
     return actual
+
+
+def verify_graph_digest(job: dict, abis: dict[str, str]) -> None:
+    expected = job.get("native_graph_sha256")
+    if expected is not None:
+        actual = graph_digest(abis)
+        if actual != expected:
+            raise ValueError(f"vcpkg ABI graph changed between planning and building: "
+                             f"planned {expected}, current {actual}")

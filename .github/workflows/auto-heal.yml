@@ -122,6 +122,13 @@ jobs:
           path: repair-output/
           retention-days: 7
           if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-abi-repair-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: ${{ runner.temp }}/ffheal/abi-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
 
   verify:
     needs: [triage, repair]
@@ -186,6 +193,13 @@ jobs:
           path: ${{ runner.temp }}/ffheal-verified/
           retention-days: 7
           if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-abi-repair-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
+          path: ${{ runner.temp }}/ffheal/abi-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
 
   audit:
     needs: [triage, verify]

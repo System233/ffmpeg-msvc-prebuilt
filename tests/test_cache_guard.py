@@ -52,6 +52,18 @@ class DependencyCacheGateTests(unittest.TestCase):
             self.assertFalse(cache_archive(cache, "a" * 64).exists())
             self.assertFalse(cache_archive(cache, "b" * 64).exists())
 
+    def test_target_or_tester_archive_must_not_bypass_real_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            for abi in ("c"*64, "d"*64):
+                cache_archive(cache, abi).write_bytes(b"vcpkg zip")
+            for abi in ("a"*64, "b"*64):
+                target = cache_archive(cache, abi)
+                target.write_bytes(b"target archive")
+                with self.assertRaisesRegex(RuntimeError, "target/Tester archive"):
+                    verify_dependency_cache(JOB, cache, abi_map=GRAPH)
+                target.unlink()
+
     def test_missing_dependency_fails_even_when_seed_cache_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp)
@@ -190,7 +202,7 @@ Additional packages (*) will be modified to complete this operation.
                                                       port_overlay=ffmpeg, binary=binary, env=env, specs=specs)
                 subprocess.run(ffvcpkg.command(["install", specs["audit-dep_x64-windows"],
                     "--triplet=x64-windows", f"--overlay-ports={ffmpeg}", f"--overlay-ports={ports}", *paths("seed")]),
-                    cwd=root, env=env, check=True)
+                    cwd=root, env=ffvcpkg.environment(env), check=True)
                 self.assertTrue(marker.is_file()); marker.unlink()
                 env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache},read"
                 self.assertEqual(graph, cache_guard.restore_dependencies(job, cache, port=ffmpeg,

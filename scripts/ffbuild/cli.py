@@ -28,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--describe", default="", help="Pinned master git describe")
     scan.add_argument("--commit", default="", help="Pinned upstream master commit")
     scan.add_argument("--sha512", default="", help="Pinned master SHA512")
+    scan.add_argument("--target-arch", default="", help="Limit native scan to one Triplet")
+    scan.add_argument("--target-license", choices=("", "lgpl", "gpl"), default="",
+                      help="Limit native scan to one license")
+    scan.add_argument("--abi-evidence", type=Path, help="Retain all native ABI input files")
     scan.add_argument("--job-env", default="", help="Preflight one planned vcpkg job's ABI")
     scan.add_argument("--generated-root", type=Path, default=GENERATED_PORTS)
     scan.add_argument("--targets-file", type=Path, default=DEFAULT_TARGETS)
@@ -52,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--vcpkg-bin", type=Path)
     prepare_parser.add_argument("--install-root", type=Path)
     prepare_parser.add_argument("--only-downloads", action="store_true")
+    prepare_parser.add_argument("--plan-file", type=Path)
+    prepare_parser.add_argument("--expected")
+    prepare_parser.add_argument("--cache-dir", type=Path)
+    prepare_parser.add_argument("--cache-only", action="store_true")
+    prepare_parser.add_argument("--finalize-cache", action="store_true",
+                                help="After cache-only validation, discard obsolete ABI archives in this CI cache")
+    prepare_parser.add_argument("--abi-evidence", type=Path)
 
     plan = sub.add_parser("plan", help="Schedule unpublished native vcpkg ABIs from a scan")
     plan.add_argument("--event", action="store_true", help="Read GitHub event metadata")
@@ -176,7 +187,7 @@ def main(argv: list[str] | None = None) -> None:
                 if not raw:
                     raise ValueError(f"Missing planned job environment variable {args.job_env}")
                 job = json.loads(raw)
-                print(verify_job_abi(job, overlay=args.generated_root, binary=args.vcpkg_bin))
+                print(verify_job_abi(job, overlay=args.generated_root, binary=args.vcpkg_bin, evidence=args.abi_evidence))
             else:
                 snapshot = None
                 if args.version == "master" and any((args.describe, args.commit, args.sha512)):
@@ -201,12 +212,19 @@ def main(argv: list[str] | None = None) -> None:
                     if snapshot is not None and pinned != snapshot:
                         raise ValueError("Master snapshot disagrees with explicit build inputs")
                     snapshot = pinned
+                targets = load_targets(args.targets_file)
+                if args.target_arch:
+                    targets = tuple(t for t in targets if t.triplet == args.target_arch)
+                if args.target_license:
+                    targets = tuple(t for t in targets if "all-" + args.target_license in t.roots)
+                if not targets:
+                    raise ValueError("No matching native targets")
                 requests, blocked = build_requests(version=args.version, history=args.history,
-                                                   targets=load_targets(args.targets_file),
+                                                   targets=targets,
                                                    snapshot=snapshot,
                                                    selected_versions=selected_versions, release_date=args.release_date)
                 jobs = scan_native_abis(requests, overlay=args.generated_root,
-                                        binary=args.vcpkg_bin)
+                                        binary=args.vcpkg_bin, evidence=args.abi_evidence)
                 result = {"schema": 3, "jobs": jobs, "blocked": blocked}
                 args.output.parent.mkdir(parents=True, exist_ok=True)
                 args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
@@ -237,11 +255,21 @@ def main(argv: list[str] | None = None) -> None:
             print(generate(args.version, source_version=args.describe, ref=args.commit,
                            sha512=args.sha512, output=args.output))
     elif args.command == "prepare":
-        from .seed import prepare_seed
+        from .seed import prepare_seed, load_seed_plan, prune_seed_cache
+        if args.finalize_cache and not (args.cache_only and args.cache_dir and args.plan_file):
+            raise ValueError("--finalize-cache requires --cache-only, --cache-dir and --plan-file")
+        if args.expected and not args.plan_file:
+            raise ValueError("--expected requires --plan-file")
+        plan = load_seed_plan(args.plan_file, args.triplet, args.expected) if args.plan_file else None
         completed = prepare_seed(triplet=args.triplet, overlay=args.generated_root,
                                  binary=args.vcpkg_bin, install_root=args.install_root,
-                                 only_downloads=args.only_downloads)
-        print(f"Prepared {len(completed)} shared dependency profiles for {args.triplet}")
+                                 only_downloads=args.only_downloads, plan=plan,
+                                 cache_only=args.cache_only, cache_dir=args.cache_dir,
+                                 evidence=args.abi_evidence)
+        if args.finalize_cache:
+            removed = prune_seed_cache(plan, args.cache_dir)
+            print(f"Removed {removed} obsolete native ABI archives from the dedicated CI cache")
+        print(f"Prepared {len(completed)} shared dependency batches for {args.triplet}")
     elif args.command == "plan":
         _plan(args)
     elif args.command == "package":

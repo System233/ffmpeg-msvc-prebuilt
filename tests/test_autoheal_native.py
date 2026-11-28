@@ -213,10 +213,11 @@ class NativeValidation(unittest.TestCase):
                  mock.patch.object(build,"job_for",return_value={"triplet":"x64-windows"}), \
                  mock.patch.object(build,"cached_abis",side_effect=[build.EnvironmentFailure("missing"),{}]) as scan, \
                  mock.patch.object(build,"bindings",return_value={"context_sha256":"a","contract_sha256":"b"}), \
+                 mock.patch("ffbuild.seed.DEFAULT_PLAN", root/"missing-plan.json"), \
                  mock.patch("ffbuild.seed.prepare_seed") as seed:
                 build.preflight(data)
                 prefetch.assert_called_once_with(data)
-                seed.assert_called_once_with(triplet="x64-windows")
+                seed.assert_called_once_with(triplet="x64-windows",plan=None,cache_dir=root/"cache")
                 self.assertEqual(2,scan.call_count)
                 self.assertTrue((root/"ready.json").is_file())
 
