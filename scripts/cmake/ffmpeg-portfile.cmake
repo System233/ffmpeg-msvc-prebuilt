@@ -1068,8 +1068,12 @@ foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
         # Installed third-party .pc files may still contain the quotes
         # introduced by vcpkg. Decode pkgconf's extra space escape before
         # interpreting the library search order; do not mutate dependencies.
-        if(CMAKE_HOST_WIN32 AND VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
-            string(REPLACE [[\\ ]] [[\ ]] libs_str "${libs_str}")
+        if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+            # pkgconf versions can escape quoted variable paths twice or
+            # three times. Normalize only the escaped whitespace sequence.
+            while(libs_str MATCHES [[\\ ]])
+                string(REPLACE [[\\ ]] [[\ ]] libs_str "${libs_str}")
+            endwhile()
         endif()
         separate_arguments(libs UNIX_COMMAND "${libs_str}")
         set(external "")

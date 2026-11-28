@@ -102,7 +102,6 @@ class SDKFixture:
         source = r"""
 cmake_minimum_required(VERSION 3.21)
 project(blackbox LANGUAGES NONE)
-set(WIN32 TRUE)
 set(CMAKE_FIND_LIBRARY_PREFIXES "")
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib")
 set(CMAKE_FIND_USE_PACKAGE_REGISTRY FALSE)
@@ -124,6 +123,7 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/selected-$<CONFIG>.txt" CONTENT "${row
         (self.src / "CMakeLists.txt").write_text(source, encoding="utf-8")
         args = ["cmake", "-S", self.src, "-B", self.build,
                 "-G", "Ninja Multi-Config" if single is None else "Ninja",
+                "-DCMAKE_SYSTEM_NAME=Windows",
                 "-DCMAKE_PREFIX_PATH=" + (prefix or self.sdk).as_posix(),
                 "-DPROBE_MODULE_PATH=" + (self.sdk / "share/ffmpeg").as_posix(),
                 "-DPROBE_MODULES=" + ";".join(self.modules)]
