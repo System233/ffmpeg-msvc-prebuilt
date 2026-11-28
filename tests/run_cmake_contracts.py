@@ -1,6 +1,6 @@
 """Strict local/CI-ready CMake contract test runner; no silent prerequisite skips.
 
-Default quick tier is portable. Native tier requires Windows/VS 2022,
+All tiers require native Windows. Native tier requires VS 2022,
 pinned vcpkg helpers, GNU bash/make and native lib.exe. Real tier also
 requires a previously compiled shared package and its installed prefix.
 """
@@ -265,6 +265,8 @@ def main():
     if args.jobs < 1 or args.native_jobs < 1 or not 0 < args.group_timeout < float("inf"):
         parser.error("Concurrency and finite group timeout must be positive")
 
+    if os.name != "nt":
+        parser.error("MSVC SDK contracts require a native Windows host")
     pkgconf = os.environ.get("FFBUILD_TEST_PKGCONF") or shutil.which("pkgconf")
     if not pkgconf or not Path(pkgconf).is_file() or not shutil.which("cmake") or not shutil.which("ninja"):
         parser.error("CMake, Ninja and real pkgconf are required; set FFBUILD_TEST_PKGCONF if necessary")
@@ -274,11 +276,6 @@ def main():
         if os.name != "nt":
             parser.error("Native contracts require Windows and Visual Studio 2022")
         os.environ["FFBUILD_TEST_MSVC"] = "1"
-        from test_cmake_port_contract import BASH, HAVE_HELPERS, NATIVE_LIB
-        if not HAVE_HELPERS or not BASH or not Path(BASH).is_file() or not NATIVE_LIB or not Path(NATIVE_LIB).is_file():
-            parser.error("Set FFBUILD_TEST_VCPKG_ROOT, FFBUILD_TEST_LIB_EXE and, if needed, FFBUILD_TEST_BASH")
-        if not Path(NATIVE_LIB).with_name("dumpbin.exe").is_file():
-            parser.error("Native dumpbin.exe must be available alongside lib.exe")
         modules += NATIVE
     if args.tier == "real":
         for name in ("FFBUILD_TEST_REAL_PACKAGE", "FFBUILD_TEST_REAL_INSTALLED"):
@@ -295,6 +292,14 @@ def main():
         if not set(args.module).issubset(modules):
             parser.error("Selected module is outside the requested tier")
         modules = list(dict.fromkeys(args.module))
+    # Only require tooling used by the selected tests. Real installed SDK
+    # acceptance requires actual compiler and pkgconf, not a Port mock shell.
+    if any(module in NATIVE for module in modules):
+        from test_cmake_port_contract import BASH, HAVE_HELPERS, NATIVE_LIB
+        if not HAVE_HELPERS or not BASH or not Path(BASH).is_file() or not NATIVE_LIB or not Path(NATIVE_LIB).is_file():
+            parser.error("Set FFBUILD_TEST_VCPKG_ROOT, FFBUILD_TEST_LIB_EXE and, if needed, FFBUILD_TEST_BASH")
+        if not Path(NATIVE_LIB).with_name("dumpbin.exe").is_file():
+            parser.error("Native dumpbin.exe must be available alongside lib.exe")
     suite = unittest.defaultTestLoader.loadTestsFromNames(modules)
     if args.match:
         suite = unittest.TestSuite(test for test in iter_tests(suite)
