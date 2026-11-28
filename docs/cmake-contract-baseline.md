@@ -393,3 +393,24 @@ rejection. The shared pkg-config script-mode probe also uses 3.21.
 The remaining script-mode test entrypoints were audited and already
 declare 3.21. The production builder and license rules are unchanged.
 All three affected test modules passed locally (33/33).
+
+### Windows filesystem path identity
+
+The next Windows CI run executed all 159 native-tier methods (135 passed,
+24 failed, 36 failure assertions, no skips). Its temporary directory used
+Windows 8.3 names while CMake returned expanded real paths. Two-sided
+filesystem normalization was missing from the legacy-link containment
+assertions and three imported-location assertions. Local GetShortPathNameW
+reproduction failed all five selected methods (six failure assertions)
+before correction and passed all five afterward.
+
+Existing absolute paths are now resolved strictly on both sides of each
+comparison. Imported-location evidence is written by the actual CMake
+consumer, compared against independent fixture inputs, and removed before
+reconfiguration to prevent stale evidence. Additional tests exercise a
+real 8.3 alias when available (a distinct parent-component path spelling
+on volumes without short-name aliases), and reject wrong-config, foreign
+SDK, missing and relative library paths. The production CMake builder,
+SDK templates, licensing rules and dependency cache keys are unchanged.
+All 73 methods across the three affected modules passed in an actual
+8.3 TEMP/TMP environment, with no skips.

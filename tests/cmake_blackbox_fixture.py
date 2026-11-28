@@ -21,6 +21,43 @@ def output(result):
     return result.stdout + result.stderr
 
 
+def canonical_existing_path(path):
+    """Compare existing absolute paths, including Windows 8.3 aliases.
+
+    Do not accept a missing file, a relative linker token, or a different
+    SDK/configuration just because the file names match.
+    """
+    path = Path(path)
+    if not path.is_absolute():
+        raise AssertionError(f"Expected an absolute path, got {path}")
+    return path.resolve(strict=True)
+
+
+def filesystem_alias(directory):
+    """Exercise a real short-name alias when NTFS provides one.
+
+    Volumes with 8.3 creation disabled still exercise a distinct existing
+    path spelling through a parent component; no filesystem settings change.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    directory = canonical_existing_path(directory)
+    get_short_path = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+    get_short_path.argtypes = (wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD)
+    get_short_path.restype = wintypes.DWORD
+    buf = ctypes.create_unicode_buffer(32768)
+    size = get_short_path(str(directory), buf, len(buf))
+    if 0 < size < len(buf) and Path(buf.value) != directory:
+        alias = Path(buf.value)
+        if not alias.samefile(directory):
+            raise AssertionError("Windows short name does not identify the fixture directory")
+        return alias, "8.3"
+    child = directory / "alias-component"
+    child.mkdir()
+    return child / "..", "parent-component"
+
+
 class SDKFixture:
     def __init__(self, root, linkage="dynamic"):
         self.root = Path(root)
@@ -141,20 +178,25 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/selected-$<CONFIG>.txt" CONTENT "${row
     def assert_selection(self, case, config, expected, *, deps=True):
         rows = self.rows(config)
         prefix = self.sdk / ("debug" if expected == "Debug" else "")
+        lib_dir = canonical_existing_path(prefix / "lib")
         for m in self.modules:
             expected_lib = prefix / "lib" / (m + ".lib")
             expected_file = prefix / "bin" / self.dll(m) if self.linkage == "dynamic" else expected_lib
-            case.assertEqual(Path(rows[m][0]).resolve(), expected_lib.resolve(), (config, m))
-            case.assertEqual(Path(rows[m][1]).resolve(), expected_file.resolve(), (config, m))
-        legacy = [Path(p).resolve() for p in rows["legacy"][0].split(";") if p.lower().endswith(".lib")]
+            case.assertEqual(canonical_existing_path(rows[m][0]),
+                             canonical_existing_path(expected_lib), (config, m))
+            case.assertEqual(canonical_existing_path(rows[m][1]),
+                             canonical_existing_path(expected_file), (config, m))
+        legacy = [canonical_existing_path(p) for p in rows["legacy"][0].split(";") if p.lower().endswith(".lib")]
         for m in self.modules:
-            case.assertIn((prefix / "lib" / (m + ".lib")).resolve(), legacy)
+            case.assertIn(canonical_existing_path(lib_dir / (m + ".lib")), legacy)
         for p in legacy:
-            case.assertTrue(p.is_relative_to(prefix / "lib"), f"{config}: unexpected legacy library {p.name}")
+            case.assertTrue(p.is_relative_to(lib_dir),
+                            f"{config}: unexpected legacy library {p} outside {lib_dir}")
         if deps and self.linkage == "static":
             name = "thirdd.lib" if expected == "Debug" else "third.lib"
             for m, lib in (("avutil", name), ("avcodec", "second.lib")):
-                paths = [Path(p).resolve() for p in rows["deps-" + m][0].split(";") if p.lower().endswith(".lib")]
-                case.assertIn((prefix / "lib" / lib).resolve(), paths)
-                case.assertIn((prefix / "lib" / lib).resolve(), legacy)
-                case.assertTrue(all(p.is_relative_to(prefix / "lib") for p in paths), (config, m))
+                paths = [canonical_existing_path(p) for p in rows["deps-" + m][0].split(";") if p.lower().endswith(".lib")]
+                expected_dep = canonical_existing_path(lib_dir / lib)
+                case.assertIn(expected_dep, paths)
+                case.assertIn(expected_dep, legacy)
+                case.assertTrue(all(p.is_relative_to(lib_dir) for p in paths), (config, m, paths))
