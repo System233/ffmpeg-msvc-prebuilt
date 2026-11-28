@@ -544,6 +544,61 @@ target_link_libraries(pc-consumer PRIVATE PkgConfig::FFMPEG)
         self.assertNotEqual(0, p.returncode, "Config silently used Module discovery")
         self.assertIn("FFmpegConfig.cmake", output(p))
 
+    def test_native_tester_legacy_checks_actual_link_interface(self):
+        from ffbuild.sdk_validation import _assert_selection, _assert_legacy_selection
+        f = SDKFixture(self.root, "static")
+        for name, version in (("avdevice", "58.1.0"), ("avfilter", "7.1.0"),
+                              ("swresample", "3.1.0"), ("swscale", "5.1.0")):
+            f.add_module(name, version, ("avutil",))
+        f.install_deps()
+        p = f.generate()
+        self.assertEqual(0, p.returncode, output(p))
+        args = ["cmake", "-S", ROOT / "ports/ffmpeg-tester", "-B", f.build,
+                *self.generator, "-DFFBUILD_TESTER_MODE=LEGACY",
+                "-DFFBUILD_TESTER_PREFIX=" + f.sdk.as_posix()]
+        meta = f.sdk / "share/ffmpeg/FindFFmpeg.cmake"
+        original = meta.read_text(encoding="utf-8")
+
+        def configure(extra=""):
+            meta.write_text(original + extra, encoding="utf-8")
+            self.checked(args)
+            _assert_selection(f.build, "Debug", f.sdk / "debug", modules=f.modules, linkage="static")
+
+        configure()
+        for cfg, selected in (("Release", f.sdk), ("Debug", f.sdk / "debug")):
+            _assert_legacy_selection(f.build, cfg, selected, f.modules, prefix=f.sdk)
+
+        # Modern imported targets remain correct in all these cases.
+        # The direct Legacy variables alone carry the defect.
+        for name, extra, diagnostic in (
+            ("wrong-configuration", """
+set(FFMPEG_LIBRARIES "")
+foreach(m IN LISTS FFMPEG_MODULES)
+    list(APPEND FFMPEG_LIBRARIES "${FFMPEG_lib${m}_LIBRARY_RELEASE}")
+endforeach()
+""", "Incorrect Debug Legacy SDK library"),
+            ("missing-static-closure", """
+set(FFMPEG_LIBRARIES "")
+foreach(m IN LISTS FFMPEG_MODULES)
+    list(APPEND FFMPEG_LIBRARIES ${FFMPEG_lib${m}_LIBRARY})
+endforeach()
+""", "Incomplete or inconsistent Debug Legacy link closure"),
+            ("wrong-vendor-archive", """
+list(APPEND FFMPEG_LIBRARIES debug "${_ff_root}/lib/third.lib")
+""", "Incorrect Debug Legacy SDK library"),
+            ("foreign-include", f'\nset(FFMPEG_INCLUDE_DIRS "{f.deps.as_posix()}/include")\n',
+             "Incorrect Debug Legacy include directory"),
+        ):
+            with self.subTest(defect=name):
+                if name == "foreign-include":
+                    (f.deps / "include").mkdir(exist_ok=True)
+                configure(extra)
+                with self.assertRaisesRegex(ValueError, diagnostic):
+                    _assert_legacy_selection(f.build, "Debug", f.sdk / "debug",
+                                             f.modules, prefix=f.sdk)
+        configure()
+        _assert_legacy_selection(f.build, "Debug", f.sdk / "debug", f.modules, prefix=f.sdk)
+
     def test_native_tester_cannot_silently_link_release_for_debug(self):
         # Configure the actual authored Native Tester, not a test copy.
         # CMake File API codemodel exposes the generated native link command.

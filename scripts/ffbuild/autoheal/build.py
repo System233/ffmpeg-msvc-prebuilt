@@ -1,13 +1,11 @@
 """Native in-runner repair builds; no publication and no third-party rebuilds."""
 from __future__ import annotations
 
-import ctypes
 import hashlib
 import json
 import os
 import re
 import shutil
-import struct
 import subprocess
 from pathlib import Path
 
@@ -17,14 +15,16 @@ from ..cache_guard import (verify_dependency_cache, verify_no_dependency_builds,
 from ..native_abi import native_abi_query
 from ..package import _layout, _read_control, _verify_native_package_abi
 from ..targets import Target, compile_target, parse_package
-from ..sdk_validation import _sdk_modules, expected_modules, tester_targets
+from ..sdk_validation import (_sdk_modules, expected_modules, tester_targets,
+                              assert_installed_evidence, validate_installed)
+from ..native_platform import (PE_MACHINE as _MACHINE, NATIVE_RUNTIME_TRIPLETS as _NATIVE_RUNTIME,
+                               pe_machine, coff_archive_machines, can_execute)
+from ..process import PRIVATE_RUNNER_ENV as _PRIVATE_RUNNER_ENV
 from ..versions import GENERATED_PORTS, ROOT, TRIPLETS, config, generate
 from .models import version_name
 from .scope import check_worktree
 
 _SPEC = re.compile(r"ffmpeg\[(all-(?:gpl|lgpl|nonfree))(,static)?\]:([a-z0-9-]+)\Z")
-_MACHINE = {"x86-windows": 0x14c, "x64-windows": 0x8664,
-            "arm-windows": 0x1c4, "arm64-windows": 0xaa64}
 
 
 class EnvironmentFailure(RuntimeError):
@@ -260,11 +260,6 @@ def _run(args: list[str], *, env: dict, log: Path, cwd: Path = ROOT, timeout: fl
         raise BuildFailure(f"Command failed ({code}); log: {log}")
 
 
-_PRIVATE_RUNNER_ENV = frozenset({"OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN",
-    "GITHUB_ENTERPRISE_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-    "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"})
-
-
 def build_env(triplet: str) -> dict:
     env = {key: value for key, value in os.environ.items() if key.upper() not in _PRIVATE_RUNNER_ENV}
     env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache_dir(triplet)},read"
@@ -301,81 +296,6 @@ def _remove_targets(triplet: str, env: dict, ports: tuple[str, ...] = ("ffmpeg-t
     if targets:
         _run(vcpkg_command(["remove", *targets, "--recurse", f"--overlay-triplets={ROOT / 'triplets'}", *_native_paths()]),
              env=env, log=runtime_dir() / "remove.log")
-
-
-def pe_machine(path: Path) -> int:
-    with path.open("rb") as f:
-        if f.read(2) != b"MZ":
-            raise ValueError(f"Not a PE executable: {path}")
-        f.seek(0x3c)
-        offset_raw = f.read(4)
-        if len(offset_raw) != 4:
-            raise ValueError(f"Truncated PE header: {path}")
-        offset = struct.unpack("<I", offset_raw)[0]
-        f.seek(offset)
-        if f.read(4) != b"PE\0\0":
-            raise ValueError(f"Invalid PE signature: {path}")
-        raw = f.read(2)
-        if len(raw) != 2:
-            raise ValueError(f"Truncated PE machine field: {path}")
-        return struct.unpack("<H", raw)[0]
-
-
-def can_execute(triplet: str) -> bool:
-    """Ask Windows about native/guest machine support, never infer from target name alone."""
-    if os.name != "nt":
-        return False
-    machine = _MACHINE[triplet]
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    try:
-        native, process = ctypes.c_ushort(), ctypes.c_ushort()
-        kernel.GetCurrentProcess.argtypes = []
-        kernel.GetCurrentProcess.restype = ctypes.c_void_p
-        kernel.IsWow64Process2.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ushort), ctypes.POINTER(ctypes.c_ushort)]
-        kernel.IsWow64Process2.restype = ctypes.c_int
-        if not kernel.IsWow64Process2(kernel.GetCurrentProcess(), ctypes.byref(process), ctypes.byref(native)):
-            return False
-        if machine == native.value:
-            return True
-        supported = ctypes.c_int()
-        kernel.IsWow64GuestMachineSupported.argtypes = [ctypes.c_ushort, ctypes.POINTER(ctypes.c_int)]
-        kernel.IsWow64GuestMachineSupported.restype = ctypes.c_int
-        return kernel.IsWow64GuestMachineSupported(machine, ctypes.byref(supported)) == 0 and bool(supported.value)
-    except AttributeError:
-        # Unknown compatibility is not a claim that execution succeeded.
-        return False
-
-
-def coff_archive_machines(path: Path) -> set[int]:
-    """Read COFF object/import headers without loading multi-GB static archives."""
-    machines = set()
-    length = path.stat().st_size
-    with path.open("rb") as stream:
-        if stream.read(8) != b"!<arch>\n":
-            raise ValueError(f"Invalid COFF library: {path}")
-        while stream.tell() < length:
-            header = stream.read(60)
-            if len(header) != 60 or header[58:] != b"`\n":
-                raise ValueError(f"Invalid archive member header: {path}")
-            name = header[:16].rstrip()
-            size = int(header[48:58])
-            start = stream.tell()
-            end = start + size
-            if size < 0 or end > length:
-                raise ValueError(f"Truncated archive member: {path}")
-            if name not in (b"/", b"//", b"/SYM64/"):
-                if name.startswith(b"#1/"):
-                    stream.seek(int(name[3:]), 1)
-                if end - stream.tell() < 8:
-                    raise ValueError(f"Truncated COFF object: {path}")
-                head = stream.read(8)
-                # Import-object and anonymous bigobj headers store Machine at +6.
-                offset = 6 if head[:4] == b"\0\0\xff\xff" else 0
-                machines.add(struct.unpack_from("<H", head, offset)[0])
-            stream.seek(end + size % 2)
-    if not machines:
-        raise ValueError(f"No COFF objects in {path}")
-    return machines
 
 
 def verify_outputs(job: dict, abi: str) -> dict:
@@ -421,7 +341,10 @@ def verify_outputs(job: dict, abi: str) -> dict:
     if any(pe_machine(path) != _MACHINE[triplet] for path in binaries):
         raise BuildFailure("Target PE architecture mismatch")
     runtime = {"status": "skipped", "reason": "host_architecture_incompatible"}
-    if can_execute(triplet):
+    execute = can_execute(triplet)
+    if triplet in _NATIVE_RUNTIME and not execute:
+        raise EnvironmentFailure("Required native x64/x86 runtime execution is unavailable")
+    if execute:
         from ..sdk_validation import _runtime_env
         def isolated(bin_dir: Path) -> dict:
             return {k: v for k, v in _runtime_env(bin_dir).items()
@@ -435,9 +358,14 @@ def verify_outputs(job: dict, abi: str) -> dict:
             for path in paths:
                 isolated_exe = smoke / (cfg + "-" + path.name)
                 shutil.copyfile(path, isolated_exe)
-                _run([str(isolated_exe)], env=isolated(selected / "bin"), cwd=smoke,
-                     log=smoke / (cfg + "-" + path.stem + ".log"), timeout=60)
-                count += 1
+                try:
+                    _run([str(isolated_exe)], env=isolated(selected / "bin"), cwd=smoke,
+                         log=smoke / (cfg + "-" + path.stem + ".log"), timeout=60)
+                    count += 1
+                finally:
+                    # Static consumer images can be hundreds of MB each.
+                    # Keep the log, not a redundant copy of the executable.
+                    isolated_exe.unlink(missing_ok=True)
         for path in cli:
             isolated_exe = smoke / path.name
             shutil.copyfile(path, isolated_exe)
@@ -452,12 +380,19 @@ def verify_outputs(job: dict, abi: str) -> dict:
             _run([ffmpeg, "-v", "error", "-i", str(sample), "-f", "null", "-"],
                  env=env, cwd=smoke, log=smoke / "decode.log", timeout=120)
         runtime = {"status": "passed", "tester_executions": count, "cli_executions": len(cli)}
+    try:
+        consumer_cases = validate_installed(
+            prefix, triplet=triplet, linkage=job["linkage"], features=job["features"],
+            pkgconf=installed / "x64-windows/tools/pkgconf/pkgconf.exe")
+        assert_installed_evidence(consumer_cases, libs, linkage=job["linkage"], runtime=runtime["status"])
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        raise BuildFailure(f"Independent SDK consumer validation failed: {exc}") from exc
     return {"spec": spec_string(job["package"], triplet), "abi_hash": abi,
             "ffmpeg_build": "passed", "consumer_compile_link": "passed",
             "binary_inspection": "passed", "tester_targets": {k: len(v) for k, v in testers.items()},
             "tester_modules": libs,
             "tester_cases": {k: sorted(p.stem for p in v) for k, v in testers.items()},
-            "runtime": runtime, "external_dependency_builds": 0}
+            "runtime": runtime, "consumer_cases": consumer_cases, "external_dependency_builds": 0}
 
 
 def build(value: str, *, clean: bool = False) -> dict:
@@ -602,6 +537,12 @@ def validate_evidence(evidence: dict, data: dict) -> None:
                 raise ValueError("Incomplete native runtime verification")
         elif runtime != {"status": "skipped", "reason": "host_architecture_incompatible"}:
             raise ValueError("Unsupported runtime result")
+        target = parse_spec(check["spec"])
+        if target.triplet in _NATIVE_RUNTIME and runtime["status"] != "passed":
+            raise ValueError("Native x64/x86 runtime execution is mandatory")
+        assert_installed_evidence(check.get("consumer_cases"), modules,
+                                  linkage="static" if "static" in target.roots else "shared",
+                                  runtime=runtime["status"])
 
 
 def status() -> dict:

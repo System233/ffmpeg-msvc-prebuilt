@@ -12,10 +12,12 @@ from pathlib import Path
 import yaml
 
 from .versions import ROOT
-from .process import run_bounded
+from .process import run_bounded, PRIVATE_RUNNER_ENV
+from .native_platform import (VS_PLATFORM as _ARCH, PE_MACHINE,
+                              NATIVE_RUNTIME_TRIPLETS as _NATIVE_RUNTIME, pe_machine, can_execute)
 
 _CONFIGS = ("Release", "Debug")
-_ARCH = {"x64-windows": "x64", "x86-windows": "Win32"}
+_CONSUMER_MODES = ("CONFIG", "MODULE", "LEGACY", "PKGCONFIG", "COMPONENT")
 
 
 def _run(args, *, cwd=None, env=None):
@@ -29,7 +31,7 @@ def _run(args, *, cwd=None, env=None):
 
 def _runtime_env(bin_dir: Path):
     # Do not inherit any vcpkg or previously installed FFmpeg DLL directories.
-    env = os.environ.copy()
+    env = _consumer_env()
     windows = Path(os.environ["SystemRoot"])
     env["PATH"] = os.pathsep.join(map(str, (bin_dir, windows / "System32", windows)))
     return env
@@ -71,8 +73,12 @@ def _sdk_modules(selected: Path, *, required=(), installed=False):
 
 def tester_targets(modules, mode="CONFIG", *, full_only=False, crt=False):
     modules = set(modules)
-    if not _CORE_MODULES <= modules <= _KNOWN_MODULES or mode not in ("CONFIG", "MODULE", "LEGACY", "PKGCONFIG"):
+    if not _CORE_MODULES <= modules <= _KNOWN_MODULES or mode not in _CONSUMER_MODES:
         raise ValueError("Invalid Tester case plan")
+    if mode == "COMPONENT":
+        if crt:
+            raise ValueError("Component probe cannot use the CRT matrix")
+        return {"check-component-avformat"}
     names = {"check-full", "check-full-cpp"}
     if not full_only and mode != "LEGACY":
         names.update("check-" + m for m in modules)
@@ -81,6 +87,32 @@ def tester_targets(modules, mode="CONFIG", *, full_only=False, crt=False):
             raise ValueError("CRT matrix requires Config mode")
         names.update(f"check-crt-{lang}-{rt}" for lang in ("c", "cpp") for rt in ("mt", "md"))
     return names
+
+
+def installed_case_ids(modules, *, linkage, modes=None):
+    """Reconstruct the independent installed-SDK acceptance contract."""
+    return sorted(f"installed.{mode.lower()}.{cfg.lower()}.{target}"
+                  for mode in (modes or _CONSUMER_MODES) for cfg in _CONFIGS
+                  for target in tester_targets(modules, mode,
+                      crt=(linkage == "shared" and mode == "CONFIG")))
+
+
+def assert_installed_evidence(results, modules, *, linkage, runtime, modes=None):
+    """Require every independent case exactly once; never accept count alone."""
+    expected = installed_case_ids(modules, linkage=linkage, modes=modes)
+    if (not isinstance(results, list) or not all(isinstance(row, dict) for row in results)
+            or any(not isinstance(row.get("id"), str) for row in results)
+            or sorted(row["id"] for row in results) != expected):
+        raise ValueError("Incomplete independent SDK consumer evidence")
+    if runtime not in ("passed", "skipped"):
+        raise ValueError("Invalid SDK runtime expectation")
+    for row in results:
+        required = {"id": row["id"], "configure": "passed", "compile_link": "passed",
+                    "runtime": runtime}
+        if runtime == "skipped":
+            required["reason"] = "host_architecture_incompatible"
+        if row != required:
+            raise ValueError("Unverified independent SDK consumer case: " + row["id"])
 
 
 def _assert_selection(build: Path, config: str, selected: Path, *, modules=None, linkage="shared"):
@@ -170,24 +202,95 @@ def _assert_pkgconfig_selection(build, config, selected, modules, full_only):
         raise ValueError("Missing pkg-config consumer linker evidence")
 
 
+def _read_link_rows(path, expected):
+    rows = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, raw = line.split("|", 1)
+        if name in rows or name not in expected:
+            raise ValueError(f"Unexpected Legacy link evidence: {name}")
+        rows[name] = [item for item in raw.split(";") if item]
+    if set(rows) != set(expected):
+        raise ValueError("Missing Legacy link evidence")
+    return rows
+
+
+def _assert_legacy_selection(build, config, selected, modules, *, prefix):
+    """Check the actual evaluated Legacy target link lists, including archives."""
+    modules = set(modules)
+    expected_targets = {"check-full", "check-full-cpp"}
+    rows = _read_link_rows(build / f"legacy-{config}.txt", expected_targets)
+    references = _read_link_rows(build / f"legacy-reference-{config}.txt", modules)
+    includes = _read_link_rows(build / f"legacy-includes-{config}.txt", expected_targets)
+    incdir = (prefix / "include").resolve(strict=True)
+    for name, paths in includes.items():
+        if (not paths or any(not Path(path).is_absolute() or not Path(path).is_dir()
+                             or Path(path).resolve(strict=True) != incdir for path in paths)):
+            raise ValueError(f"Incorrect {config} Legacy include directory: {name}")
+    libdir = (selected / "lib").resolve(strict=True)
+
+    def normalized(items, *, reference=False):
+        actual = set()
+        found = set()
+        for item in items:
+            if reference and item.startswith("FFmpeg::") and item[8:] in modules:
+                continue  # Every module's interface is enumerated separately.
+            path = Path(item)
+            module = path.stem.lower()
+            if module not in _KNOWN_MODULES and module.endswith("d"):
+                module = module[:-1]
+            if path.is_absolute():
+                if not path.is_file():
+                    raise ValueError(f"Missing {config} Legacy SDK library: {item}")
+                real = path.resolve(strict=True)
+                if not real.is_relative_to(libdir):
+                    raise ValueError(f"Incorrect {config} Legacy SDK library: {item}")
+                actual.add(str(real).casefold())
+            else:
+                if module in _KNOWN_MODULES or "/" in item or "\\" in item or "::" in item:
+                    raise ValueError(f"Incorrect {config} Legacy SDK library: {item}")
+                actual.add(item.casefold())  # Windows system library or linker option.
+            if module in _KNOWN_MODULES:
+                if module not in modules or not path.is_absolute() or real.parent != libdir:
+                    raise ValueError(f"Incorrect {config} Legacy FFmpeg library: {item}")
+                found.add(module)
+        return actual, found
+
+    reference, found = normalized([item for values in references.values() for item in values],
+                                  reference=True)
+    if found != modules:
+        raise ValueError(f"Incomplete {config} Legacy reference closure")
+    for name, items in rows.items():
+        actual, found = normalized(items)
+        if found != modules or actual != reference:
+            raise ValueError(f"Incomplete or inconsistent {config} Legacy link closure: {name}")
+
+
 def _consumer_env():
     # A public SDK must not accidentally discover a vcpkg toolchain, a
     # package registry entry, or an unrelated package via inherited hints.
     blocked = {"CMAKE_TOOLCHAIN_FILE", "CMAKE_PREFIX_PATH", "CMAKE_MODULE_PATH",
                "FFMPEG_DIR", "FFMPEG_ROOT", "VCPKG_ROOT", "VCPKG_DEFAULT_TRIPLET",
-               "PKG_CONFIG_PATH", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR"}
+               "PKG_CONFIG_PATH", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR"} | PRIVATE_RUNNER_ENV
     return {k: v for k, v in os.environ.items() if k.upper() not in blocked}
 
 
 def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
                     pkgconf, stage, configs, selected, native=False, modes=None,
-                    full_only=False, crt=False):
-    """Independent CMake caches for each entry; exact planned binaries must run."""
-    modes = tuple(modes or ("CONFIG", "MODULE", "LEGACY", "PKGCONFIG"))
+                    full_only=False, crt=False, execute=True):
+    """Independent CMake caches and native link/runtime evidence for every case."""
+    modes = tuple(modes or _CONSUMER_MODES)
     if "PKGCONFIG" in modes and not pkgconf:
         raise ValueError("Native pkgconf is required for independent pkg-config link acceptance")
     prefix = prefix.resolve(strict=True)
     root.mkdir(parents=True, exist_ok=True)
+    if linkage == "shared":
+        # A valid import library does not prove the matching DLL has the
+        # right architecture, especially on a cross-compiling host.
+        for sdk in {selected[cfg] for cfg in configs}:
+            for module in modules:
+                dlls = list((sdk / "bin").glob(module + "-*.dll"))
+                if len(dlls) != 1 or pe_machine(dlls[0]) != PE_MACHINE[triplet]:
+                    raise ValueError(f"Missing or wrong-architecture SDK DLL: {module}")
 
     def exercise(mode):
         results = []
@@ -208,7 +311,9 @@ def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
                     "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>"]
             if generator.startswith("Visual Studio"):
                 args += ["-A", _ARCH[triplet]]
-            if mode == "CONFIG":
+                if triplet == "arm-windows":
+                    args += ["-DCMAKE_SYSTEM_VERSION=10.0.22621.0"]
+            if mode in ("CONFIG", "COMPONENT"):
                 args += ["-DCMAKE_PREFIX_PATH=" + prefix.as_posix()]
             if mode == "PKGCONFIG":
                 directories = [selected[batch[0]] / "lib/pkgconfig"]
@@ -229,6 +334,8 @@ def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
                 sdk = selected[cfg]
                 if mode != "PKGCONFIG":
                     _assert_selection(build, cfg, sdk, modules=modules, linkage=linkage)
+                    if mode == "LEGACY":
+                        _assert_legacy_selection(build, cfg, sdk, modules, prefix=prefix)
                 else:
                     _assert_pkgconfig_selection(build, cfg, sdk, modules, full_only)
                 # Keep CMake's cache, but no binaries/deployed DLLs from a
@@ -238,9 +345,13 @@ def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
                 binaries = sorted((build / cfg).rglob("check-*.exe"))
                 if len(binaries) != len(expected) or {p.stem for p in binaries} != expected:
                     raise ValueError(f"Incomplete {stage}/{mode}/{cfg} consumer executables")
+                # A real native compiler/linker is mandatory even for targets
+                # that cannot execute on this runner. Verify the PE machine.
                 for exe in binaries:
+                    if pe_machine(exe) != PE_MACHINE[triplet]:
+                        raise ValueError(f"Wrong consumer architecture: {mode}/{cfg}/{exe.name}")
                     out = exe.parent
-                    if linkage == "shared" and mode in ("CONFIG", "MODULE"):
+                    if linkage == "shared" and mode in ("CONFIG", "MODULE", "COMPONENT"):
                         # The loader must use only the copied DLLs, and no
                         # unrelated SDK may supply a missing dependency.
                         for deployed in out.glob("*.dll"):
@@ -257,10 +368,14 @@ def _consumer_suite(prefix, root, *, triplet, generator, modules, linkage,
                         if list(out.glob("*.dll")):
                             raise ValueError("Direct consumer inherited deployed DLLs")
                         runtime = _runtime_env(sdk / "bin" if linkage == "shared" else root)
-                    _run([exe], cwd=out, env=runtime)
+                    if execute:
+                        _run([exe], cwd=out, env=runtime)
                     results.append({"id": f"{stage}.{mode.lower()}.{cfg.lower()}.{exe.stem}",
-                                    "configure": "passed", "compile_link": "passed", "runtime": "passed"})
-                print(f"SDK {stage} {mode} {cfg}: {len(binaries)} compiled, linked and ran", flush=True)
+                                    "configure": "passed", "compile_link": "passed",
+                                    "runtime": "passed" if execute else "skipped",
+                                    **({} if execute else {"reason": "host_architecture_incompatible"})})
+                action = "compiled, linked and ran" if execute else "compiled and linked (runtime incompatible)"
+                print(f"SDK {stage} {mode} {cfg}: {len(binaries)} {action}", flush=True)
                 # Keep only configuration evidence. Static EXEs/PDBs and
                 # repeated DLL deployment copies need not remain on disk.
                 shutil.rmtree(build / cfg)
@@ -277,25 +392,34 @@ def validate_installed(prefix: Path, *, triplet: str, linkage: str, features=(),
                        generator="Visual Studio 17 2022", pkgconf: Path,
                        modes=None):
     """Test an actual full vcpkg installation from outside its toolchain."""
-    if triplet not in _ARCH or linkage not in ("static", "shared"):
-        raise ValueError("Installed runtime acceptance requires native x64/x86")
+    if os.name != "nt" or triplet not in _ARCH or linkage not in ("static", "shared"):
+        raise ValueError("Installed acceptance requires a Windows MSVC target")
+    execute = can_execute(triplet)
+    if triplet in _NATIVE_RUNTIME and not execute:
+        raise RuntimeError("Required native x64/x86 consumer execution is unavailable")
     modules = _sdk_modules(prefix, required=features, installed=True)
     if _sdk_modules(prefix / "debug", required=features, installed=True) != modules:
         raise ValueError("Installed SDK Release/Debug module sets differ")
     with tempfile.TemporaryDirectory(prefix="ffmpeg-installed-consumer-") as tmp:
-        return _consumer_suite(prefix, Path(tmp), triplet=triplet, generator=generator,
-                               modules=modules, linkage=linkage, pkgconf=pkgconf,
-                               stage="installed", configs=_CONFIGS, native=True,
-                               selected={"Release": prefix, "Debug": prefix / "debug"},
-                               modes=modes, crt=linkage=="shared")
+        results = _consumer_suite(prefix, Path(tmp), triplet=triplet, generator=generator,
+                                  modules=modules, linkage=linkage, pkgconf=pkgconf,
+                                  stage="installed", configs=_CONFIGS, native=True,
+                                  selected={"Release": prefix, "Debug": prefix / "debug"},
+                                  modes=modes, crt=linkage=="shared", execute=execute)
+        assert_installed_evidence(results, modules, linkage=linkage,
+                                  runtime="passed" if execute else "skipped", modes=modes)
+        return results
 
 
 def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
                       generator: str = "Visual Studio 17 2022", pkgconf: Path | None = None,
                       features=()):
-    """Run native x64/x86 CLI and SDK smoke tests on a Windows host."""
-    if triplet not in _ARCH:
-        raise ValueError("Archive runtime validation requires a native x64/x86 target")
+    """Compile/link the extracted SDK; run only on a compatible Windows host."""
+    if os.name != "nt" or triplet not in _ARCH:
+        raise ValueError("Archive validation requires a Windows MSVC target")
+    execute = can_execute(triplet)
+    if triplet in _NATIVE_RUNTIME and not execute:
+        raise RuntimeError("Required native x64/x86 archive execution is unavailable")
     with tempfile.TemporaryDirectory(prefix="ffmpeg-sdk-validation-") as tmp:
         root = Path(tmp)
         prefix, build = root / "sdk with spaces", root / "consumer"
@@ -310,9 +434,16 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
             if executable.removesuffix(".exe") in features and not path.is_file():
                 raise ValueError(f"Requested CLI missing: {executable}")
             if path.is_file():
-                output = _run([path, "-version"], cwd=root, env=_runtime_env(bin_dir))
-                print(f"CLI {executable}: {output.splitlines()[0]}", flush=True)
-                results.append({"id": "cli." + executable, "runtime": "passed"})
+                if pe_machine(path) != PE_MACHINE[triplet]:
+                    raise ValueError(f"Wrong CLI architecture: {executable}")
+                if execute:
+                    output = _run([path, "-version"], cwd=root, env=_runtime_env(bin_dir))
+                    print(f"CLI {executable}: {output.splitlines()[0]}", flush=True)
+                else:
+                    print(f"CLI {executable}: PE architecture passed; runtime incompatible", flush=True)
+                results.append({"id": "cli." + executable, "binary_inspection": "passed",
+                                "runtime": "passed" if execute else "skipped",
+                                **({} if execute else {"reason": "host_architecture_incompatible"})})
         if debug is None:
             return results
         for name in ("FindFFmpeg.cmake", "FFmpegConfig.cmake", "FFmpegConfigVersion.cmake"):
@@ -327,7 +458,8 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
         results += _consumer_suite(prefix, build, triplet=triplet, generator=generator,
                                    modules=modules, linkage="shared", pkgconf=pkgconf,
                                    stage="binary", configs=_CONFIGS, native=False,
-                                   selected=dict.fromkeys(_CONFIGS, prefix), full_only=True, crt=True)
+                                   selected=dict.fromkeys(_CONFIGS, prefix), full_only=True, crt=True,
+                                   modes=("CONFIG", "MODULE", "LEGACY", "PKGCONFIG"), execute=execute)
         _extract(debug, prefix, omit_symbols=True)
         if _sdk_modules(prefix / "debug", required=features) != modules:
             raise ValueError("Public Debug module inventory differs from Binary")
@@ -335,12 +467,13 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
         results += _consumer_suite(prefix, build, triplet=triplet, generator=generator,
                                    modules=modules, linkage="shared", pkgconf=pkgconf,
                                    stage="overlay", configs=_CONFIGS, native=False,
-                                   selected={"Release": prefix, "Debug": prefix / "debug"}, crt=True)
+                                   selected={"Release": prefix, "Debug": prefix / "debug"}, crt=True, execute=execute)
         shutil.rmtree(prefix / "debug")
         results += _consumer_suite(prefix, build, triplet=triplet, generator=generator,
                                    modules=modules, linkage="shared", pkgconf=pkgconf,
                                    stage="removed", configs=("Debug",), native=False,
-                                   selected={"Debug": prefix}, modes=("CONFIG",), full_only=True, crt=True)
+                                   selected={"Debug": prefix}, modes=("CONFIG", "LEGACY"), full_only=True, crt=True,
+                                   execute=execute)
         return results
 
 

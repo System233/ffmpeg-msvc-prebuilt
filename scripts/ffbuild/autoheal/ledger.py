@@ -125,7 +125,9 @@ def native_validation_summary(evidence: dict) -> tuple[str, ...]:
         execution = (f"runtime passed ({runtime['tester_executions']} Tester, {runtime['cli_executions']} CLI executions)"
                      if runtime["status"] == "passed" else "runtime skipped (host architecture incompatible)")
         lines.append(f"{check['spec']}: FFmpeg, Tester compile/link ({counts['release']} Release + {counts['debug']} Debug), "
-                     f"PE/COFF passed; {execution}; external dependency builds: 0.")
+                     f"PE/COFF passed; {execution}; "
+                     f"independent SDK consumers: {len(check['consumer_cases'])} passed compile/link "
+                     f"(runtime {runtime['status']}); external dependency builds: 0.")
     return tuple(lines)
 
 
