@@ -52,9 +52,9 @@ class MessageTests(unittest.TestCase):
         self.assertIn("Awaiting",body)
         source={"run_id":20,"run_attempt":2,"head_sha":SHA,"run_conclusion":"success"}
         pending = proposal_status(body,source,False,REPO)
-        self.assertNotIn("16/16 passed",pending)
+        self.assertNotIn("complete MSVC build matrix passed",pending)
         passed = proposal_status(body,source,True,REPO)
-        self.assertIn("16/16 passed",passed)
+        self.assertIn("complete MSVC build matrix passed",passed)
         self.assertTrue(passed.startswith("Maintainer note"))
         self.assertEqual(passed,proposal_status(passed,dict(source,run_attempt=1,run_conclusion="failure"),False,REPO))
         self.assertEqual(passed,proposal_status(passed,source,True,REPO))
@@ -67,11 +67,11 @@ class MessageTests(unittest.TestCase):
         self.assertIn("awaiting the full MSVC build matrix for the new PR HEAD",pending)
         self.assertIn("Previous CI:",pending)
         self.assertNotIn("CI failed.",pending)
-        self.assertNotIn("16/16 passed",pending)
+        self.assertNotIn("complete MSVC build matrix passed",pending)
         self.assertIn("/commit/"+"c"*40,pending)
         self.assertEqual("Manual text",proposal_pending("Manual text",source,"c"*40,REPO))
         final=proposal_status(pending,dict(source,head_sha="c"*40,run_id=21,run_conclusion="success"),True,REPO)
-        self.assertIn("16/16 passed",final)
+        self.assertIn("complete MSVC build matrix passed",final)
         self.assertNotIn("Previous CI:",final)
 
     def test_repair_title_validates_target_and_falls_back(self):
@@ -92,7 +92,8 @@ class MessageTests(unittest.TestCase):
             self.assertIn("AMF mismatch &#124; hypothesis",visible)
             self.assertEqual(SIG,pr_history.incident_from_pr_body(body))
             old=pr_history.START+"\n**Incident signature:** "+SIG+"\n"+pr_history.END
-            self.assertEqual(SIG,pr_history.incident_from_pr_body(old))
+            with self.assertRaises(ValueError):
+                pr_history.incident_from_pr_body(old)
             comment=pr_history.event_comment(event)
             self.assertNotIn("Event key:",comment)
             self.assertEqual(event,pr_history.parse_event({"user":{"login":pr_history.BOT},"body":comment},SIG,[first]))

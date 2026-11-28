@@ -47,13 +47,13 @@ class IsolatedE2ETests(unittest.TestCase):
                        and s.get("with", {}).get("name", "").startswith("${{ matrix.id }}")]
             self.assertEqual(1, len(uploads))
             self.assertIn("!inputs.skip_release", uploads[0]["if"])
-            self.assertTrue(any("ffvcpkg install" in s.get("run", "") for s in steps))
+            self.assertTrue(any("ffbuild.ci worker-build" in s.get("run", "") for s in steps))
 
     def test_public_sdk_smoke_runs_after_archive_gate_before_upload(self):
         steps = workflow("build-release.yml")["jobs"]["build"]["steps"]
         idx = next(i for i, step in enumerate(steps)
                    if step.get("name") == "Validate extracted public SDK and CLI")
-        self.assertEqual("Validate packaged ZIPs with the publication gate", steps[idx-1]["name"])
+        self.assertEqual("Verify and package installed vcpkg result", steps[idx-1]["name"])
         self.assertIn("!inputs.skip_release", steps[idx]["if"])
         self.assertEqual("${{ !inputs.skip_release }}", steps[idx]["if"])
         self.assertNotIn("matrix.triplet", steps[idx]["if"])
@@ -75,29 +75,25 @@ class IsolatedE2ETests(unittest.TestCase):
 
     def test_seed_cache_keys_do_not_depend_on_consumer_source(self):
         for relative in (".github/workflows/build-release.yml", ".github/actions/prepare-repair/action.yml"):
-            text = (ROOT / relative).read_text(encoding="utf-8")
-            keys = [line for line in text.splitlines()
-                    if "key:" in line and "hashFiles(" in line and "'ports/**'" in line]
-            self.assertTrue(keys)
-            for line in keys:
-                self.assertIn("'!ports/ffmpeg-tester/**'", line)
+            text=(ROOT/relative).read_text(encoding="utf-8")
+            hashes=[line for line in text.splitlines() if "hashFiles(" in line]
+            self.assertEqual(1,len(hashes))
+            self.assertIn("'!ports/ffmpeg-tester/**'",hashes[0])
 
     def test_workers_select_only_one_version_port_for_stable_ffmpeg(self):
-        ci = workflow("build-release.yml")
-        for name in ("build",):
-            with self.subTest(worker=name):
-                steps = ci["jobs"][name]["steps"]
-                build = next(step["run"] for step in steps
-                             if step.get("name") == "Build and test via native vcpkg")
-                self.assertIn("$job.yaml.Replace('.', '-')", build)
-                self.assertIn('"--overlay-ports=$versionPort"', build)
-                self.assertIn('"--overlay-ports=ports"', build)
-                self.assertIn("$job.package $job.tester_port", build)
-                self.assertNotIn("ffmpeg-tester-$", build)
-                self.assertNotIn("--overlay-ports=_work/ffbuild/generated-ports ", build)
-                self.assertIn("packages/${{ matrix.port }}_${{ matrix.triplet }}",
-                              next(step["run"] for step in steps if step.get("name") ==
-                                   "Verify and package installed vcpkg result"))
+        import os,json
+        from unittest.mock import patch
+        from ffbuild import ci
+        from ffbuild.versions import GENERATED_PORTS
+        from ffbuild.port import ffmpeg_port_name
+        job={"yaml":"8.1.3","port":"ffmpeg","tester_port":"ffmpeg-tester","package":"ffmpeg[all-lgpl]",
+             "triplet":"x64-windows"}
+        with patch.dict(os.environ,{"FFBUILD_JOB":json.dumps(job),"VCPKG_ROOT":"root","FFBUILD_CACHE_DIR":"cache"}), \
+             patch("ffbuild.cache_guard.install_target") as install:
+            ci.worker_build()
+            self.assertEqual(job,install.call_args.args[0])
+            self.assertEqual(GENERATED_PORTS/ffmpeg_port_name("8.1.3"),install.call_args.kwargs["port"])
+            self.assertTrue(install.call_args.kwargs["env"]["VCPKG_BINARY_SOURCES"].endswith(",read"))
 
     def test_publish_requires_explicitly_enabled_and_not_ci_ref(self):
         ci = workflow("build-release.yml")
@@ -114,7 +110,7 @@ class IsolatedE2ETests(unittest.TestCase):
         self.assertFalse((ROOT / ".github/workflows/ci-e2e.yml").exists())
         nested = workflow("build-release.yml")
         self.assertEqual("ffbuild-native-production", nested["concurrency"]["group"])
-        self.assertEqual({"yaml", "dry_run", "skip_release", "skip_publish", "force"},
+        self.assertEqual({"yaml", "dry_run", "skip_release", "skip_publish", "force", "target_arch", "target_license"},
                          set(nested["on"]["workflow_call"]["inputs"]))
         self.assertNotIn("push", nested["on"])
         from ffbuild.release_trigger import build_gate

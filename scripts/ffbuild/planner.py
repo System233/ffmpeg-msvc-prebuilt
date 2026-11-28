@@ -13,7 +13,7 @@ from .identity import utc_release_date, date_suffix, public_version
 from .dependencies import overlay_port_names
 from .state import PublishedState
 from .versions import (
-    LICENSES, ROOT, config, dependency_names,
+    ROOT, config, dependency_names,
     spec_files,
 )
 
@@ -47,7 +47,7 @@ def plan_native(scan: dict, *, state: PublishedState | None = None,
         group = public_version(record)
         requested.setdefault(group, []).append(record)
         channel = "master" if record.get("yaml") == "master" else "release"
-        existing = state.find_abi(record["version"], record["triplet"], record["abi_hash"],
+        existing = None if force else state.find_abi(record["version"], record["triplet"], record["abi_hash"],
                                   channel=channel, source_commit=record.get("source_ref") or None)
         if force or not existing:
             jobs.append(record)
@@ -92,7 +92,7 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
     shared = any(
         p.startswith(("ffbuild/", "ffvcpkg/", "scripts/ffbuild/", "scripts/ffvcpkg/", "scripts/cmake/", "licenses/", ".github/actions/"))
         or p in {"vcpkg-configuration.json", "requirements.txt", "pyproject.toml",
-                 ".github/workflows/build-all.yml", ".github/workflows/build-release.yml"}
+                 ".github/workflows/build-all.yml", ".github/workflows/build-release.yml", ".github/ci.env"}
         for p in paths
     )
     impacted = []
@@ -113,7 +113,13 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
             continue
         if changed_ports:
             linked = set()
-            for license_ in LICENSES:
+            # Without an upstream pin it is unsafe to exclude any changed
+            # overlay from Master impact analysis.
+            if version == "master":
+                impacted.append(version)
+                continue
+            from .targets import matrix_axes
+            for license_ in matrix_axes()["LICENSES"]:
                 linked.update(overlay_port_names(dependency_names(version, license_)))
             if linked.intersection(changed_ports):
                 impacted.append(version)
@@ -123,8 +129,16 @@ def impacted_versions(paths: set[str], candidates: list[str]) -> list[str]:
 def write_github_output(result: dict, path: Path) -> None:
     """Emit a bounded single-version CI matrix; local JSON plans remain unrestricted."""
     tasks = result["jobs"]
-    if len(tasks) > 16 or len({job.get("yaml") for job in tasks}) > 1:
-        raise ValueError("CI matrix must contain at most 16 jobs for one FFmpeg version")
+    # GitHub Actions' own 256-job limit is a platform constraint, not a
+    # declaration of the current FFmpeg matrix size.
+    if len(tasks) > 256 or len({job.get("yaml") for job in tasks}) > 1:
+        raise ValueError("CI matrix must contain one FFmpeg version and at most 256 jobs")
+    identities = [(job.get("triplet"), job.get("package")) for job in tasks]
+    if any(not all(identity) for identity in identities) or len(identities) != len(set(identities)):
+        raise ValueError("Missing or duplicate CI target identity")
+    job_ids = [job.get("id") for job in tasks if job.get("id") is not None]
+    if len(job_ids) != len(set(job_ids)):
+        raise ValueError("Duplicate CI job identity")
     triplets = sorted({job["triplet"] for job in tasks})
     with path.open("a", encoding="utf-8") as output:
         output.write(f"matrix={json.dumps(tasks, separators=(',', ':'))}\n")

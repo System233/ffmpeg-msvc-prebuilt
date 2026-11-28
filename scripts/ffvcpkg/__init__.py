@@ -17,20 +17,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def executable() -> Path:
-    configured = os.environ.get("FFVCPKG_BIN")
+def executable(env: dict[str, str] | None = None) -> Path:
+    env = os.environ if env is None else env
+    configured = env.get("FFVCPKG_BIN")
     if configured:
         candidate = Path(configured)
         if candidate.is_file():
             return candidate
         raise FileNotFoundError(f"FFVCPKG_BIN not found: {candidate}")
-    vcpkg_root = os.environ.get("VCPKG_ROOT")
+    vcpkg_root = env.get("VCPKG_ROOT")
     if vcpkg_root:
         candidate = Path(vcpkg_root) / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
         if candidate.is_file():
             return candidate
         raise FileNotFoundError(f"VCPKG_ROOT has no vcpkg executable: {candidate}")
-    found = shutil.which("vcpkg")
+    found = shutil.which("vcpkg", path=env.get("PATH", ""))
     if found:
         return Path(found)
     candidate = ROOT / "_work" / "ffbuild" / "vcpkg" / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
@@ -45,15 +46,27 @@ EXACT_ABI_TOOLS = "--x-abi-tools-use-exact-versions"
 def environment(env: dict[str, str] | None = None) -> dict[str, str]:
     """Use vcpkg-managed tools consistently in every native build subprocess."""
     result = dict(os.environ if env is None else env)
-    result["VCPKG_FORCE_DOWNLOADED_BINARIES"] = "1"
+    from ffbuild.targets import workflow_defaults
+    value = result.get("VCPKG_FORCE_DOWNLOADED_BINARIES", workflow_defaults()["VCPKG_FORCE_DOWNLOADED_BINARIES"])
+    if value != "1":
+        raise ValueError("VCPKG_FORCE_DOWNLOADED_BINARIES must be 1 for stable native ABI")
+    result["VCPKG_FORCE_DOWNLOADED_BINARIES"] = value
     result["PYTHONIOENCODING"] = "utf-8"
     return result
 
 
-def command(arguments: list[str], *, binary: Path | None = None) -> list[str]:
+def install_options(value: str) -> list[str]:
+    options = value.split()
+    if EXACT_ABI_TOOLS not in options:
+        raise ValueError(f"VCPKG_INSTALL_OPTIONS must declare {EXACT_ABI_TOOLS}")
+    return options
+
+
+def command(arguments: list[str], *, binary: Path | None = None, env: dict[str, str] | None = None) -> list[str]:
     """Forward native arguments with project overlays and historical ABI tool policy."""
     if not arguments:
         raise ValueError("A native vcpkg command is required")
+    env = environment(env)
     args = list(arguments)
     if args[0] in ("install", "depend-info", "upgrade"):
         generated = ROOT / "_work" / "ffbuild" / "generated-ports"
@@ -85,9 +98,15 @@ def command(arguments: list[str], *, binary: Path | None = None) -> list[str]:
             args.append(f"--overlay-ports={ROOT / 'ports'}")
         if not any(a == "--overlay-triplets" or a.startswith("--overlay-triplets=") for a in args):
             args.append(f"--overlay-triplets={ROOT / 'triplets'}")
-    if args[0] == "install" and EXACT_ABI_TOOLS not in args:
-        args.append(EXACT_ABI_TOOLS)
-    return [str(binary or executable()), *args]
+    if args[0] == "install":
+        configured = env.get("VCPKG_INSTALL_OPTIONS")
+        if configured is None:
+            from ffbuild.targets import workflow_defaults
+            configured = workflow_defaults()["VCPKG_INSTALL_OPTIONS"]
+        for option in install_options(configured):
+            if option not in args:
+                args.append(option)
+    return [str(binary or executable(env)), *args]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,4 +117,5 @@ def main(argv: list[str] | None = None) -> int:
         print("Usage: python -m ffvcpkg <native-vcpkg-command> [arguments...]\n"
               "Adds project overlays and exact ABI tool policy; all other flags pass through.")
         return 0 if args else 2
-    return subprocess.run(command(args), cwd=ROOT, env=environment(), check=False).returncode
+    env = environment()
+    return subprocess.run(command(args, env=env), cwd=ROOT, env=env, check=False).returncode

@@ -234,8 +234,9 @@ an OS sandbox.
 
 Preparation binds the exact failed commit, pinned source and dependency
 contract, generates the Seed key, restores the required architecture caches
-and verifies every external native ABI before Pi starts. Cache restoration also supports the historical runner paths; a legacy hit is moved into the current cache before native ABI validation. Missing cache entries
-may be prepared in preflight; cache-only external dependency installation and the remaining native target plan are checked before execution; no external dependency may be built during
+and verifies every external native ABI before Pi starts. Cache restoration uses only the current cache paths and namespace. Missing or unusable cache entries
+are refreshed with native vcpkg in preflight; historical failed ABI differences
+are diagnostic rather than a cache reuse constraint; cache-only external dependency installation and the remaining native target plan are checked before execution; no external dependency may be built during
 repair. Incompatible historical tool layouts must be rebuilt first.
 
 The repository-owned skill guides diagnosis, source changes and variant selection.
@@ -300,7 +301,7 @@ delivered; their reports stay in the audit artifact.
 Incident signatures and event keys remain in hidden HTML comments; old visible
 incident fields remain readable for compatibility. Full ABI hashes and compiler
 logs stay in CI evidence. Maintainer notes outside managed sections are preserved.
-Only authenticated complete matrix verification may be displayed as 16/16 passed.
+Only authenticated verification of the complete configured target set may be displayed as passed.
 
 
 ### Active repair deduplication

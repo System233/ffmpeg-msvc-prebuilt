@@ -1,6 +1,6 @@
 """Read vcpkg's own ABI graph for a single selected FFmpeg version Port.
 
-Pinned vcpkg 2026.06.01 supports `install --dry-run` together with the
+The pinned vcpkg tool supports `install --dry-run` together with the
 experimental `--x-write-nuget-packages-config`.  NuGet's vcpkg-suffixed
 package version contains the *native* package ABI, including dependency ABIs.
 No second dependency hash algorithm is implemented here. vcpkg still runs
@@ -87,7 +87,8 @@ def native_abi_query(packages: list[str], triplet: str, *,
         return {}
     if len(packages) != len(set(packages)):
         raise ValueError("Duplicate package specifications in vcpkg ABI query")
-    tool = (binary or executable()).resolve()
+    env = environment(env)
+    tool = (binary or executable(env)).resolve()
     if not tool.is_file():
         raise FileNotFoundError(tool)
     overlays = []
@@ -98,7 +99,7 @@ def native_abi_query(packages: list[str], triplet: str, *,
         if json.loads(manifest.read_text(encoding="utf-8")).get("name") != "ffmpeg":
             raise ValueError(f"Expected stable ffmpeg package in {manifest}")
         overlays.append(f"--overlay-ports={port_overlay.resolve()}")
-    elif any(p.split("[", 1)[0].split(":", 1)[0] in {"ffmpeg", "ffmpeg-tester", "ffmpeg-deps"}
+    elif any(p.split("[", 1)[0].split(":", 1)[0] in {"ffmpeg", "ffmpeg-tester"}
              for p in packages):
         raise ValueError("Direct dependency ABI queries cannot request FFmpeg target packages")
     with tempfile.TemporaryDirectory(prefix="ffbuild-native-abi-") as scratch:
@@ -112,9 +113,9 @@ def native_abi_query(packages: list[str], triplet: str, *,
                 f"--x-write-nuget-packages-config={output}", "--no-print-usage"]
         # Keep compiler detection cached in vcpkg's normal buildtrees. ABI
         # files are checked against the exact native hashes before copying.
-        finished = subprocess.run(vcpkg_command(args, binary=tool), cwd=ROOT,
+        finished = subprocess.run(vcpkg_command(args, binary=tool, env=env), cwd=ROOT,
                                   capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", env=environment(env))
+                                  errors="replace", env=env)
         if finished.returncode != 0:
             raise RuntimeError(f"Native vcpkg ABI query failed for {triplet}: "
                                f"{(finished.stderr + finished.stdout)[-4500:]}")
@@ -283,21 +284,29 @@ def scan_native_abis(requests: list[dict], *, overlay: Path = GENERATED_PORTS,
 def verify_job_abi(job: dict, *, overlay: Path = GENERATED_PORTS,
                    binary: Path | None = None, evidence: Path | None = None) -> str:
     """Fail before installing if worker-resolved native ABI differs from plan."""
-    abis = native_abi_query([job["package"], job.get("tester_port", "ffmpeg-tester")], job["triplet"],
+    require_planned_abi(job)
+    abis = native_abi_query([job["package"], job["tester_port"]], job["triplet"],
                             port_overlay=overlay / ffmpeg_port_name(job["yaml"]),
                             binary=binary, evidence=evidence)
     actual = abis.get(f"{job['port']}_{job['triplet']}")
     if actual != job["abi_hash"]:
         raise ValueError(f"vcpkg ABI changed between planning and building: "
                          f"planned {job['abi_hash']}, current {actual}")
-    verify_graph_digest(job, abis)
+    verify_graph_digest(job["native_graph_sha256"], abis)
     return actual
 
 
-def verify_graph_digest(job: dict, abis: dict[str, str]) -> None:
-    expected = job.get("native_graph_sha256")
-    if expected is not None:
-        actual = graph_digest(abis)
-        if actual != expected:
-            raise ValueError(f"vcpkg ABI graph changed between planning and building: "
-                             f"planned {expected}, current {actual}")
+
+def require_planned_abi(job: dict) -> None:
+    for field in ("abi_hash", "native_graph_sha256"):
+        value = job.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ValueError(f"Missing or invalid planned {field}")
+
+def verify_graph_digest(expected: str, abis: dict[str, str]) -> None:
+    if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise ValueError("Missing or invalid planned native graph SHA256")
+    actual = graph_digest(abis)
+    if actual != expected:
+        raise ValueError(f"vcpkg ABI graph changed between planning and building: "
+                         f"planned {expected}, current {actual}")

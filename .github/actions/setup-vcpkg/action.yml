@@ -1,0 +1,37 @@
+name: Set up native vcpkg environment
+description: Export the declared build configuration and shared runner cache paths
+inputs:
+  bootstrap:
+    description: Bootstrap the toolchain after configuration
+    default: 'true'
+outputs:
+  vcpkg_tag:
+    description: Configured vcpkg version
+    value: ${{ steps.config.outputs.vcpkg_tag }}
+  vcpkg_root:
+    description: vcpkg installation directory
+    value: ${{ steps.config.outputs.vcpkg_root }}
+  cache_dir:
+    description: Native binary cache directory
+    value: ${{ steps.config.outputs.cache_dir }}
+  downloads_dir:
+    description: Source download cache directory
+    value: ${{ steps.config.outputs.downloads_dir }}
+  repair_dir:
+    description: Native repair working directory
+    value: ${{ steps.config.outputs.repair_dir }}
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-python
+      with:
+        requirements: requirements.txt
+    - name: Configure native CI environment
+      id: config
+      shell: pwsh
+      run: python -m ffbuild.ci configure
+    - uses: ./.github/actions/vcpkg-bootstrap
+      if: inputs.bootstrap == 'true'
+      with:
+        tag: ${{ steps.config.outputs.vcpkg_tag }}
+        vcpkg-root: ${{ steps.config.outputs.vcpkg_root }}

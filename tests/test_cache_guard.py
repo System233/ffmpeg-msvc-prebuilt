@@ -12,7 +12,7 @@ from unittest import mock
 
 import yaml
 
-from ffbuild.cache_guard import (verify_dependency_cache, verify_from_environment,
+from ffbuild.cache_guard import (verify_dependency_cache, load_job,
                                  verify_no_dependency_builds)
 from ffbuild.versions import ROOT
 
@@ -116,11 +116,23 @@ class DependencyCacheGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.dict(os.environ, {}, clear=True):
                 with self.assertRaisesRegex(ValueError, "Missing CI job"):
-                    verify_from_environment(job_env="FFBUILD_JOB", cache_dir=Path(tmp))
+                    verify_dependency_cache(load_job("FFBUILD_JOB"), Path(tmp))
             with mock.patch.dict(os.environ, {"FFBUILD_JOB": json.dumps(JOB)}):
                 with mock.patch("ffbuild.cache_guard.native_abi_query", return_value=GRAPH):
                     with self.assertRaisesRegex(RuntimeError, "incomplete"):
-                        verify_from_environment(job_env="FFBUILD_JOB", cache_dir=Path(tmp))
+                        verify_dependency_cache(load_job("FFBUILD_JOB"), Path(tmp))
+
+    def test_planned_restore_rejects_missing_abi_before_native_resolution(self):
+        from ffbuild.cache_guard import restore_dependencies
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            with mock.patch("ffbuild.cache_guard.native_abi_query") as native:
+                with self.assertRaisesRegex(ValueError,"abi_hash"):
+                    restore_dependencies(JOB,root,port=root,installed=root,paths=[],env={})
+                native.assert_not_called()
+                with self.assertRaisesRegex(ValueError,"native_graph_sha256"):
+                    restore_dependencies(dict(JOB,abi_hash="a"*64),root,port=root,installed=root,paths=[],env={})
+                native.assert_not_called()
 
     def test_worker_requires_gate_before_native_vcpkg_build(self):
         ci = yaml.safe_load(
@@ -135,9 +147,14 @@ class DependencyCacheGateTests(unittest.TestCase):
                 self.assertEqual(build - 1, gate)
                 self.assertIn("ffbuild.ci restore-dependencies", steps[gate]["run"])
                 self.assertNotIn("--recurse", steps[build]["run"])
-                self.assertIn("VCPKG_ROOT", steps[gate]["env"])
-                self.assertIn("--cache-dir=", steps[gate]["run"])
-                self.assertIn("ffvcpkg install", steps[build]["run"])
+                setup = next(i for i, step in enumerate(steps)
+                             if step.get("uses") == "./.github/actions/setup-vcpkg")
+                self.assertLess(setup, gate)
+                self.assertNotIn("VCPKG_ROOT", steps[gate].get("env",{}))
+                setup_action = yaml.safe_load(
+                    (ROOT / ".github/actions/setup-vcpkg/action.yml").read_text(encoding="utf-8"))
+                self.assertTrue(any("ffbuild.ci configure" in s.get("run","") for s in setup_action["runs"]["steps"]))
+                self.assertIn("ffbuild.ci worker-build", steps[build]["run"])
                 self.assertEqual("Verify no external dependencies were compiled by Worker",
                                  steps[build + 1]["name"])
                 self.assertIn("ffbuild.ci audit-worker", steps[build + 1]["run"])
@@ -162,7 +179,7 @@ Additional packages (*) will be modified to complete this operation.
     def test_target_plan_rejects_unexpected_dependency_build(self):
         from ffbuild import cache_guard
         output = "The following packages will be built and installed:\n    ffmpeg:x64-windows@8.1.3\n    ffmpeg-tester:x64-windows@1.0\n  * mp3lame:x64-windows@3.100\n"
-        with mock.patch.object(cache_guard, "vcpkg_command", side_effect=lambda args: args), \
+        with mock.patch.object(cache_guard, "vcpkg_command", side_effect=lambda args, **kwargs: args), \
                 mock.patch.object(cache_guard.subprocess, "run", return_value=mock.Mock(stdout=output)):
             with self.assertRaisesRegex(RuntimeError, "external dependency"):
                 cache_guard.require_target_plan(JOB, port=Path("port"), paths=[], env={},
@@ -205,9 +222,15 @@ Additional packages (*) will be modified to complete this operation.
                     cwd=root, env=ffvcpkg.environment(env), check=True)
                 self.assertTrue(marker.is_file()); marker.unlink()
                 env["VCPKG_BINARY_SOURCES"] = f"clear;files,{cache},read"
+                job["abi_hash"] = graph["ffmpeg_x64-windows"]
+                job["native_graph_sha256"] = native_abi.graph_digest(graph)
                 self.assertEqual(graph, cache_guard.restore_dependencies(job, cache, port=ffmpeg,
                                   installed=root / "good", paths=paths("good"), env=env))
                 self.assertFalse(marker.exists())
+                cache_guard.install_target(job, port=ffmpeg, paths=paths("good"), env=env)
+                self.assertEqual(graph, cache_guard.installed_abis(root / "good"))
+                self.assertFalse(marker.exists())
+                cache_guard.verify_no_dependency_builds(job, root / "good-trees")
                 archive = cache_archive(cache, graph["audit-dep_x64-windows"])
                 archive.write_bytes(b"not a ZIP")
                 with self.assertRaises(subprocess.CalledProcessError):

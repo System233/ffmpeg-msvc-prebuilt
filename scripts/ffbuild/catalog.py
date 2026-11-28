@@ -177,34 +177,27 @@ def without_download_urls(release: dict) -> dict:
     return result
 
 
-def _variant(record: dict, release_date: str, *, native: bool) -> dict:
-    result = {}
-    if native:
-        abi = record["abi_hash"]
-        if not isinstance(abi, str) or not HASH.fullmatch(abi):
-            raise ValueError("Invalid catalog ABI")
-        fmt = record["package_format"]
-        if type(fmt) is not int or fmt != PACKAGE_FORMAT_VERSION:
-            raise ValueError("Invalid catalog archive format")
-        result.update(abi=abi, format=fmt)
-        original = _date(record["release_date"])
-        if original > release_date:
-            raise ValueError("Asset date is later than its release")
-        if original != release_date:
-            result["date"] = original
+def _variant(record: dict, release_date: str) -> dict:
+    abi = record["abi_hash"]
+    if not isinstance(abi, str) or not HASH.fullmatch(abi):
+        raise ValueError("Invalid catalog ABI")
+    fmt = record["package_format"]
+    if type(fmt) is not int or fmt != PACKAGE_FORMAT_VERSION:
+        raise ValueError("Invalid catalog archive format")
+    result = {"abi": abi, "format": fmt}
+    original = _date(record["release_date"])
+    if original > release_date:
+        raise ValueError("Asset date is later than its release")
+    if original != release_date:
+        result["date"] = original
     for kind, asset in record["assets"].items():
         if kind not in ASSET_KINDS:
             raise ValueError("Unexpected asset kind")
         result[kind] = _asset(asset)
     if "binary" not in result:
         raise ValueError("Missing binary asset")
-    kinds = set(record["assets"])
-    if native and kinds != expected_asset_kinds(record["linkage"], record["package_format"]):
+    if set(record["assets"]) != expected_asset_kinds(record["linkage"], fmt):
         raise ValueError("Incomplete native asset set")
-    if not native and ("debug" in kinds or (record["linkage"] == "static" and kinds != {"binary"})):
-        raise ValueError("Invalid historical asset set")
-    if not native and record["license"] == "lgpl":
-        result["note"] = LEGACY_LGPL_NOTE
     return result
 
 
@@ -236,7 +229,7 @@ def release_from_records(records: list[dict], *, require_complete: bool = True) 
         slot = _slot(row)
         if slot in release["variants"]:
             raise ValueError("Duplicate release slot")
-        variant = _variant(row, when, native=True)
+        variant = _variant(row, when)
         for k in ASSET_KINDS:
             if k in variant and variant[k]["file"] != archive_name(row, kind=k):
                 raise ValueError("Noncanonical dated archive")

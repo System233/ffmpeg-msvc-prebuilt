@@ -93,7 +93,7 @@ class RepairDetails:
     def __post_init__(self) -> None:
         if not isinstance(self.rationale, str) or len(self.rationale) > 1200:
             raise ValueError("Invalid repair rationale")
-        if (not isinstance(self.validation, tuple) or not 1 <= len(self.validation) <= 16 or
+        if (not isinstance(self.validation, tuple) or not 1 <= len(self.validation) <= 256 or
                 any(not isinstance(line, str) or not line.strip() or len(line) > 500 for line in self.validation)):
             raise ValueError("Invalid native validation summary")
 

@@ -75,7 +75,8 @@ def prepare_context(report: dict, yaml: str) -> dict:
     # be rebuilt with current tools, not execute different code with Agent secrets.
     if _git("diff", "--name-only", trusted, base, "--", "scripts", "ports", "triplets",
             "pyproject.toml", "requirements.txt", "vcpkg-configuration.json",
-            ".agents/skills/ffmpeg-autoheal", ".agents/skills/ffmpeg-autoheal-audit", ".github/actions"):
+            ".agents/skills/ffmpeg-autoheal", ".agents/skills/ffmpeg-autoheal-audit", ".github/actions",
+            ".github/workflows/build-release.yml", ".github/ci.env"):
         raise ValueError("Failed source uses different build/repair tooling; rebuild with current main")
     for job in data["diagnostics"]:
         if job["artifact"]:
@@ -98,16 +99,18 @@ def prepare(report: dict, yaml: str) -> dict:
     (runtime / "ready.json").unlink(missing_ok=True)
     # Use the same pinned Master recipe as the original Seed scan. The
     # selected repair source remains unchanged; stable targets do not use it.
-    pin = data["source_snapshot"].get("seed_master")
-    if pin is None and yaml == "master":
-        pin = data["source_snapshot"]
+    from ..release_trigger import snapshot
+    source = data["source_snapshot"]
+    pin = snapshot(source.get("seed_master"))
+    download_specs = source.get("download_specs")
+    if not isinstance(download_specs, str) or not re.fullmatch(r"[0-9a-f]{64}", download_specs):
+        raise ValueError("Invalid original source download cache identity")
+    if source.get("vcpkg_tag") != os.environ["VCPKG_TAG"]:
+        raise ValueError("Failed source uses a different vcpkg version")
     generate_all(master=pin)
     contract = native.contract(GENERATED_PORTS / ffmpeg_port_name(yaml))
     contract_file = runtime / "contract.json"
     contract_file.write_text(json.dumps(contract, indent=2), encoding="utf-8")
-    download_specs = data["source_snapshot"].get("download_specs", "")
-    if download_specs and not re.fullmatch(r"[0-9a-f]{64}", download_specs):
-        raise ValueError("Invalid original source download cache identity")
     return {"base": data["base_sha"], "triplets": json.dumps(data["triplets"]),
             "download_specs": download_specs,
             "context_sha256": hashlib.sha256(Path("agent_context.json").read_bytes()).hexdigest(),

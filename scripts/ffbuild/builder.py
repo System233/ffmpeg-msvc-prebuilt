@@ -18,15 +18,15 @@ from ffvcpkg import command as vcpkg_command, environment
 from .versions import ROOT
 
 
-VCPKG_TAG = "2026.06.01"
-
-
-def bootstrap(vcpkg_root: Path, *, tag: str = VCPKG_TAG) -> Path:
+def bootstrap(vcpkg_root: Path, *, tag: str | None = None) -> Path:
     executable = vcpkg_root / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
     if executable.is_file():
         return executable
     if vcpkg_root.exists() and any(vcpkg_root.iterdir()):
         raise RuntimeError("Existing vcpkg directory has no executable")
+    tag = tag if tag is not None else os.environ.get("VCPKG_TAG")
+    if not tag or not tag.strip():
+        raise ValueError("Set VCPKG_TAG or pass a vcpkg tag explicitly before bootstrapping")
     vcpkg_root.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", "--branch", tag, "--depth", "1",
                     "https://github.com/microsoft/vcpkg.git", str(vcpkg_root)], check=True)
@@ -41,6 +41,10 @@ def bootstrap(vcpkg_root: Path, *, tag: str = VCPKG_TAG) -> Path:
 
 def patch_arm_sdk() -> None:
     """Restore the original ARM SDK workaround (c80f908), including empty values."""
+    from .targets import ci_setting
+    sdk = ci_setting("ARM_WINDOWS_SDK")
+    if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", sdk):
+        raise ValueError("Invalid ARM_WINDOWS_SDK")
     result = subprocess.run(["vswhere", "-all", "-legacy", "-property", "installationPath"],
                             capture_output=True, text=True, check=True)
     patched = 0
@@ -56,12 +60,12 @@ def patch_arm_sdk() -> None:
         # The original working patch used \\S*: the Windows 2022 image can
         # leave __VCVARSALL_WINSDK empty.  Using \\S+ incorrectly rejects it.
         updated, changes = re.subn(rb"(?im)(set\s+__VCVARSALL_WINSDK\s*=)\S*",
-                                   rb"\g<1>10.0.22621.0", source)
+                                   rb"\g<1>" + sdk.encode("ascii"), source)
         if changes:
             if updated != source:
                 path.write_bytes(updated)
             patched += 1
-            print(f"ARM SDK pinned to 10.0.22621.0: {path}", flush=True)
+            print(f"ARM SDK pinned to {sdk}: {path}", flush=True)
     if not patched:
         if not found_files:
             raise RuntimeError("ARM SDK workaround found no vcvarsall.bat via vswhere")
@@ -69,17 +73,26 @@ def patch_arm_sdk() -> None:
                            f"__VCVARSALL_WINSDK assignment in: {found_files}")
 
 
-def submit_dependencies(*, vcpkg_root: Path, triplet: str) -> None:
+def submit_dependencies(*, vcpkg_root: Path, triplet: str | None = None) -> None:
     """Request the native vcpkg dependency graph for GitHub submission."""
     from .seed import seed_identity
-    from .native_abi import read_nuget_abis
     from .versions import generate_all
     from .master import master_metadata
+    from .targets import configured_triplets
+    triplets = (triplet,) if triplet is not None else configured_triplets()
+    if not set(triplets) <= set(configured_triplets()):
+        raise ValueError("Dependency submission Triplet is not configured")
     executable = bootstrap(vcpkg_root)
-    if triplet == "arm-windows":
+    if "arm-windows" in triplets:
         patch_arm_sdk()
     generate_all(master=master_metadata())
-    _, plan = seed_identity(triplet=triplet, binary=executable)
+    for target in triplets:
+        _, plan = seed_identity(triplet=target, binary=executable)
+        _submit_dependency_plan(vcpkg_root, executable, target, plan)
+
+
+def _submit_dependency_plan(vcpkg_root: Path, executable: Path, triplet: str, plan: dict) -> None:
+    from .native_abi import read_nuget_abis
     env = os.environ.copy()
     env.pop("GITHUB_SERVER_URL", None)
     env.update({"VCPKG_FEATURE_FLAGS": "dependencygraph",
@@ -112,9 +125,9 @@ def submit_dependencies(*, vcpkg_root: Path, triplet: str) -> None:
             # Validate manifest mode against the classic native plan before
             # enabling GitHub submission. No network submission during probe.
             subprocess.run(vcpkg_command([*args, f"--x-write-nuget-packages-config={output}"],
-                                          binary=executable), cwd=project,
+                                          binary=executable, env=dict(env, VCPKG_FEATURE_FLAGS="")), cwd=project,
                            env=environment(dict(env, VCPKG_FEATURE_FLAGS="")), check=True)
             if read_nuget_abis(output) != batch["abis"]:
                 raise RuntimeError("Dependency submission graph differs from native Seed plan")
-            subprocess.run(vcpkg_command(args, binary=executable), cwd=project,
+            subprocess.run(vcpkg_command(args, binary=executable, env=env), cwd=project,
                            env=environment(env), check=True)

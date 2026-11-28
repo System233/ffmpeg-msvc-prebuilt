@@ -6,7 +6,7 @@ import re
 SYSTEM_STEPS = (
     "checkout", "bootstrap", "restore", "cache", "download sources",
     "prepare architecture", "scan", "generate", "plan", "publish",
-    "upload", "verify worker vcpkg abi", "save completed",
+    "upload", "verify worker vcpkg abi", "save completed", "verify no external dependencies",
 )
 BUILD_STEPS = ("build and test via native vcpkg",)
 SOURCE_ERROR = re.compile(
@@ -39,7 +39,7 @@ INFRA_ERROR = re.compile(
 VCPKG_PACKAGE_FAILURE = re.compile(
     r"(?im)^\s*(?:error:\s*)?building\s+([a-z0-9][a-z0-9-]*)"
     r"(?:\[[^\]\r\n]*\])?(?::[a-z0-9-]+)?\s+failed\b")
-TARGET_PACKAGE = re.compile(r"ffmpeg(?:-tester|-master|-\d+(?:-\d+)*)?\Z", re.I)
+from ..seed import TARGET_PORTS
 
 
 def patch_failure_key(log: str) -> str | None:
@@ -93,7 +93,7 @@ def classify(job: dict, log_text: str) -> tuple[str, str, bool]:
             return ("build", "insufficient_evidence", False)
         if any(not any(tag in step for tag in BUILD_STEPS) for step in failed):
             return ("build", "mixed_failed_steps", False)
-        if any(not TARGET_PACKAGE.fullmatch(package)
+        if any(package.lower() not in TARGET_PORTS
                for package in VCPKG_PACKAGE_FAILURE.findall(log_text)):
             return ("build", "external_dependency", False)
         if INFRA_ERROR.search(log_text):

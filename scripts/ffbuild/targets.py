@@ -8,18 +8,18 @@ checks that vcpkg actually produced this closure before publication.
 from __future__ import annotations
 
 import re
+import os
+from itertools import product
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
-import yaml
 
 from .spec import FeatureSet, resolve_features
 from .versions import ROOT
 
 
-DEFAULT_TARGETS = Path(__file__).with_name("targets.yaml")
 _PACKAGE = re.compile(r"^ffmpeg(?:\[([a-z0-9+._-]+(?:,[a-z0-9+._-]+)*)\])?$")
-_TRIPLET = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 @dataclass(frozen=True)
@@ -38,25 +38,62 @@ def parse_package(value: str) -> tuple[str, tuple[str, ...]]:
     return f"{value.split('[', 1)[0]}[{','.join(roots)}]", roots
 
 
-def load_targets(path: Path = DEFAULT_TARGETS) -> tuple[Target, ...]:
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or set(document) != {"targets"} or not isinstance(document["targets"], list):
-        raise ValueError(f"Expected a targets list in {path}")
-    targets: list[Target] = []
-    seen: set[tuple[str, str]] = set()
-    for row in document["targets"]:
-        if not isinstance(row, dict) or set(row) != {"package", "triplet"}:
-            raise ValueError(f"Target must contain only package and triplet: {row!r}")
-        package, roots = parse_package(row["package"])
-        triplet = row["triplet"]
-        if not isinstance(triplet, str) or not _TRIPLET.fullmatch(triplet) or not (ROOT / "triplets" / f"{triplet}.cmake").is_file():
-            raise ValueError(f"Unknown vcpkg triplet: {triplet!r}")
-        if (package, triplet) in seen:
-            raise ValueError(f"Duplicate build target: {package}:{triplet}")
-        seen.add((package, triplet))
+def parse_ci_env(text: str) -> dict[str, str]:
+    values = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, value = line.partition("=")
+        if not sep or not re.fullmatch(r"[A-Z][A-Z0-9_]*", name) or name in values or not value.strip():
+            raise ValueError(f"Invalid CI environment declaration: {line!r}")
+        values[name] = value.strip()
+    return values
+
+
+@lru_cache(maxsize=1)
+def workflow_defaults() -> dict[str, str]:
+    """The shared version-controlled environment is also the local default."""
+    return parse_ci_env((ROOT / ".github/ci.env").read_text(encoding="utf-8"))
+
+
+def ci_setting(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None:
+        value = workflow_defaults()[name]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Empty CI setting: {name}")
+    return value
+
+
+def matrix_axes(environ: dict[str, str] | None = None) -> dict[str, tuple[str, ...]]:
+    from .native_platform import PE_MACHINE
+    allowed = {"TRIPLETS": set(PE_MACHINE), "LICENSES": {"lgpl", "gpl"},
+               "LINKAGES": {"shared", "static"}}
+    axes = {}
+    for key, supported in allowed.items():
+        value = ci_setting(key) if environ is None else environ.get(key)
+        if not isinstance(value, str):
+            raise ValueError(f"Missing matrix declaration: {key}")
+        values = tuple(value.split())
+        if not values or len(values) != len(set(values)) or not set(values) <= supported:
+            raise ValueError(f"Invalid {key}: {values!r}")
+        axes[key] = values
+    return axes
+
+
+def configured_triplets() -> tuple[str, ...]:
+    return matrix_axes()["TRIPLETS"]
+
+
+def load_targets(*, environ: dict[str, str] | None = None) -> tuple[Target, ...]:
+    axes = matrix_axes(environ)
+    targets = []
+    for triplet, license_, linkage in product(axes["TRIPLETS"], axes["LICENSES"], axes["LINKAGES"]):
+        if not (ROOT / "triplets" / f"{triplet}.cmake").is_file():
+            raise ValueError(f"Missing vcpkg triplet: {triplet}")
+        package, roots = parse_package(f"ffmpeg[all-{license_}{',static' if linkage == 'static' else ''}]")
         targets.append(Target(package, triplet, roots))
-    if not targets:
-        raise ValueError("The CI target list is empty")
     return tuple(targets)
 
 
@@ -74,3 +111,24 @@ def compile_target(config: dict, version: str, target: Target) -> dict:
     return {"package": target.package, "triplet": target.triplet,
             "features": features,
             "license": mode, "linkage": linkage}
+
+
+def select_targets(*, arch: str = "", license_: str = "") -> tuple[Target, ...]:
+    targets = tuple(t for t in load_targets()
+                    if (not arch or t.triplet == arch) and
+                    (not license_ or f"all-{license_}" in t.roots))
+    if not targets:
+        raise ValueError("No matching native targets")
+    return targets
+
+
+def require_complete_targets(rows: list[dict], *, version: str,
+                             targets: tuple[Target, ...]) -> None:
+    expected = {(t.triplet, t.package) for t in targets}
+    identities = [(r.get("triplet"), r.get("package")) for r in rows]
+    actual = set(identities)
+    if (not expected or len(identities) != len(actual) or actual != expected
+            or any(r.get("yaml") != version for r in rows)):
+        raise ValueError(f"Incomplete CI target matrix: missing={sorted(expected-actual, key=str)}, "
+                         f"unexpected={sorted(actual-expected, key=str)}, "
+                         f"duplicates={len(identities)-len(actual)}")

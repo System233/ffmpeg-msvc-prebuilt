@@ -371,11 +371,9 @@ def incident_from_pr_body(body: str) -> str:
         raise ValueError("Invalid Auto-Heal PR managed section")
     section = body.split(START, 1)[1].split(END, 1)[0]
     matches = re.findall(r"(?m)^<!-- ffbuild-autoheal-incident:v1 ([0-9a-f]{64}) -->$", section)
-    legacy = re.findall(r"(?m)^\*\*Incident signature:\*\* ([0-9a-f]{64})$", section)
-    identities = matches + legacy
-    if len(identities) != 1:
+    if len(matches) != 1:
         raise ValueError("No unique canonical incident in bot PR")
-    return error_signature(identities[0])
+    return error_signature(matches[0])
 
 
 def incident_from_pr(pr: dict) -> str:

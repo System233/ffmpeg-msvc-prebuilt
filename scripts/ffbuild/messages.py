@@ -78,7 +78,7 @@ def proposal_message(version: str, parent: str, paths: list[str]) -> str:
         version_name(parent)
     return render_template("proposal-pr.md", version=version, parent=parent,
                            changes="\n".join(f"- `{path}`" for path in paths),
-                           verification=_verification("Awaiting version-scope validation and the full MSVC build matrix (16 variants)."))
+                           verification=_verification("Awaiting version-scope validation and the full configured MSVC build matrix."))
 
 
 def proposal_status(body: str, source: dict, verified: bool, repo: str) -> str:
@@ -91,7 +91,7 @@ def proposal_status(body: str, source: dict, verified: bool, repo: str) -> str:
     if b <= a:
         raise ValueError("Reversed version proposal markers")
     conclusion = source.get("run_conclusion")
-    status = ("Version scope and MSVC build matrix: 16/16 passed." if verified else
+    status = ("Version scope and complete MSVC build matrix passed." if verified else
               {"failure": "CI failed. See the build logs for details.",
                "success": "CI completed; the complete version matrix has not been verified.",
                "cancelled": "CI cancelled.", "timed_out": "CI timed out."}.get(conclusion, "Awaiting full MSVC validation."))

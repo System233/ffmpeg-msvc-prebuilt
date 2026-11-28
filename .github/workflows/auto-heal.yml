@@ -87,21 +87,22 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: autoheal-triage-a${{ github.run_attempt }}
-      - uses: ./.github/actions/setup-python
-        with:
-          requirements: requirements.txt
+      - uses: ./.github/actions/setup-vcpkg
+        id: config
       - uses: ./.github/actions/prepare-repair
         id: source
         with:
           target: ${{ matrix.yaml }}
+          cache-dir: ${{ steps.config.outputs.cache_dir }}
+          downloads-dir: ${{ steps.config.outputs.downloads_dir }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
+          package-manager-cache: false
       - name: Install pinned Pi
         shell: pwsh
         run: |
           npm install --prefix "$env:RUNNER_TEMP/ffbuild/pi" --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@1.0.0
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Repair and validate candidate for feedback
         env:
           FFBUILD_REPAIR_TARGET: ${{ matrix.yaml }}
@@ -115,7 +116,6 @@ jobs:
         shell: pwsh
         run: |
           python -m ffbuild autoheal repair --triage autoheal-triage.json --yaml $env:FFBUILD_REPAIR_TARGET --output repair-output
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v6
         with:
           name: autoheal-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
@@ -126,7 +126,7 @@ jobs:
         if: always()
         with:
           name: native-abi-repair-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
-          path: ${{ runner.temp }}/ffheal/abi-evidence/
+          path: ${{ steps.config.outputs.repair_dir }}/abi-evidence/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -152,28 +152,35 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: autoheal-triage-a${{ github.run_attempt }}
+      - uses: ./.github/actions/setup-vcpkg
+        id: config
+        with:
+          bootstrap: 'false'
       - uses: actions/download-artifact@v8
         with:
           name: autoheal-proposal-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
-          path: ${{ runner.temp }}/ffheal-proposal
-      - uses: ./.github/actions/setup-python
-        with:
-          requirements: requirements.txt
+          path: ${{ steps.config.outputs.repair_dir }}-proposal
       - name: Validate proposal identity and decline status
         id: proposal
         shell: pwsh
         env:
           TARGET_YAML: ${{ matrix.yaml }}
-          PROPOSAL: ${{ runner.temp }}/ffheal-proposal
-          VERIFIED: ${{ runner.temp }}/ffheal-verified
+          PROPOSAL: ${{ steps.config.outputs.repair_dir }}-proposal
+          VERIFIED: ${{ steps.config.outputs.repair_dir }}-verified
         run: |
           python -m ffbuild autoheal verify --triage autoheal-triage.json --yaml $env:TARGET_YAML --proposal $env:PROPOSAL --output $env:VERIFIED --inspect --github-output
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/vcpkg-bootstrap
+        if: steps.proposal.outputs.has_candidate == 'true'
+        with:
+          tag: ${{ steps.config.outputs.vcpkg_tag }}
+          vcpkg-root: ${{ steps.config.outputs.vcpkg_root }}
       - uses: ./.github/actions/prepare-repair
         id: source
         if: steps.proposal.outputs.has_candidate == 'true'
         with:
           target: ${{ matrix.yaml }}
+          cache-dir: ${{ steps.config.outputs.cache_dir }}
+          downloads-dir: ${{ steps.config.outputs.downloads_dir }}
       - name: Clean-build exact candidate on fresh Runner
         if: steps.proposal.outputs.has_candidate == 'true'
         shell: pwsh
@@ -182,22 +189,21 @@ jobs:
           FFBUILD_REPAIR_BASE: ${{ steps.source.outputs.base }}
           FFBUILD_REPAIR_CONTEXT_SHA256: ${{ steps.source.outputs.context_sha256 }}
           FFBUILD_REPAIR_CONTRACT_SHA256: ${{ steps.source.outputs.contract_sha256 }}
-          PROPOSAL: ${{ runner.temp }}/ffheal-proposal
-          VERIFIED: ${{ runner.temp }}/ffheal-verified
+          PROPOSAL: ${{ steps.config.outputs.repair_dir }}-proposal
+          VERIFIED: ${{ steps.config.outputs.repair_dir }}-verified
         run: |
           python -m ffbuild autoheal verify --triage autoheal-triage.json --yaml $env:FFBUILD_REPAIR_TARGET --proposal $env:PROPOSAL --output $env:VERIFIED
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v6
         with:
           name: autoheal-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
-          path: ${{ runner.temp }}/ffheal-verified/
+          path: ${{ steps.config.outputs.repair_dir }}-verified/
           retention-days: 7
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: native-abi-repair-patch-a${{ github.run_attempt }}-${{ matrix.yaml }}-${{ matrix.signature }}
-          path: ${{ runner.temp }}/ffheal/abi-evidence/
+          path: ${{ steps.config.outputs.repair_dir }}/abi-evidence/
           retention-days: 7
           if-no-files-found: ignore
 
