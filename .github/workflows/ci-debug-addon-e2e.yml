@@ -105,6 +105,8 @@ jobs:
           - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
           - {version: '8.1.3', triplet: x64-windows, package: 'ffmpeg[all-gpl]', license: gpl, linkage: shared}
           - {version: '8.1.3', triplet: x86-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
+          - {version: '8.1.3', triplet: arm64-windows, package: 'ffmpeg[all-lgpl]', license: lgpl, linkage: shared}
+          - {version: '4.4.8', triplet: arm-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
     name: ${{ matrix.version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
     steps:
       - uses: actions/checkout@v6
@@ -122,6 +124,8 @@ jobs:
         run: |
           "VCPKG_ROOT=$env:RUNNER_TEMP/ffbuild/vcpkg" >> $env:GITHUB_ENV
           "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP/ffbuild/vcpkg-cache,read" >> $env:GITHUB_ENV
+      - name: Prepare architecture-specific MSVC host
+        run: python -m ffbuild.ci prepare-host --triplet "${{ matrix.triplet }}"
       - name: Generate production recipes and scan one target
         id: plan
         shell: pwsh
@@ -139,12 +143,22 @@ jobs:
           $job = $scan.jobs[0]
           if ($job.yaml -ne '${{ matrix.version }}' -or $job.triplet -ne '${{ matrix.triplet }}' -or $job.license -ne '${{ matrix.license }}' -or $job.linkage -ne '${{ matrix.linkage }}') { throw 'Unexpected target' }
           "job=$($job | ConvertTo-Json -Depth 100 -Compress)" >> $env:GITHUB_OUTPUT
-      - name: Restore existing exact Seed from prior CI
+      - name: Restore current dependency Seed key or reuse prior cache
+        id: seed-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/ffbuild/vcpkg-cache
-          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-2b84adf9078ca2e93e1f6b7de43a2e03b1935e4447499993327cce4a587f8b13
-          fail-on-cache-miss: true
+          key: ffbuild-seed-2026.06.01-${{ matrix.triplet }}-${{ hashFiles('_work/ffbuild/generated-ports/ffmpeg-deps/vcpkg.json', 'ports/**', '!ports/ffmpeg-tester/**', 'triplets/**', 'vcpkg-configuration.json', 'scripts/ffbuild/seed.py') }}
+          restore-keys: |
+            ffbuild-seed-2026.06.01-${{ matrix.triplet }}-
+            ffbuild-native-2026.06.01-${{ matrix.triplet }}-
+      - name: Reuse legacy dependency binaries if needed
+        if: steps.seed-cache.outputs.cache-matched-key == ''
+        uses: ./.github/actions/restore-legacy-cache
+        with:
+          legacy-path: ${{ runner.temp }}/vcpkg-cache
+          path: ${{ runner.temp }}/ffbuild/vcpkg-cache
+          prefix: vcpkg-seed-2026.06.01-${{ matrix.triplet }}-
       - name: Verify worker vcpkg ABI equals planned ABI
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
@@ -170,10 +184,34 @@ jobs:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
         run: python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
       - name: Validate independent installed static SDK consumers
-        if: matrix.linkage == 'static'
+        if: matrix.linkage == 'static' && matrix.triplet != 'x86-windows'
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
         run: python -m ffbuild.ci verify-installed-sdk --job-env FFBUILD_JOB --installed-root "${{ runner.temp }}/ffbuild/vcpkg/installed" --pkgconf "${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe" --report installed-sdk-tests.json
+      - name: Execute actual Autoheal native and independent SDK evidence gates
+        if: (matrix.version == '4.4.8' && matrix.license == 'gpl' && matrix.linkage == 'shared') || matrix.triplet == 'x86-windows' || matrix.triplet == 'arm64-windows'
+        env:
+          FFBUILD_JOB: ${{ steps.plan.outputs.job }}
+          FFBUILD_REPAIR_DIR: ${{ runner.temp }}/ffbuild/vcpkg
+        shell: pwsh
+        run: |
+          @'
+          import json, os, subprocess
+          from pathlib import Path
+          from ffbuild.autoheal.build import verify_outputs, validate_evidence
+          job = json.loads(os.environ["FFBUILD_JOB"])
+          result = verify_outputs(job, job["abi_hash"])
+          data = {"target_yaml": job["yaml"], "triplets": [job["triplet"]],
+                  "diagnostics": [{"job_id": 1, "build_plan": job}]}
+          git = lambda ref: subprocess.check_output(["git", "rev-parse", ref], text=True).strip()
+          evidence = {"schema": 1, "candidate": git("HEAD"), "tree": git("HEAD^{tree}"),
+                      "checks": [dict(result, jobs=[1], reason="Actual native CI consumer acceptance")]}
+          validate_evidence(evidence, data)
+          Path("autoheal-sdk-tests.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+          print("Autoheal native + independent SDK evidence passed:", len(result["consumer_cases"]),
+                "consumer cases; runtime", result["runtime"]["status"], flush=True)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package installed vcpkg result
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
@@ -190,6 +228,7 @@ jobs:
             Release/
             installed-sdk-tests.json
             public-sdk-tests.json
+            autoheal-sdk-tests.json
           retention-days: 3
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
@@ -202,5 +241,6 @@ jobs:
             ffbuild-abi.json
             installed-sdk-tests.json
             public-sdk-tests.json
+            autoheal-sdk-tests.json
           retention-days: 3
           if-no-files-found: ignore
