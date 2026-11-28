@@ -14,6 +14,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
+from test_autoheal_native import consumer_evidence
 from ffbuild.autoheal import audit, delivery, triage
 from ffbuild.autoheal.api import api_config, APIConfig
 from ffbuild.versions import ROOT
@@ -53,6 +54,7 @@ def write_candidate(directory, report, patch=None, candidate="d"*40, tree="e"*40
                    "external_dependency_builds":0, "tester_targets": {"release": 9, "debug": 9},
                                 "tester_modules": ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"],
                                 "tester_cases": {cfg: ["check-avcodec", "check-avdevice", "check-avfilter", "check-avformat", "check-avutil", "check-full", "check-full-cpp", "check-swresample", "check-swscale"] for cfg in ("release", "debug")},
+                                "consumer_cases": consumer_evidence(),
                    "runtime":{"status":"passed","tester_executions":18,"cli_executions":2}}]}}
     (directory/"manifest.json").write_text(json.dumps(manifest),encoding="utf-8")
     return manifest

@@ -87,7 +87,7 @@ class RealStaticSDKContract(unittest.TestCase):
         from ffbuild.sdk_validation import validate_installed
         report = validate_installed(self.sdk, triplet=TRIPLET, linkage="static",
                                     generator=self.generator[1], pkgconf=Path(PKGCONF),
-                                    modes=("MODULE", "LEGACY", "PKGCONFIG"))
+                                    modes=("MODULE", "LEGACY", "PKGCONFIG", "COMPONENT"))
         self.assertTrue(report)
-        self.assertEqual({"module", "legacy", "pkgconfig"},
+        self.assertEqual({"module", "legacy", "pkgconfig", "component"},
                          {row["id"].split(".")[1] for row in report})

@@ -426,7 +426,8 @@ also have a probe. Vendor .pc files are not FFmpeg modules.
 
 `ports/ffmpeg-tester/CMakeLists.txt` is also the sole real SDK consumer
 project. It exposes independent CONFIG, MODULE, LEGACY and PKGCONFIG
-entry points. Each mode has its own configure/build tree; Config receives
+entry points, plus an independent Config COMPONENTS avformat link probe.
+Each mode has its own configure/build tree; Config receives
 only CMAKE_PREFIX_PATH as a discovery hint, Module/Legacy locate the
 selected Find module, and PkgConfig uses an explicit native pkgconf and
 isolated per-stage, per-configuration .pc directories. The metadata-only
@@ -451,16 +452,28 @@ Release DLLs, while full native builds may never silently fall back.
 Consumer builds do not unpack PDBs (publication verifies PDB identities).
 Selected imported files and pkg-config library paths are checked against
 real configuration-specific SDK paths; runtime deployment is isolated.
+Legacy C and C++ link and include target properties are evaluated per
+configuration; the actual raw link list must match the complete imported
+module closure and the selected SDK prefix. Debug overlay removal also
+reconfigures the Legacy consumer. Config COMPONENTS uses a separate
+consumer build with only avformat explicitly linked.
 The static installation is tested outside the vcpkg toolchain using all
-four modes with /MT and /MTd. Static releases remain CLI-only.
+four modes and the component probe with /MT and /MTd. Static releases
+remain CLI-only.
 
 Worker reports are separate from published assets. Autoheal reconstructs
 the exact native Tester case IDs from the selected module set and
 independently checks requested historical modules against the pinned
-feature plan, rather than accepting fixed target counts. Old repair
-evidence without case identities must be regenerated. ARM/ARM64 retain
-native toolchain compile/link coverage; this Windows x64/x86 public
-runtime gate does not claim ARM execution. Test-only source changes are
+feature plan, rather than accepting fixed target counts. Autoheal also
+executes the same independent installed SDK suite for every representative
+build and validates its exact case identities, link and runtime outcomes.
+Old repair evidence without independent cases must be regenerated.
+ARM/ARM64 additionally exercise all independent consumer modes with
+genuine MSVC target architecture and PE checks, including extracted public
+shared SDKs and installed static SDKs. Runtime is skipped only when the
+target cannot execute on the Windows runner; x64/x86 execution is mandatory
+in both native and portable evidence gates. CLI and DLL PE architectures
+are checked even for cross-compiled artifacts. Test-only source changes are
 excluded from dependency Seed cache keys; real native ABI coverage is
 still mandatory.
 
@@ -472,3 +485,5 @@ python -m ffbuild.ci verify-sdk --artifacts-dir Release --pkgconf <pkgconf.exe> 
 ```
 
 Local implementation validation: real Windows x64 shared SDK archives for 4.4.8 LGPL and 8.1.3 GPL each passed 99 distinct CLI/consumer cases (24 Binary-only, 66 overlay, 6 overlay-removed, 3 CLI). Quick contracts passed 117/117 with no skips; the two targeted native Tester contracts passed. Full source-built static SDK validation and historical optional-module coverage remain CI acceptance requirements.
+
+Final audit follow-up: both real 4.4.8 and 8.1.3 shared archives passed 103 cases each (24 Binary-only, 68 overlay including Components, 8 removed-overlay including Legacy, 3 CLI). The wrong Debug Legacy import-library regression was reproduced on a real 8.1.3 SDK before the fix and rejected afterward. The three focused MSVC contracts and 118 quick contracts passed without skips; 54 Autoheal/CI/Debug regressions passed. ARM/ARM64 actual source-built installed/public acceptance and the expanded real Autoheal gate are included in the next cached CI matrix.

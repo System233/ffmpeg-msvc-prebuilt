@@ -262,7 +262,7 @@ class PortContract(unittest.TestCase):
 
     @unittest.skipUnless(NATIVE_LIB and Path(NATIVE_LIB).is_file(), "Set FFBUILD_TEST_LIB_EXE to native lib.exe")
     def test_native_def_archives(self):
-        from ffbuild.autoheal.build import coff_archive_machines
+        from ffbuild.native_platform import coff_archive_machines
         for arch, machine in (("x86", 0x14c), ("x64", 0x8664), ("arm", 0x1c4), ("arm64", 0xaa64)):
             with self.subTest(arch=arch):
                 shutil.rmtree(self.root / "sdk", ignore_errors=True)

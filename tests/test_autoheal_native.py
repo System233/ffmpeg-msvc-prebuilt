@@ -20,6 +20,25 @@ def check(spec, *jobs):
     return {"spec": spec, "jobs": list(jobs), "reason": "same failure"}
 
 
+def consumer_evidence(modules=None, *, linkage="shared", runtime="passed"):
+    modules = modules or ("avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale")
+    result = []
+    for cfg in ("release", "debug"):
+        for mode in ("config", "module", "legacy", "pkgconfig", "component"):
+            names = ["check-full", "check-full-cpp"]
+            if mode == "component":
+                names = ["check-component-avformat"]
+            elif mode != "legacy":
+                names += ["check-" + m for m in modules]
+            if mode == "config" and linkage == "shared":
+                names += ["check-crt-" + lang + "-" + crt for lang in ("c", "cpp") for crt in ("mt", "md")]
+            for name in names:
+                result.append({"id": f"installed.{mode}.{cfg}.{name}", "configure": "passed",
+                               "compile_link": "passed", "runtime": runtime,
+                               **({"reason": "host_architecture_incompatible"} if runtime == "skipped" else {})})
+    return result
+
+
 def pe(path, machine):
     path.parent.mkdir(parents=True, exist_ok=True)
     data = bytearray(128)
@@ -80,10 +99,15 @@ class NativeValidation(unittest.TestCase):
                  mock.patch.object(build,"_read_control",return_value=(None,None,{"ffmpeg","core"},None)), \
                  mock.patch.object(build,"_layout",return_value="shared"), \
                  mock.patch.object(build,"can_execute",return_value=False), \
+                 mock.patch.object(build,"validate_installed",
+                     side_effect=lambda *a, **kw: consumer_evidence(
+                         libs, linkage=kw["linkage"], runtime="passed" if build.can_execute(triplet) else "skipped")) as sdk, \
                  mock.patch.object(build,"_run") as run:
                 result=build.verify_outputs(job,"a"*64)
                 self.assertEqual("skipped",result["runtime"]["status"])
                 self.assertEqual({"release":9,"debug":9},result["tester_targets"])
+                self.assertEqual(68, len(result["consumer_cases"]))
+                sdk.assert_called_once()
                 run.assert_not_called()
                 data=plan((triplet,"gpl","shared"))
                 evidence={"schema":1,"candidate":"b"*40,"tree":"c"*40,
@@ -115,9 +139,33 @@ class NativeValidation(unittest.TestCase):
                         pc.touch()
                         pe(trees / "ffmpeg-tester" / f"{triplet}-{suffix}" /
                            f"check-{lib}.exe", machine)
+                libs.extend(("postproc", "avresample"))
                 result = build.verify_outputs(job, "a" * 64)
                 self.assertEqual({"release": 11, "debug": 11}, result["tester_targets"])
                 build.validate_evidence(dict(evidence, checks=[dict(result, jobs=[1], reason="same error")]), data)
+
+    def test_evidence_rejects_native_skip_and_missing_independent_cases(self):
+        from test_agent_repair import RESULT
+        data = plan(("x64-windows", "gpl", "shared"))
+        result = dict(copy.deepcopy(RESULT), jobs=[1], reason="same error")
+        evidence = {"schema": 1, "candidate": "a"*40, "tree": "b"*40, "checks": [result]}
+        build.validate_evidence(evidence, data)
+        for edit in ("skip", "omit", "duplicate", "fail", "runtime"):
+            bad = copy.deepcopy(evidence)
+            row = bad["checks"][0]
+            if edit == "skip":
+                row["runtime"] = {"status": "skipped", "reason": "host_architecture_incompatible"}
+                row["consumer_cases"] = consumer_evidence(runtime="skipped")
+            elif edit == "omit":
+                row["consumer_cases"] = [r for r in row["consumer_cases"] if ".legacy." not in r["id"]]
+            elif edit == "duplicate":
+                row["consumer_cases"][-1] = row["consumer_cases"][0]
+            elif edit == "fail":
+                row["consumer_cases"][0]["compile_link"] = "failed"
+            else:
+                row["consumer_cases"][0]["runtime"] = "skipped"
+            with self.subTest(edit=edit), self.assertRaises(ValueError):
+                build.validate_evidence(bad, data)
 
     def test_invalid_binary(self):
         with tempfile.TemporaryDirectory() as tmp:

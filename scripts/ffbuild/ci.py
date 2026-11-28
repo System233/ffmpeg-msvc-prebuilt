@@ -80,11 +80,14 @@ def main(argv: list[str] | None = None) -> None:
                                                    "passed": False, "error": str(exc)[-8000:]},
                                                   indent=2) + "\n", encoding="utf-8")
             raise
+        runtime_skipped = sum(row["runtime"] == "skipped" for row in results)
         if args.report:
             args.report.write_text(json.dumps({"schema": 1, "suite": args.command,
-                                               "passed": True, "results": results}, indent=2) + "\n",
+                                               "passed": True, "runtime_skipped": runtime_skipped,
+                                               "results": results}, indent=2) + "\n",
                                    encoding="utf-8")
-        print(f"{args.command}: {len(results)} cases passed", flush=True)
+        suffix = f"; {runtime_skipped} runtime skips (host architecture incompatible)" if runtime_skipped else ""
+        print(f"{args.command}: {len(results)} cases passed{suffix}", flush=True)
 
 
 if __name__ == "__main__":

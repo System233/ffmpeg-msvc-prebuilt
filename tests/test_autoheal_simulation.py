@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from test_autoheal_native import consumer_evidence
 from ffbuild.autoheal import delivery, ledger, triage
 
 SHA = "a" * 40
@@ -171,6 +172,7 @@ class SimulatedSafetyCases(unittest.TestCase):
                                 "tester_targets": {"release": 9, "debug": 9},
                                 "tester_modules": ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"],
                                 "tester_cases": {cfg: ["check-avcodec", "check-avdevice", "check-avfilter", "check-avformat", "check-avutil", "check-full", "check-full-cpp", "check-swresample", "check-swscale"] for cfg in ("release", "debug")},
+                                "consumer_cases": consumer_evidence(),
                                 "runtime": {"status": "passed", "tester_executions": 18, "cli_executions": 1}}]},
             }), encoding="utf-8")
             from ffbuild.autoheal.audit import candidate_identity

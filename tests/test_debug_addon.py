@@ -187,6 +187,20 @@ class PublicSDKModuleTests(unittest.TestCase):
             self.assertEqual({"check-full", "check-full-cpp"},
                              tester_targets(_CORE_MODULES, "LEGACY"))
 
+    def test_independent_consumers_strip_runner_secrets_and_discovery_hints(self):
+        import os
+        from unittest import mock
+        from ffbuild.sdk_validation import _consumer_env, _runtime_env
+        from ffbuild.process import PRIVATE_RUNNER_ENV
+        variables = {key.lower(): "fixture" for key in PRIVATE_RUNNER_ENV}
+        variables.update(CMAKE_TOOLCHAIN_FILE="unexpected.cmake", FFMPEG_ROOT="wrong-sdk",
+                         PKG_CONFIG_PATH="wrong-pc", VCPKG_ROOT="wrong-vcpkg")
+        with mock.patch.dict(os.environ, variables):
+            for env in (_consumer_env(), _runtime_env(Path("selected-sdk"))):
+                self.assertFalse({key.upper() for key in env} &
+                                 (PRIVATE_RUNNER_ENV | {"CMAKE_TOOLCHAIN_FILE", "FFMPEG_ROOT",
+                                                        "PKG_CONFIG_PATH", "VCPKG_ROOT"}))
+
     def test_pkgconfig_requires_actual_config_specific_archive(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

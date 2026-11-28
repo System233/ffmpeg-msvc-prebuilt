@@ -7,6 +7,13 @@ import subprocess
 import tempfile
 
 
+# Never expose CI/model credentials or GitHub command files to a consumer
+# executable or a candidate's CMake configuration.
+PRIVATE_RUNNER_ENV = frozenset({"OPENAI_API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "GITHUB_ENV", "GITHUB_OUTPUT", "GITHUB_PATH", "GITHUB_STEP_SUMMARY"})
+
+
 def run_bounded(args, *, env=None, cwd=None, check=False, timeout=None):
     """Run a non-interactive command with bounded process-tree lifetime."""
     args = [str(a) for a in args]
