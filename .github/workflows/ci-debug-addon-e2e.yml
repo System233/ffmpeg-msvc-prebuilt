@@ -1,4 +1,4 @@
-name: FFmpeg Cached Native E2E Validation
+name: FFmpeg CMake Cached Native E2E
 on:
   push:
     branches: [ci/debug-addon-e2e-20261126]
@@ -19,19 +19,24 @@ jobs:
         with:
           requirements: requirements.txt
       - run: python -m ffbuild validate
-      - run: python -m unittest discover -s tests
+      - name: Run independent unit tests
+        run: python -m unittest discover -s tests
+      - name: Run strict parallel CMake quick contracts
+        run: python tests/run_cmake_contracts.py --tier quick --jobs 4 --report cmake-quick.json
   build:
     needs: validate
     runs-on: windows-2022
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         include:
-          - {triplet: x64-windows, package: 'ffmpeg[all-gpl]', license: gpl, linkage: shared}
-          - {triplet: x86-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
-    name: ${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-lgpl]', license: lgpl, linkage: shared}
+          - {version: '4.4.8', triplet: x64-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
+          - {version: '8.1.3', triplet: x64-windows, package: 'ffmpeg[all-gpl]', license: gpl, linkage: shared}
+          - {version: '8.1.3', triplet: x86-windows, package: 'ffmpeg[all-lgpl,static]', license: lgpl, linkage: static}
+    name: ${{ matrix.version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -58,12 +63,12 @@ jobs:
           targets:
             - {package: '${{ matrix.package }}', triplet: '${{ matrix.triplet }}'}
           '@ | Set-Content -Encoding utf8 ci-target.yaml
-          python -m ffbuild scan --version 8.1.3 --targets-file ci-target.yaml --output ffbuild-abi.json
+          python -m ffbuild scan --version "${{ matrix.version }}" --targets-file ci-target.yaml --output ffbuild-abi.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $scan = Get-Content ffbuild-abi.json -Raw | ConvertFrom-Json
           if ($scan.jobs.Count -ne 1 -or $scan.blocked.Count -ne 0) { throw 'Expected one native target' }
           $job = $scan.jobs[0]
-          if ($job.yaml -ne '8.1.3' -or $job.triplet -ne '${{ matrix.triplet }}' -or $job.license -ne '${{ matrix.license }}' -or $job.linkage -ne '${{ matrix.linkage }}') { throw 'Unexpected target' }
+          if ($job.yaml -ne '${{ matrix.version }}' -or $job.triplet -ne '${{ matrix.triplet }}' -or $job.license -ne '${{ matrix.license }}' -or $job.linkage -ne '${{ matrix.linkage }}') { throw 'Unexpected target' }
           "job=$($job | ConvertTo-Json -Depth 100 -Compress)" >> $env:GITHUB_OUTPUT
       - name: Restore existing exact Seed from prior CI
         uses: actions/cache/restore@v5
@@ -95,6 +100,24 @@ jobs:
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
         run: python -m ffbuild.ci audit-worker --job-env FFBUILD_JOB "--buildtrees=${{ runner.temp }}/ffbuild/vcpkg/buildtrees"
+      - name: Run locally installed static SDK acceptance
+        if: matrix.linkage == 'static'
+        shell: pwsh
+        env:
+          FFBUILD_TEST_MSVC: '1'
+          FFBUILD_TEST_REAL_STATIC_TRIPLET: ${{ matrix.triplet }}
+          FFBUILD_TEST_REAL_STATIC_PACKAGE: ${{ runner.temp }}/ffbuild/vcpkg/packages/ffmpeg_${{ matrix.triplet }}
+          FFBUILD_TEST_REAL_STATIC_INSTALLED: ${{ runner.temp }}/ffbuild/vcpkg/installed/${{ matrix.triplet }}
+          FFBUILD_TEST_PKGCONF: ${{ runner.temp }}/ffbuild/vcpkg/installed/x64-windows/tools/pkgconf/pkgconf.exe
+        run: |
+          # Strict runner: missing prerequisites or skipped tests fail CI.
+          # Use the same installed dependency cache and actual FFmpeg Port.
+          $env:FFBUILD_TEST_VCPKG_ROOT = $env:VCPKG_ROOT
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $env:FFBUILD_TEST_LIB_EXE = (& $vswhere -latest -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1)
+          $env:FFBUILD_TEST_BASH = (Get-ChildItem "$env:VCPKG_ROOT/downloads/tools/msys2" -Filter bash.exe -Recurse -File | Select-Object -First 1).FullName
+          python tests/run_cmake_contracts.py --tier real-static --module test_cmake_real_static_sdk --jobs 2 --native-jobs 2 --group-timeout 1200 --report cmake-real-static.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package installed vcpkg result
         env:
           FFBUILD_JOB: ${{ steps.plan.outputs.job }}
@@ -106,17 +129,20 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: ${{ success() }}
         with:
-          name: cached-native-build-8.1.3-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
-          path: Release/
+          name: cached-native-build-${{ matrix.version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
+          path: |
+            Release/
+            cmake-real-static.json
           retention-days: 3
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
         if: ${{ failure() }}
         with:
-          name: native-build-failure-logs-${{ matrix.triplet }}
+          name: native-build-failure-logs-${{ matrix.version }}-${{ matrix.triplet }}-${{ matrix.license }}-${{ matrix.linkage }}
           path: |
             ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.log
             ${{ runner.temp }}/ffbuild/vcpkg/buildtrees/**/*.err
             ffbuild-abi.json
+            cmake-real-static.json
           retention-days: 3
           if-no-files-found: ignore
