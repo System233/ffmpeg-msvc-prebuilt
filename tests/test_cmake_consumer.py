@@ -1,5 +1,5 @@
 import shutil
-from cmake_blackbox_fixture import run as run_command
+from cmake_blackbox_fixture import canonical_existing_path, filesystem_alias, run as run_command
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,6 +55,7 @@ class CMakeConsumerTests(unittest.TestCase):
     def configure(self, body, *, success=True, reason=None, multi=True, config="Debug",
                   config_only=False, extra=()):
         self.render()
+        (self.build / "selected-location.txt").unlink(missing_ok=True)
         preamble = """cmake_minimum_required(VERSION 3.21)
 project(consumer LANGUAGES NONE)
 set(WIN32 TRUE)
@@ -155,18 +156,23 @@ if(NOT libs MATCHES "/debug/lib/thirdd.lib" OR NOT libs MATCHES "/lib/third.lib"
 endif()
 """)
 
+    def assert_release_location(self):
+        actual = (self.build / "selected-location.txt").read_text(encoding="utf-8")
+        self.assertEqual(canonical_existing_path(self.sdk / "lib/avutil.lib"),
+                         canonical_existing_path(actual))
+
     def test_relocate_cached_sdk(self):
         body = """find_package(FFmpeg REQUIRED)
 get_target_property(loc FFmpeg::avutil IMPORTED_LOCATION_RELEASE)
-if(NOT loc STREQUAL "${FFMPEG_ROOT}/lib/avutil.lib")
-  message(FATAL_ERROR "Stale SDK root: ${loc}")
-endif()
+file(WRITE "${CMAKE_BINARY_DIR}/selected-location.txt" "${loc}")
 """
         self.configure(body)
+        self.assert_release_location()
         moved = self.root / "moved sdk"
         self.sdk.rename(moved)
         self.sdk = moved
         self.configure(body)
+        self.assert_release_location()
 
     def test_changed_root_in_one_configure_rejected(self):
         self.configure("""find_package(FFmpeg REQUIRED)
@@ -254,10 +260,9 @@ endif()
     def test_config_uses_selected_package_not_stale_legacy_root(self):
         self.configure("""find_package(FFmpeg CONFIG REQUIRED)
 get_target_property(loc FFmpeg::avutil IMPORTED_LOCATION_RELEASE)
-if(NOT loc STREQUAL "${CMAKE_PREFIX_PATH}/lib/avutil.lib")
-  message(FATAL_ERROR "Legacy root overrides selected Config package")
-endif()
+file(WRITE "${CMAKE_BINARY_DIR}/selected-location.txt" "${loc}")
 """, config_only=True, extra=["-DFFMPEG_ROOT=" + (self.root / "unrelated").as_posix()])
+        self.assert_release_location()
 
     def test_config_target_pointer_width(self):
         self.configure("""set(CMAKE_SIZEOF_VOID_P 4)
@@ -265,16 +270,39 @@ find_package(FFmpeg CONFIG REQUIRED)
 """, config_only=True, success=False, reason="64bit")
 
     def test_config_relocation(self):
-        self.configure("find_package(FFmpeg CONFIG REQUIRED)\n", config_only=True)
+        body = """find_package(FFmpeg CONFIG REQUIRED)
+get_target_property(loc FFmpeg::avutil IMPORTED_LOCATION_RELEASE)
+file(WRITE "${CMAKE_BINARY_DIR}/selected-location.txt" "${loc}")
+"""
+        self.configure(body, config_only=True)
+        self.assert_release_location()
         moved = self.root / "new prefix"
         self.sdk.rename(moved)
         self.sdk = moved
-        self.configure("""find_package(FFmpeg CONFIG REQUIRED)
-get_target_property(loc FFmpeg::avutil IMPORTED_LOCATION_RELEASE)
-if(NOT loc STREQUAL "${CMAKE_PREFIX_PATH}/lib/avutil.lib")
-  message(FATAL_ERROR "Config relocation failed: ${loc}")
-endif()
-""", config_only=True)
+        self.configure(body, config_only=True)
+        self.assert_release_location()
+
+    def test_config_relocation_via_windows_path_alias(self):
+        alias, kind = filesystem_alias(self.root)
+        self.assertNotEqual(alias, self.root.resolve())
+        self.assertTrue(alias.samefile(self.root))
+        print(f"Windows Config path alias regression: {kind}", flush=True)
+        self.root = alias
+        self.sdk = alias / "sdk"
+        self.test_config_relocation()
+
+        # A real but different archive, or a relative/missing location,
+        # must not pass the same filesystem-normalized comparison.
+        evidence = self.build / "selected-location.txt"
+        correct = evidence.read_text(encoding="utf-8")
+        for wrong in (self.sdk / "debug/lib/avutil.lib", self.sdk / "lib/missing.lib",
+                      Path("avutil.lib")):
+            with self.subTest(wrong=str(wrong)):
+                evidence.write_text(wrong.as_posix(), encoding="utf-8")
+                with self.assertRaises((AssertionError, FileNotFoundError)):
+                    self.assert_release_location()
+        evidence.write_text(correct, encoding="utf-8")
+        self.assert_release_location()
 
     def test_config_mixed_sibling_scope(self):
         for name, mode in (("a", "CONFIG"), ("b", "MODULE")):

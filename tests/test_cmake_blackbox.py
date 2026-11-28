@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cmake_blackbox_fixture import CONFIGS, SDKFixture, TOOLS, output
+from cmake_blackbox_fixture import CONFIGS, SDKFixture, TOOLS, filesystem_alias, output
 
 
 @unittest.skipUnless(TOOLS, "CMake, Ninja and pkgconf required")
@@ -37,6 +37,38 @@ class SDKContract(unittest.TestCase):
                 self.configured(f, mode=mode)
                 for config in CONFIGS:
                     f.assert_selection(self, config, "Debug" if config == "Debug" else "Release")
+
+    def test_windows_path_alias_keeps_legacy_config_and_sdk_isolation(self):
+        physical = self.root / "SDK path alias regression"
+        physical.mkdir()
+        alias, kind = filesystem_alias(physical)
+        self.assertNotEqual(alias, physical.resolve())
+        self.assertTrue(alias.samefile(physical))
+        print(f"Windows path alias regression: {kind}", flush=True)
+        self.root = alias
+        f = self.fixture("static")
+        self.configured(f)
+        for cfg in ("Release", "Debug"):
+            f.assert_selection(self, cfg, cfg)
+
+        # Preserve every correct library and append an existing archive from
+        # the wrong configuration or another SDK. Membership alone must not
+        # permit either extra linker input.
+        selected = f.build / "selected-Debug.txt"
+        original = selected.read_text(encoding="utf-8")
+        foreign = physical / "foreign-sdk/lib/avutil.lib"
+        f.touch(foreign)
+        for wrong in (f.sdk / "lib/avutil.lib", foreign):
+            with self.subTest(wrong=str(wrong)):
+                rows = original.splitlines()
+                rows = [line + ";" + wrong.as_posix()
+                        if line.startswith("legacy|") else line for line in rows]
+                self.assertNotEqual(rows, original.splitlines())
+                selected.write_text("\n".join(rows) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(AssertionError, "unexpected legacy library"):
+                    f.assert_selection(self, "Debug", "Debug")
+        selected.write_text(original, encoding="utf-8")
+        f.assert_selection(self, "Debug", "Debug")
 
     def test_shared_overlay_lifecycle(self):
         f = self.fixture()
