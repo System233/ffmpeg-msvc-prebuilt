@@ -58,7 +58,7 @@ def runtime_dir() -> Path:
 def cache_dir(triplet: str) -> Path:
     if triplet not in TRIPLETS:
         raise ValueError("Unknown target triplet")
-    return Path(os.environ["FFBUILD_REPAIR_CACHE"]).resolve()
+    return Path(os.environ["FFBUILD_CACHE_DIR"]).resolve()
 
 
 def parse_spec(value: str) -> Target:

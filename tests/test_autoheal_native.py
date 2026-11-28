@@ -211,7 +211,7 @@ class NativeValidation(unittest.TestCase):
             archive_path.parent.mkdir()
             archive_path.write_bytes(payload)
             data = {"target_yaml":"8.1.1"}
-            with mock.patch.dict(os.environ, {"VCPKG_ROOT":str(root), "FFBUILD_REPAIR_CACHE":str(root/"cache")}), \
+            with mock.patch.dict(os.environ, {"VCPKG_ROOT":str(root), "FFBUILD_CACHE_DIR":str(root/"cache")}), \
                  mock.patch.object(build,"config",return_value={"source":{"ref":"n${VERSION}","sha512":digest}}), \
                  mock.patch.object(build,"runtime_dir",return_value=root), \
                  mock.patch.object(build,"vcpkg_command",side_effect=lambda args, **kwargs:args), \

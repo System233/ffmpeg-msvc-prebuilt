@@ -1,7 +1,6 @@
-"""CI infrastructure helpers only: vcpkg bootstrap and dependency submission.
+"""CI infrastructure helpers: MSVC SDK selection and dependency submission.
 
-The FFmpeg build itself is a native vcpkg install in the workflow, not an
-ffbuild command.  This module is not a public command-line interface.
+The FFmpeg build itself uses native vcpkg install.  This module is not a public command-line interface.
 """
 
 from __future__ import annotations
@@ -16,27 +15,6 @@ from pathlib import Path
 from ffvcpkg import command as vcpkg_command, environment
 
 from .versions import ROOT
-
-
-def bootstrap(vcpkg_root: Path, *, tag: str | None = None) -> Path:
-    executable = vcpkg_root / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
-    if executable.is_file():
-        return executable
-    if vcpkg_root.exists() and any(vcpkg_root.iterdir()):
-        raise RuntimeError("Existing vcpkg directory has no executable")
-    tag = tag if tag is not None else os.environ.get("VCPKG_TAG")
-    if not tag or not tag.strip():
-        raise ValueError("Set VCPKG_TAG or pass a vcpkg tag explicitly before bootstrapping")
-    vcpkg_root.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", "--branch", tag, "--depth", "1",
-                    "https://github.com/microsoft/vcpkg.git", str(vcpkg_root)], check=True)
-    if os.name != "nt":
-        raise RuntimeError("Native vcpkg dependency submission requires Windows")
-    subprocess.run(["cmd", "/c", str(vcpkg_root / "bootstrap-vcpkg.bat")],
-                   cwd=vcpkg_root, check=True)
-    if not executable.is_file():
-        raise FileNotFoundError(executable)
-    return executable
 
 
 def patch_arm_sdk() -> None:
@@ -82,7 +60,9 @@ def submit_dependencies(*, vcpkg_root: Path, triplet: str | None = None) -> None
     triplets = (triplet,) if triplet is not None else configured_triplets()
     if not set(triplets) <= set(configured_triplets()):
         raise ValueError("Dependency submission Triplet is not configured")
-    executable = bootstrap(vcpkg_root)
+    executable = vcpkg_root / ("vcpkg.exe" if os.name == "nt" else "vcpkg")
+    if not executable.is_file():
+        raise FileNotFoundError(executable)
     if "arm-windows" in triplets:
         patch_arm_sdk()
     generate_all(master=master_metadata())

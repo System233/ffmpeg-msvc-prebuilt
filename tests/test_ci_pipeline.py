@@ -29,7 +29,6 @@ class ReleasePlan(unittest.TestCase):
             "GITHUB_RUN_ATTEMPT": "2", "GITHUB_OUTPUT": str(root/"output"),
             "VCPKG_TAG": "2031.02.03", "CACHE_RECIPE": "c"*64,
             "FFBUILD_CACHE_DIR": "cache",
-            "FFBUILD_DOWNLOADS_DIR": "downloads",
         }, **updates)
 
     @staticmethod
@@ -70,6 +69,10 @@ class ReleasePlan(unittest.TestCase):
                 self.assertTrue(all(j["seed_key"]==prepare[0]["seed_key"] for j in result["jobs"]))
                 self.assertEqual(result["download_cache"],outputs["download_key"])
                 self.assertEqual("2",outputs["plan_attempt"])
+                self.assertNotIn("seed_keys",outputs)
+                self.assertNotIn("download_specs",outputs)
+                self.assertNotIn("count",outputs)
+                self.assertNotIn("triplets",outputs)
 
     def test_production_catalog_validation_and_empty_plan(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -83,8 +86,9 @@ class ReleasePlan(unittest.TestCase):
             state=Mock()
             state.find_abi.return_value={"published":True}
             with contextlib.chdir(root),patch.dict(os.environ,env,clear=True), \
-                 patch("ffbuild.master.master_metadata",return_value=PIN), \
-                 patch("ffbuild.versions.generate_all"), \
+                 patch("ffbuild.master.master_metadata",return_value=PIN) as master, \
+                 patch("ffbuild.versions.generate_all") as generate_all, \
+                 patch("ffbuild.versions.generate") as generate, \
                  patch("ffbuild.native_abi.scan_native_abis",side_effect=scan), \
                  patch("ffbuild.catalog.validate_catalog") as catalog, \
                  patch("ffbuild.state.PublishedState",return_value=state), \
@@ -93,6 +97,10 @@ class ReleasePlan(unittest.TestCase):
                 catalog.assert_called_once_with(Path("data"))
                 self.assertTrue(state.find_abi.called)
                 seed.assert_not_called()
+                master.assert_not_called()
+                generate_all.assert_not_called()
+                generate.assert_called_once_with("8.1.3")
+                self.assertNotIn("seed_master",result["request"])
                 self.assertFalse(result["publication_required"])
                 self.assertEqual([],result["jobs"])
                 self.assertEqual({},result["seed_keys"])

@@ -14,7 +14,6 @@ import yaml
 
 from ffbuild import publication
 from ffbuild.cli import main
-from ffbuild.events import event_options
 from ffbuild.planner import write_github_output
 from ffbuild.versions import ROOT
 
@@ -29,7 +28,7 @@ class MatrixAndPolicyTests(unittest.TestCase):
             write_github_output({"jobs": jobs}, destination)
             lines = dict(line.split("=", 1) for line in destination.read_text(encoding="utf-8").splitlines())
         self.assertEqual(jobs, json.loads(lines["matrix"]))
-        self.assertEqual(str(len(jobs)), lines["count"])
+        self.assertEqual({"matrix","publication_required"},set(lines))
         self.assertNotIn("matrix_extra", lines)
 
     def test_matrix_limit_is_platform_not_current_configuration(self):
@@ -47,25 +46,6 @@ class MatrixAndPolicyTests(unittest.TestCase):
                     write_github_output({"jobs": invalid}, dest)
                 self.assertFalse(dest.exists())
 
-    def test_modified_old_version_is_scanned_on_main_push(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            event = Path(tmp) / "push.json"
-            event.write_text(json.dumps({
-                "before": "a" * 40, "after": "b" * 40,
-            }), encoding="utf-8")
-            with mock.patch.dict(os.environ, {
-                "GITHUB_EVENT_NAME": "push", "GITHUB_EVENT_PATH": str(event)
-            }), mock.patch("ffbuild.planner.changed_paths",
-                          return_value={"ffmpeg/8.1.1.yaml"}), \
-                 mock.patch("ffbuild.native_abi.build_requests",
-                            return_value=([], [])) as request, \
-                 mock.patch("ffbuild.native_abi.scan_native_abis",
-                            return_value=[]):
-                main(["scan", "--event", "--output", str(Path(tmp) / "scan.json")])
-        versions = request.call_args.kwargs["selected_versions"]
-        self.assertIn("8.1.1", versions)
-        self.assertNotIn("8.1.3", versions)
-
     def test_blocked_targets_fail_planning(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -79,16 +59,7 @@ class MatrixAndPolicyTests(unittest.TestCase):
                     main(["plan", "--abi-file", str(scan),
                           "--output", str(root / "plan.json")])
 
-    def test_manual_force_input_is_available_and_does_not_publish(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            event = Path(tmp) / "dispatch.json"
-            event.write_text('{"inputs":{"version":"8.1.3","force":true}}',
-                             encoding="utf-8")
-            options = event_options({
-                "GITHUB_EVENT_NAME": "workflow_dispatch",
-                "GITHUB_EVENT_PATH": str(event),
-            })
-        self.assertTrue(options["force"])
+    def test_force_input_is_available_and_does_not_publish(self):
         path = ROOT / ".github/workflows/build-release.yml"
         workflow = yaml.load(path.read_text(encoding="utf-8"),
                              Loader=yaml.BaseLoader)

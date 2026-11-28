@@ -23,7 +23,6 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--release-date", default=None, help="Immutable UTC date of the build tag")
     scan.add_argument("--version", default="", help="One configured FFmpeg version, or master")
     scan.add_argument("--history", action="store_true", help="Scan every source-backed release")
-    scan.add_argument("--event", action="store_true", help="Filter PR and main push scans to impacted versions")
     scan.add_argument("--master-snapshot-file", type=Path, help="Pinned source metadata shared with port generation")
     scan.add_argument("--describe", default="", help="Pinned master git describe")
     scan.add_argument("--commit", default="", help="Pinned upstream master commit")
@@ -64,15 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--abi-evidence", type=Path)
 
     plan = sub.add_parser("plan", help="Schedule unpublished native vcpkg ABIs from a scan")
-    plan.add_argument("--event", action="store_true", help="Read GitHub event metadata")
     plan.add_argument("--force", action="store_true", help="Schedule even when data contains this ABI")
     plan.add_argument("--abi-file", required=True, type=Path,
                       help="JSON produced by native vcpkg ABI scan")
     plan.add_argument("--state-dir", type=Path, default=None)
     plan.add_argument("--output", type=Path, default=Path("ffbuild-plan.json"))
     plan.add_argument("--github-output", action="store_true")
-    plan.add_argument("--shard-index", type=int, default=None)
-    plan.add_argument("--shard-count", type=int, default=None)
 
     package = sub.add_parser("package", help="Verify and package an already compiled vcpkg port")
     identity = package.add_mutually_exclusive_group(required=True)
@@ -108,37 +104,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _plan(args: argparse.Namespace) -> None:
-    from .events import event_options
     from .planner import plan_native, write_github_output
     from .state import PublishedState
 
-    options = event_options() if args.event else {}
     scan = json.loads(args.abi_file.read_text(encoding="utf-8"))
     result = plan_native(scan, state=PublishedState(directory=args.state_dir),
-                         force=args.force or options.get("force", False))
-    shard_count = args.shard_count if args.shard_count is not None else options.get("shard_count", 1)
-    shard_index = args.shard_index if args.shard_index is not None else options.get("shard_index", 0)
-    if shard_count <= 0 or shard_index < 0 or shard_index >= shard_count:
-        raise ValueError("Shard count must be positive and index must be in range")
-    if shard_count > 1:
-        result["jobs"] = [job for i, job in enumerate(result["jobs"])
-                          if i % shard_count == shard_index]
-        result["matrix"] = result["jobs"]
+                         force=args.force)
     if result["blocked"]:
         raise ValueError(f"Unsupported FFmpeg target combinations: {len(result['blocked'])}; "
                          "fix feature/license policy instead of silently skipping builds")
-    if args.event and options.get("mode") == "changed" and \
-       os.environ.get("GITHUB_EVENT_NAME") == "pull_request" and not result["jobs"]:
-        raise ValueError("PR MSVC matrix is empty; cannot approve a version repair")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Planned {len(result['versions'])} versions, {len(result['jobs'])} work units",
           file=sys.stderr)
-    for problem in result["blocked"]:
-        print(f"BLOCKED {problem['yaml']} {problem['package']}:{problem['triplet']}: "
-              + "; ".join(problem["errors"]), file=sys.stderr)
-    if result["blocked"]:
-        print("Unsupported requested feature combinations were excluded", file=sys.stderr)
     if args.github_output:
         location = os.environ.get("GITHUB_OUTPUT")
         if not location:
@@ -194,18 +172,6 @@ def main(argv: list[str] | None = None) -> None:
                         raise ValueError("Master requires --describe, --commit and --sha512 together")
                     snapshot = {"ref": args.describe, "commit": args.commit,
                                 "sha512": args.sha512}
-                selected_versions = None
-                if args.event and os.environ.get("GITHUB_EVENT_NAME") in ("pull_request", "push") and not args.version:
-                    from .events import event_options
-                    from .planner import changed_paths, impacted_versions
-                    options = event_options()
-                    changes = changed_paths(options["base"], options["head"])
-                    candidates = [v for v in versions() if has_source(v)]
-                    selected_versions = impacted_versions(changes, candidates)
-                    if impacted_versions(changes, ["master"]):
-                        selected_versions.append("master")
-                    if not selected_versions and os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
-                        raise ValueError("PR changed no buildable FFmpeg versions; refusing empty MSVC coverage")
                 if args.master_snapshot_file and args.master_snapshot_file.is_file():
                     pinned = json.loads(args.master_snapshot_file.read_text(encoding="utf-8"))
                     if snapshot is not None and pinned != snapshot:
@@ -214,8 +180,7 @@ def main(argv: list[str] | None = None) -> None:
                 targets = select_targets(arch=args.target_arch, license_=args.target_license)
                 requests, blocked = build_requests(version=args.version, history=args.history,
                                                    targets=targets,
-                                                   snapshot=snapshot,
-                                                   selected_versions=selected_versions, release_date=args.release_date)
+                                                   snapshot=snapshot, release_date=args.release_date)
                 jobs = scan_native_abis(requests, overlay=args.generated_root,
                                         binary=args.vcpkg_bin, evidence=args.abi_evidence)
                 result = {"schema": 3, "jobs": jobs, "blocked": blocked}

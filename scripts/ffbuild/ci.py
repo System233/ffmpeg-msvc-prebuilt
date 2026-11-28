@@ -36,12 +36,7 @@ def cache_request(kind: str, *, tag: str, triplet: str = "", abi: str = "",
 def _cache_outputs(request: dict, path: Path | None = None) -> None:
     with open(path or os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in request.items():
-            if isinstance(value, list):
-                value = "\n".join(value)
-            if isinstance(value, str) and "\n" in value:
-                output.write(key + "<<CACHE_KEYS\n" + value + "\nCACHE_KEYS\n")
-            else:
-                output.write(f"{key}={value}\n")
+            output.write(f"{key}={value}\n")
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -50,28 +45,18 @@ def write_json(path: Path, value: dict) -> None:
 
 
 def seed_plans(triplets, *, evidence: Path, output: Path,
-               target_evidence: Path | None = None, binary: Path | None = None,
-               read_plan: bool = False, expected: str | None = None,
-               cache_dir: Path | None = None) -> tuple[dict[str, str], str]:
-    from .seed import seed_identity, verify_target_coverage, load_seed_plan, verify_batch, require_seed_archives
+               target_evidence: Path | None = None,
+               dependency_batches: dict | None = None) -> tuple[dict[str, str], str]:
+    from .seed import seed_identity, verify_target_coverage
     from .native_abi import graph_digest
     plans = {}
     for triplet in triplets:
-        if read_plan:
-            plan = load_seed_plan(output, triplet, expected)
-            for index, batch in enumerate(plan["batches"]):
-                verify_batch(batch, triplet, binary=binary, evidence=evidence / triplet / f"direct-{index}")
-        else:
-            digest, plan = seed_identity(triplet=triplet, binary=binary, evidence=evidence / triplet)
-            if expected and digest != expected:
-                raise RuntimeError(f"Seed native ABI drift for {triplet}: planned {expected}, actual {digest}")
-        if cache_dir is not None:
-            require_seed_archives(plan, cache_dir)
+        _, plan = seed_identity(triplet=triplet, evidence=evidence / triplet,
+                                dependency_batches=dependency_batches)
         plans[triplet] = plan
     if target_evidence is not None:
         verify_target_coverage(plans, target_evidence)
-    if not read_plan:
-        write_json(output, plans)
+    write_json(output, plans)
     specs = sorted({spec for plan in plans.values() for batch in plan["batches"]
                     for spec in batch["specs"].values()})
     return {t: plan["key"] for t, plan in plans.items()}, graph_digest({"specs": specs})
@@ -80,7 +65,7 @@ def seed_plans(triplets, *, evidence: Path, output: Path,
 def plan_release(environ=None) -> dict:
     """One source-bound CI plan, written once after every native check succeeds."""
     from .targets import configured_triplets, select_targets, require_complete_targets
-    from .versions import generate_all, GENERATED_PORTS
+    from .versions import generate, generate_all, GENERATED_PORTS
     from .master import master_metadata
     from .native_abi import build_requests, scan_native_abis
     from .planner import plan_native, write_github_output
@@ -98,8 +83,14 @@ def plan_release(environ=None) -> dict:
     pin = {key: env["FFBUILD_" + key.upper()] for key in ("ref", "commit", "sha512")}
     if production:
         validate_catalog(Path("data"))
-    master = pin if version == "master" else master_metadata()
-    generate_all(master=master)
+    master = pin if version == "master" else None
+    if force:
+        master = master or master_metadata()
+        generate_all(master=master)
+    elif version == "master":
+        generate(version, source_version=pin["ref"], ref=pin["commit"], sha512=pin["sha512"])
+    else:
+        generate(version)
     triplets = configured_triplets()
     if "arm-windows" in triplets:
         patch_arm_sdk()
@@ -108,7 +99,8 @@ def plan_release(environ=None) -> dict:
     if blocked:
         raise ValueError(f"Unsupported native build targets: {blocked}")
     evidence = Path("abi-evidence")
-    jobs = scan_native_abis(requests, evidence=evidence / "targets")
+    dependency_batches = {}
+    jobs = scan_native_abis(requests, evidence=evidence / "targets", dependency_batches=dependency_batches)
     require_complete_targets(jobs, version=version, targets=targets)
     result = plan_native({"schema": 3, "jobs": jobs, "blocked": blocked},
                          state=None if force else PublishedState(directory=Path("data")), force=force)
@@ -117,12 +109,16 @@ def plan_release(environ=None) -> dict:
     result["request"] = dict(yaml=version, date=env["FFBUILD_DATE"],
                              repository_commit=env["GITHUB_SHA"], pr_head=env.get("PR_HEAD", ""),
                              pr_base=env.get("PR_BASE", ""), production=production,
-                             plan_attempt=int(env["GITHUB_RUN_ATTEMPT"]), seed_master=master, **pin)
+                             plan_attempt=int(env["GITHUB_RUN_ATTEMPT"]), **pin)
     keys, downloads = {}, ""
     if result["jobs"]:
+        if not force:
+            master = master or master_metadata()
+            generate_all(master=master)
+        result["request"]["seed_master"] = master
         keys, downloads = seed_plans(triplets, evidence=evidence / "seed",
                                     output=GENERATED_PORTS / "seed-plan.json",
-                                    target_evidence=evidence / "targets")
+                                    target_evidence=evidence / "targets", dependency_batches=dependency_batches)
         result["request"]["download_specs"] = downloads
     result["seed_keys"] = keys
     result["request"]["vcpkg_tag"] = env["VCPKG_TAG"]
@@ -137,8 +133,6 @@ def plan_release(environ=None) -> dict:
     write_json(Path("ffbuild-plan.json"), result)
     write_github_output(result, Path(env["GITHUB_OUTPUT"]))
     _cache_outputs({"plan_attempt": result["request"]["plan_attempt"],
-                    "seed_keys": json.dumps(keys, separators=(",", ":")),
-                    "download_specs": downloads,
                     "download_key": download.get("key", ""),
                     "download_prefix": download.get("prefix", ""),
                     "prepare_matrix": json.dumps([{"triplet": t, "abi": keys[t],
@@ -232,19 +226,7 @@ def main(argv: list[str] | None = None) -> None:
     submission = command.add_parser("submit-dependencies")
     submission.add_argument("--triplet")
     prepare = command.add_parser("prepare-host")
-    mode = prepare.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--triplet")
-    mode.add_argument("--configured", action="store_true")
-    seed = command.add_parser("seed-identity")
-    seed.add_argument("--triplet", action="append", required=True)
-    seed.add_argument("--evidence", type=Path, required=True)
-    seed.add_argument("--github-output", action="store_true")
-    seed.add_argument("--expected")
-    seed.add_argument("--cache-dir", type=Path)
-    seed.add_argument("--plan-file", type=Path, required=True)
-    seed.add_argument("--read-plan", action="store_true", help="Verify a previously emitted dependency plan")
-    seed.add_argument("--vcpkg-bin", type=Path)
-    seed.add_argument("--target-evidence", type=Path)
+    prepare.add_argument("--triplet", required=True)
     compare = command.add_parser("compare-abi")
     compare.add_argument("before", type=Path)
     compare.add_argument("after", type=Path)
@@ -280,8 +262,6 @@ def main(argv: list[str] | None = None) -> None:
         temp = os.environ["RUNNER_TEMP"]
         root = f"{temp}/ffbuild/vcpkg"
         values.update(VCPKG_ROOT=root, FFBUILD_CACHE_DIR=f"{temp}/ffbuild/vcpkg-cache",
-                      FFBUILD_REPAIR_CACHE=f"{temp}/ffbuild/vcpkg-cache",
-                      FFBUILD_DOWNLOADS_DIR=f"{root}/downloads",
                       FFBUILD_REPAIR_DIR=f"{temp}/ffheal")
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
             for key, value in values.items():
@@ -291,7 +271,7 @@ def main(argv: list[str] | None = None) -> None:
         if "GITHUB_OUTPUT" in os.environ:
             _cache_outputs({"vcpkg_tag": values["VCPKG_TAG"], "vcpkg_root": values["VCPKG_ROOT"],
                             "cache_dir": values["FFBUILD_CACHE_DIR"],
-                            "downloads_dir": values["FFBUILD_DOWNLOADS_DIR"],
+                            "downloads_dir": f"{root}/downloads",
                             "repair_dir": values["FFBUILD_REPAIR_DIR"]})
     elif args.command == "plan":
         plan_release()
@@ -309,17 +289,8 @@ def main(argv: list[str] | None = None) -> None:
         runtime = Path(os.environ.get("RUNNER_TEMP", str(Path(__file__).resolve().parents[2] / "_work"))) / "ffbuild"
         submit_dependencies(vcpkg_root=Path(os.environ.get("VCPKG_ROOT", str(runtime / "vcpkg"))), triplet=args.triplet)
     elif args.command == "prepare-host":
-        from .targets import configured_triplets
-        triplets = configured_triplets() if args.configured else (args.triplet,)
-        if "arm-windows" in triplets:
+        if args.triplet == "arm-windows":
             patch_arm_sdk()
-    elif args.command == "seed-identity":
-        keys, downloads = seed_plans(args.triplet, evidence=args.evidence, output=args.plan_file,
-                                     target_evidence=args.target_evidence, binary=args.vcpkg_bin,
-                                     read_plan=args.read_plan, expected=args.expected, cache_dir=args.cache_dir)
-        print(json.dumps(keys, sort_keys=True))
-        if args.github_output:
-            _cache_outputs({"seed_keys": json.dumps(keys, separators=(",", ":")), "download_specs": downloads})
     elif args.command == "compare-abi":
         from .native_abi import compare_abi_evidence
         report = json.dumps(compare_abi_evidence(args.before, args.after), indent=2)

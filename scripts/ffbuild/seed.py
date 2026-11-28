@@ -133,7 +133,8 @@ def _manifest_signature(manifest: dict, roots: tuple[str, ...]) -> str:
 
 
 def seed_identity(*, triplet: str, overlay: Path = GENERATED_PORTS,
-                  binary: Path | None = None, evidence: Path | None = None) -> tuple[str, dict]:
+                  binary: Path | None = None, evidence: Path | None = None,
+                  dependency_batches: dict | None = None) -> tuple[str, dict]:
     """Derive required ABI coverage from the actual generated version Ports."""
     if triplet not in TRIPLETS:
         raise ValueError(f"Unsupported FFmpeg Triplet: {triplet}")
@@ -154,20 +155,24 @@ def seed_identity(*, triplet: str, overlay: Path = GENERATED_PORTS,
             groups.setdefault(signature, []).append((name, target.package))
     original = []
     for index, group in enumerate(groups.values()):
+        observed = [dependency_batches[(name, triplet, package)] for name, package in group
+                    if dependency_batches is not None and (name, triplet, package) in dependency_batches]
+        if observed:
+            # Reuse actual native graphs, including any distinct observations;
+            # never substitute a synthetic feature union.
+            original.extend(observed)
+            continue
         name, package = group[0]
         specs: dict[str, str] = {}
         graph = native_abi_query([package, "ffmpeg-tester"], triplet,
                                  port_overlay=overlay / ffmpeg_port_name(name), binary=binary,
                                  specs=specs, evidence=evidence / f"target-{index}" if evidence else None)
-        batch = external_batch(graph, specs, triplet)
-        original.append(batch)
+        original.append(external_batch(graph, specs, triplet))
     batches = select_batches(original)
     # A direct native request must preserve the original graph exactly.
     for index, batch in enumerate(batches):
         verify_batch(batch, triplet, binary=binary,
                      evidence=evidence / f"direct-{index}" if evidence else None)
-    if _pairs(batches) != _pairs(original):
-        raise RuntimeError("Seed plan does not cover all required ABI pairs")
     result = {"triplet": triplet, "batches": batches}
     result["key"] = seed_hash(batches)
     return result["key"], result
@@ -353,21 +358,26 @@ def populate_cache(*, triplet: str, plan: dict, cache_dir: Path,
     change is handled by the current plan, never by comparison with old ZIPs.
     Native graph or build errors are not swallowed.
     """
-    options = dict(triplet=triplet, plan=plan, cache_dir=cache_dir,
-                   evidence=evidence, binary=binary, install_root=install_root)
-    if prefer_cache:
+    validate_plan(plan, triplet)
+    refreshed = False
+    for index, batch in enumerate(plan["batches"]):
+        current = {"triplet": triplet, "batches": [batch], "key": seed_hash([batch])}
+        options = dict(triplet=triplet, plan=current, cache_dir=cache_dir,
+                       evidence=evidence / f"batch-{index}" if evidence else None,
+                       binary=binary, install_root=install_root)
+        if prefer_cache:
+            try:
+                prepare_seed(**options, cache_only=True)
+                continue
+            except CacheUnavailable as exc:
+                print(f"Refreshing native dependency cache: {exc}", flush=True)
+                discard_damaged_archives(current, cache_dir, exc.abis)
         try:
-            prepare_seed(**options, cache_only=True)
-            return False
+            prepare_seed(**options, verify_after=True)
         except CacheUnavailable as exc:
-            print(f"Refreshing native dependency cache: {exc}", flush=True)
-            discard_damaged_archives(plan, cache_dir, exc.abis)
-    try:
-        prepare_seed(**options, verify_after=True)
-    except CacheUnavailable as exc:
-        # A fallback cache from an earlier ABI set can also contain damaged
-        # unchanged archives. Retry only if we actually removed a bad ZIP.
-        if not discard_damaged_archives(plan, cache_dir, exc.abis):
-            raise
-        prepare_seed(**options, verify_after=True)
-    return True
+            # Retry only the failed batch, and only after confirmed corruption.
+            if not discard_damaged_archives(current, cache_dir, exc.abis):
+                raise
+            prepare_seed(**options, verify_after=True)
+        refreshed = True
+    return refreshed

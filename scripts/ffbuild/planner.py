@@ -139,9 +139,6 @@ def write_github_output(result: dict, path: Path) -> None:
     job_ids = [job.get("id") for job in tasks if job.get("id") is not None]
     if len(job_ids) != len(set(job_ids)):
         raise ValueError("Duplicate CI job identity")
-    triplets = sorted({job["triplet"] for job in tasks})
     with path.open("a", encoding="utf-8") as output:
         output.write(f"matrix={json.dumps(tasks, separators=(',', ':'))}\n")
-        output.write(f"triplets={json.dumps(triplets, separators=(',', ':'))}\n")
-        output.write(f"count={len(tasks)}\n")
         output.write("publication_required=" + ("true" if result.get("publication_required", bool(tasks)) else "false") + "\n")
