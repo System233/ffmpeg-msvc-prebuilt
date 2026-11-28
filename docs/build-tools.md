@@ -417,3 +417,62 @@ checksum, CI recipe commit when available, and public dependency resource URLs
 and checksums from native vcpkg SPDX. These durable pointers improve source
 traceability without adding new ZIP members. They are not a corresponding
 source delivery mechanism or certification of LGPL relinking obligations.
+
+## CMake regression tests
+
+The shared Port still uses FFmpeg's normalized vcpkg pkg-config metadata,
+per-module dependency graph and topological cleanup. The installed Find module
+contains only relocatable module metadata. Native MSVC package dependencies
+are pinned to the matching configuration directory; bare system-library names
+remain the linker's responsibility. A public Shared Binary may use the Release
+DLLs for Debug, while an installed complete Debug Add-on selects Debug for
+every module. A native Static Port cannot fall back between configurations.
+
+The lightweight tests invoke production CMake (no full FFmpeg build).
+Use the strict parallel runner rather than serial unittest discovery:
+
+```powershell
+$env:PYTHONPATH = "scripts"
+python tests/run_cmake_contracts.py --tier quick --jobs 8
+```
+
+CMake and Ninja are required for consumer configuration tests; pkgconf is
+required for the actual production dependency-pipeline tests. Set
+`FFBUILD_TEST_PKGCONF` to a host pkgconf executable if it is not on PATH.
+On a Windows host with Visual Studio 2022, opt into a small real MSVC test:
+
+```powershell
+# Set the native prerequisites described in cmake-contract-baseline.md.
+python tests/run_cmake_contracts.py --tier native --jobs 8 --native-jobs 4
+```
+
+It builds real /MT and /MTd archives, links and executes all three consumer
+modes in both configurations, checks that a wrong CRT archive produces a
+linker error, and checks that a missing Debug dependency cannot silently
+resolve from Release. The full FFmpeg Native Tester and ZIP consumer checks
+remain separate end-to-end gates. No public Static SDK is introduced.
+The local static install retains its full third-party dependency graph.
+Shared SDK private link/package/compile flags are removed without changing
+public requirements. The paired Port checks actual feature and license
+evidence; the explicit version3 switch requires GPLv3/LGPLv3 (or nonfree
+when selected). Windows pkgconf variable-path quoting is normalized for
+FFmpeg's own .pc files and producer-side library resolution also handles
+the quoting in existing dependency .pc files.
+
+The parallel runner has an independent hard deadline for every test group
+(default 300 seconds; use --group-timeout for large real builds), and
+reports timeout/worker failure as unsuccessful evidence. SDK archive
+validation uses a space-containing extraction path and bounded subprocesses.
+Third-party packages' own pkg-config files are not rewritten: a direct
+PkgConfig consumer of a static install still depends on their metadata
+being valid. The generated CMake Config interface does not invoke pkgconf.
+
+New SDKs also support `find_package(FFmpeg CONFIG REQUIRED)` with
+`-DCMAKE_PREFIX_PATH=<sdk>`. CMake's generated version file preserves
+minimum-version matching and checks target pointer width when known.
+The Config and Module entries share the same target implementation;
+the Native Tester and extracted SDK consumer exercise both entry points.
+Previously released SDKs keep the original Find Module invocation.
+
+See [CMake black-box contract baseline](cmake-contract-baseline.md) for the
+pre-fix test matrix, native prerequisites, and deliberately failing contracts.

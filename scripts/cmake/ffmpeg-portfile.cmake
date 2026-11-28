@@ -38,6 +38,13 @@ if(DEFINED __FFMPEG_PORT_BASE_INCLUDED)
 endif()
 set(__FFMPEG_PORT_BASE_INCLUDED TRUE)
 
+# The installed Port and metadata contract is a paired Release/Debug SDK.
+# Fail before acquiring or compiling sources for unsupported single-config
+# triplets. Release-only public ZIPs are produced later by the packager.
+if(VCPKG_BUILD_TYPE)
+    message(FATAL_ERROR "FFmpeg Port requires both Release and Debug configurations (VCPKG_BUILD_TYPE must be unset)")
+endif()
+
 # Enforce feature/explicit-license constraints even for direct vcpkg install.
 include("${CMAKE_CURRENT_LIST_DIR}/../constraints.cmake")
 
@@ -50,6 +57,20 @@ macro(ffmpeg_feature _name)
             set(OPTIONS "${OPTIONS} ${_f}")
             string(TOUPPER "${_name}" _uc)
             set(ENABLE_${_uc} ON)
+            # Verify every explicit feature switch, including features
+            # which expand to several enable flags. Core libraries are
+            # checked through installed modules and licenses separately.
+            separate_arguments(_ff_feature_args UNIX_COMMAND "${_f}")
+            foreach(_ff_arg IN LISTS _ff_feature_args)
+                if(_ff_arg MATCHES "^--enable-([a-zA-Z0-9_-]+)$")
+                    set(_ff_feature_switch "${CMAKE_MATCH_1}")
+                    if(NOT _ff_feature_switch MATCHES "^(gpl|nonfree)$")
+                        string(REPLACE "-" "_" _ff_feature_macro "${_ff_feature_switch}")
+                        string(TOUPPER "${_ff_feature_macro}" _ff_feature_macro)
+                        list(APPEND _ff_requested_feature_macros "${_ff_feature_macro}")
+                    endif()
+                endif()
+            endforeach()
         endforeach()
     endif()
 endmacro()
@@ -439,12 +460,64 @@ set(OPTIONS "${OPTIONS} --pkg-config=\"${PKGCONFIG}\"")
 
 message(STATUS "Building Options: ${OPTIONS}")
 
+# Preserve the vcpkg helper's executable/PATH handling and its native path
+# separator. Isolate the search only for the MSVC target, not other platforms.
+macro(ffmpeg_setup_native_pkgconfig _config)
+    if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+        foreach(_envvar PKG_CONFIG_PATH PKG_CONFIG_LIBDIR PKG_CONFIG_SYSROOT_DIR)
+            if(DEFINED ENV{${_envvar}})
+                set(_ff_saved_env_${_envvar} "$ENV{${_envvar}}")
+            else()
+                unset(_ff_saved_env_${_envvar})
+            endif()
+            unset(ENV{${_envvar}})
+        endforeach()
+    endif()
+    if(VCPKG_DETECTED_MSVC)
+        if(DEFINED ENV{LIB})
+            set(_ff_saved_native_lib "$ENV{LIB}")
+        else()
+            unset(_ff_saved_native_lib)
+        endif()
+        if("${_config}" STREQUAL "DEBUG")
+            set(_ff_config_lib "${CURRENT_INSTALLED_DIR}/debug/lib")
+        else()
+            set(_ff_config_lib "${CURRENT_INSTALLED_DIR}/lib")
+        endif()
+        # MSVC /LIBPATH takes precedence over LIB. The default installed
+        # directory is a fallback; explicit .pc search order must win.
+        vcpkg_host_path_list(PREPEND ENV{LIB} "${_ff_config_lib}")
+    endif()
+    z_vcpkg_setup_pkgconfig_path(CONFIG ${_config})
+    if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+        set(ENV{PKG_CONFIG_LIBDIR} "$ENV{PKG_CONFIG_PATH}")
+    endif()
+endmacro()
+
+macro(ffmpeg_restore_native_pkgconfig)
+    z_vcpkg_restore_pkgconfig_path()
+    if(VCPKG_DETECTED_MSVC)
+        if(DEFINED _ff_saved_native_lib)
+            set(ENV{LIB} "${_ff_saved_native_lib}")
+        else()
+            unset(ENV{LIB})
+        endif()
+    endif()
+    if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+        foreach(_envvar PKG_CONFIG_PATH PKG_CONFIG_LIBDIR PKG_CONFIG_SYSROOT_DIR)
+            if(DEFINED _ff_saved_env_${_envvar})
+                set(ENV{${_envvar}} "${_ff_saved_env_${_envvar}}")
+            else()
+                unset(ENV{${_envvar}})
+            endif()
+        endforeach()
+    endif()
+endmacro()
+
 # ========== 17. Release build ==========
 
 if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
-    if(VCPKG_DETECTED_MSVC)
-        set(OPTIONS_RELEASE "${OPTIONS_RELEASE} --extra-ldflags=-libpath:\"${CURRENT_INSTALLED_DIR}/lib\"")
-    else()
+    if(NOT VCPKG_DETECTED_MSVC)
         set(OPTIONS_RELEASE "${OPTIONS_RELEASE} --extra-ldflags=-L\"${CURRENT_INSTALLED_DIR}/lib\"")
     endif()
     message(STATUS "Building Release Options: ${OPTIONS_RELEASE}")
@@ -470,7 +543,7 @@ if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
 
     configure_file("${FFMPEG_SHARED_DIR}/build.sh.in" "${BUILD_DIR}/build.sh" @ONLY)
 
-    z_vcpkg_setup_pkgconfig_path(CONFIG RELEASE)
+    ffmpeg_setup_native_pkgconfig(RELEASE)
 
     vcpkg_execute_required_process(
         COMMAND "${SHELL}" ./build.sh
@@ -479,15 +552,13 @@ if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
         SAVE_LOG_FILES ffbuild/config.log
     )
 
-    z_vcpkg_restore_pkgconfig_path()
+    ffmpeg_restore_native_pkgconfig()
 endif()
 
 # ========== 18. Debug build ==========
 
 if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
-    if(VCPKG_DETECTED_MSVC)
-        set(OPTIONS_DEBUG "${OPTIONS_DEBUG} --extra-ldflags=-libpath:\"${CURRENT_INSTALLED_DIR}/debug/lib\"")
-    else()
+    if(NOT VCPKG_DETECTED_MSVC)
         set(OPTIONS_DEBUG "${OPTIONS_DEBUG} --extra-ldflags=-L\"${CURRENT_INSTALLED_DIR}/debug/lib\"")
     endif()
     message(STATUS "Building Debug Options: ${OPTIONS_DEBUG}")
@@ -513,7 +584,7 @@ if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
 
     configure_file("${FFMPEG_SHARED_DIR}/build.sh.in" "${BUILD_DIR}/build.sh" @ONLY)
 
-    z_vcpkg_setup_pkgconfig_path(CONFIG DEBUG)
+    ffmpeg_setup_native_pkgconfig(DEBUG)
 
     vcpkg_execute_required_process(
         COMMAND "${SHELL}" ./build.sh
@@ -522,8 +593,35 @@ if(NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
         SAVE_LOG_FILES ffbuild/config.log
     )
 
-    z_vcpkg_restore_pkgconfig_path()
+    ffmpeg_restore_native_pkgconfig()
 endif()
+
+# Verify actual Configure results for the requested feature switches.
+# FFmpeg emits CONFIG_* for library, hardware and program options. Its
+# thread switches use HAVE_*; SDL2 used HAVE_SDL2 on older releases.
+# Prefer CONFIG_SDL2 when present rather than masking an explicit zero.
+list(REMOVE_DUPLICATES _ff_requested_feature_macros)
+foreach(_cfg rel dbg)
+    set(_ff_config_text "")
+    foreach(_header config.h config_components.h)
+        set(_ff_config_file "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-${_cfg}/${_header}")
+        if(EXISTS "${_ff_config_file}")
+            file(READ "${_ff_config_file}" _ff_config_part)
+            string(APPEND _ff_config_text "\n${_ff_config_part}")
+        endif()
+    endforeach()
+    foreach(_feature IN LISTS _ff_requested_feature_macros)
+        set(_macro "CONFIG_${_feature}")
+        if(_feature MATCHES "^(PTHREADS|W32THREADS)$")
+            set(_macro "HAVE_${_feature}")
+        elseif(_feature STREQUAL "SDL2" AND NOT _ff_config_text MATCHES "(^|\n)#[ \t]*define[ \t]+CONFIG_SDL2[ \t]+")
+            set(_macro HAVE_SDL2)
+        endif()
+        if(NOT _ff_config_text MATCHES "(^|\n)#[ \t]*define[ \t]+${_macro}[ \t]+1([ \t\r\n]|$)")
+            message(FATAL_ERROR "FFmpeg ${_cfg}: requested feature not enabled (${_macro})")
+        endif()
+    endforeach()
+endforeach()
 
 # ========== 19. Windows: DEF → LIB generation ==========
 
@@ -634,23 +732,69 @@ endif()
 
 vcpkg_fixup_pkgconfig()
 
+# BEGIN native pkg-config path normalization
+# Native Windows pkgconf escapes spaces when expanding path variables.
+# Quoting a variable-only path flag causes a second escape, which breaks
+# shell tokenization and CMake FindPkgConfig. Only unwrap these exact tokens;
+# leave literal paths, definitions and other quoted flags untouched.
+if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+    file(GLOB _ff_path_pc_files
+        "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/lib*.pc"
+        "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/lib*.pc")
+    foreach(_ff_path_pc IN LISTS _ff_path_pc_files)
+        file(READ "${_ff_path_pc}" _ff_path_text)
+        string(REGEX REPLACE [[\"(-[LI]\$\{[a-zA-Z_][a-zA-Z0-9_]*\}(/[a-zA-Z0-9_./+-]+)?)\"]]
+            [[\1]] _ff_path_text "${_ff_path_text}")
+        file(WRITE "${_ff_path_pc}" "${_ff_path_text}")
+    endforeach()
+endif()
+# END native pkg-config path normalization
+
 # A shared FFmpeg DLL already links its private dependencies. Do not expose
 # their static archives through the public import-library SDK. Keep the
-# module graph (Requires/Requires.private), public Libs and Cflags intact.
+# internal module graph, public Requires, Libs and Cflags intact.
 # The native static Port still needs its full private dependency metadata.
 # BEGIN shared pkg-config normalization
 if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-    file(GLOB shared_pc_files
-        "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/*.pc"
-        "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/*.pc"
-    )
-    foreach(pc_file IN LISTS shared_pc_files)
-        file(READ "${pc_file}" pc_content)
-        # FFmpeg emits Libs.private as one logical line. Fold continuations
-        # before clearing it, so no private flags can survive a wrapped line.
-        string(REPLACE "\\\n" " " pc_content "${pc_content}")
-        string(REGEX REPLACE "(^|\n)Libs[.]private:[^\n]*" "\\1Libs.private:" pc_content "${pc_content}")
-        file(WRITE "${pc_file}" "${pc_content}")
+    foreach(_ff_pc_dir "${CURRENT_PACKAGES_DIR}/lib/pkgconfig" "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig")
+        file(GLOB shared_pc_files "${_ff_pc_dir}/*.pc")
+        # Preserve known FFmpeg module references even if the corresponding
+        # .pc is missing; the downstream graph validation must reject that.
+        set(_ff_internal_packages libavutil libavcodec libavformat libavdevice
+            libavfilter libswscale libswresample libavresample libpostproc)
+        foreach(pc_file IN LISTS shared_pc_files)
+            get_filename_component(_ff_pc_name "${pc_file}" NAME_WE)
+            list(APPEND _ff_internal_packages "${_ff_pc_name}")
+        endforeach()
+        foreach(pc_file IN LISTS shared_pc_files)
+            file(READ "${pc_file}" pc_content)
+            string(REGEX REPLACE "[ \t]*\\\\\n[ \t]*" " " pc_content "${pc_content}")
+            string(REGEX REPLACE "(^|\n)Libs[.]private:[^\n]*" "\\1Libs.private:" pc_content "${pc_content}")
+            # Cflags.private is only needed when consuming a static archive.
+            string(REGEX REPLACE "(^|\n)Cflags[.]private:[^\n]*" "\\1Cflags.private:" pc_content "${pc_content}")
+            # Preserve versioned edges between installed FFmpeg modules.
+            # Private third-party packages have already been linked into
+            # the DLL in this project's static-dependency build.
+            if(pc_content MATCHES "(^|\n)Requires[.]private:[ \t]*([^\n]*)")
+                set(_ff_old_requires "${CMAKE_MATCH_0}")
+                set(_ff_leading "${CMAKE_MATCH_1}")
+                set(_ff_raw_requires "${CMAKE_MATCH_2}")
+                string(REGEX MATCHALL "[^ \t,<>!=]+([ \t]*[<>=!]+[ \t]*[^ \t,]+)?" _ff_requirements "${_ff_raw_requires}")
+                set(_ff_kept "")
+                foreach(_ff_requirement IN LISTS _ff_requirements)
+                    string(REGEX MATCH "^[^ \t,<>!=]+" _ff_pc_name "${_ff_requirement}")
+                    if(_ff_pc_name IN_LIST _ff_internal_packages)
+                        list(APPEND _ff_kept "${_ff_requirement}")
+                    endif()
+                endforeach()
+                list(JOIN _ff_kept ", " _ff_kept)
+                if(_ff_kept)
+                    set(_ff_kept " ${_ff_kept}")
+                endif()
+                string(REPLACE "${_ff_old_requires}" "${_ff_leading}Requires.private:${_ff_kept}" pc_content "${pc_content}")
+            endif()
+            file(WRITE "${pc_file}" "${pc_content}")
+        endforeach()
     endforeach()
 endif()
 # END shared pkg-config normalization
@@ -658,18 +802,50 @@ endif()
 # ========== 23. Handle dependencies via pkgconfig ==========
 #
 # Per-module dependency resolution:
-#   1. Query pkgconf for --print-requires-private (DEPS) and --libs --static (LIBRARIES)
+#   1. Query normalized vcpkg .pc files for module edges and --libs
+#      (vcpkg_fixup_pkgconfig folds private fields into static public fields).
 #   2. Separate internal FFmpeg deps from external system deps
 #   3. Topological sort modules by internal deps
 #   4. Remove transitive external deps (each module keeps only its direct deps)
 #   5. Generate template variables for FindFFmpeg.cmake
 
-set(FFMPEG_CORE_SHORT_NAMES avutil avcodec avformat avfilter avdevice swresample swscale)
+# The requested modules must exist; discover additional modules emitted by
+# upstream (including postproc and avresample on historical releases).
+# BEGIN module dependency metadata
+set(_ff_requested_modules "${FFMPEG_PKGCONFIG_MODULES}")
+file(GLOB _ff_release_pc RELATIVE "${CURRENT_PACKAGES_DIR}/lib/pkgconfig"
+    "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/lib*.pc")
+set(FFMPEG_PKGCONFIG_MODULES "")
+foreach(_pc IN LISTS _ff_release_pc)
+    string(REGEX REPLACE "[.]pc$" "" _pkg "${_pc}")
+    if(NOT _pkg MATCHES "^lib[a-z0-9_]+$")
+        message(FATAL_ERROR "Unexpected FFmpeg pkg-config module: ${_pkg}")
+    endif()
+    if(NOT EXISTS "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/${_pc}")
+        message(FATAL_ERROR "Missing Debug pkg-config module: ${_pkg}")
+    endif()
+    list(APPEND FFMPEG_PKGCONFIG_MODULES "${_pkg}")
+endforeach()
+foreach(_pkg IN LISTS _ff_requested_modules)
+    if(NOT _pkg IN_LIST FFMPEG_PKGCONFIG_MODULES)
+        message(FATAL_ERROR "Requested FFmpeg module missing: ${_pkg}")
+    endif()
+endforeach()
+file(GLOB _ff_debug_pc RELATIVE "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig"
+    "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/lib*.pc")
+if(NOT "${_ff_release_pc}" STREQUAL "${_ff_debug_pc}")
+    message(FATAL_ERROR "Release/Debug FFmpeg module sets differ")
+endif()
+set(FFMPEG_CORE_SHORT_NAMES "")
+foreach(_pkg IN LISTS FFMPEG_PKGCONFIG_MODULES)
+    string(REGEX REPLACE "^lib" "" _name "${_pkg}")
+    list(APPEND FFMPEG_CORE_SHORT_NAMES "${_name}")
+endforeach()
 
 find_program(PKGCONF pkgconf
     PATHS "${CURRENT_HOST_INSTALLED_DIR}/tools/pkgconf" NO_DEFAULT_PATH)
 
-# Wrapper: sets PKG_CONFIG_PATH before pkgconf, restores after
+# Wrapper: isolated per-invocation pkgconf search environment.
 function(ffmpeg_pkgconf_run out_var config)
     if(config STREQUAL "DEBUG")
         set(_ff_prefix "debug/")
@@ -678,39 +854,62 @@ function(ffmpeg_pkgconf_run out_var config)
     else()
         message(FATAL_ERROR "Unknown pkg-config build configuration: ${config}")
     endif()
-    set(_ff_bak "$ENV{PKG_CONFIG_PATH}")
-    set(ENV{PKG_CONFIG_PATH}
-        "${CURRENT_PACKAGES_DIR}/${_ff_prefix}lib/pkgconfig${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_INSTALLED_DIR}/${_ff_prefix}lib/pkgconfig")
-    execute_process(
-        COMMAND "${PKGCONF}" ${ARGN}
-        OUTPUT_VARIABLE _ff_result
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        COMMAND_ERROR_IS_FATAL ANY
-    )
-    set(ENV{PKG_CONFIG_PATH} "${_ff_bak}")
+    # Mirror vcpkg's per-configuration library/share search order. For
+    # MSVC package metadata, exclude unrelated host/system .pc directories.
+    set(_ff_paths "${CURRENT_PACKAGES_DIR}/${_ff_prefix}lib/pkgconfig")
+    string(APPEND _ff_paths "${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_PACKAGES_DIR}/share/pkgconfig")
+    string(APPEND _ff_paths "${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_INSTALLED_DIR}/${_ff_prefix}lib/pkgconfig")
+    string(APPEND _ff_paths "${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_INSTALLED_DIR}/share/pkgconfig")
+    set(_ff_env "PKG_CONFIG_PATH=${_ff_paths}")
+    if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+        # Use explicit environment arguments, not a persistent global change.
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E env --unset=PKG_CONFIG_SYSROOT_DIR "${_ff_env}"
+                "PKG_CONFIG_LIBDIR=${_ff_paths}" "${PKGCONF}" ${ARGN}
+            OUTPUT_VARIABLE _ff_result
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    else()
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}" -E env "${_ff_env}" "${PKGCONF}" ${ARGN}
+            OUTPUT_VARIABLE _ff_result
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    endif()
     set("${out_var}" "${_ff_result}" PARENT_SCOPE)
 endfunction()
 
-# 1a. DEPS via pkgconf <mod> --print-requires-private
-foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
+# 1a. Derive internal module graph independently in both configurations.
+function(ffmpeg_module_deps out pkgmod config)
     string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
-    ffmpeg_pkgconf_run(deps_raw RELEASE "${pkgmod}" --print-requires --print-requires-private )
-    set(FFMPEG_${short_name}_DEPS "")
-    if(NOT deps_raw STREQUAL "")
+    set(deps "")
+    foreach(query --print-requires --print-requires-private)
+        ffmpeg_pkgconf_run(deps_raw "${config}" "${pkgmod}" "${query}")
         string(REPLACE "\n" ";" lines "${deps_raw}")
         foreach(line IN LISTS lines)
             string(STRIP "${line}" line)
             if(NOT line STREQUAL "")
-                string(REGEX REPLACE "^([^ ]+).*$" "\\1" name "${line}")
-                string(STRIP "${name}" name)
+                string(REGEX REPLACE "^([^ \t]+).*$" "\\1" name "${line}")
                 string(REGEX REPLACE "^lib" "" name "${name}")
                 if(name IN_LIST FFMPEG_CORE_SHORT_NAMES AND NOT name STREQUAL short_name)
-                    list(APPEND FFMPEG_${short_name}_DEPS "${name}")
+                    list(APPEND deps "${name}")
                 endif()
             endif()
         endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES deps)
+    list(SORT deps)
+    set("${out}" "${deps}" PARENT_SCOPE)
+endfunction()
+foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
+    string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
+    ffmpeg_module_deps(FFMPEG_${short_name}_DEPS "${pkgmod}" RELEASE)
+    ffmpeg_module_deps(_debug_deps "${pkgmod}" DEBUG)
+    if(NOT "${FFMPEG_${short_name}_DEPS}" STREQUAL "${_debug_deps}")
+        message(FATAL_ERROR "Release/Debug internal module graph differs: ${pkgmod}")
     endif()
-    list(REMOVE_DUPLICATES FFMPEG_${short_name}_DEPS)
 endforeach()
 
 # 1b. LIBRARIES via pkgconf --libs
@@ -722,29 +921,231 @@ foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
     endforeach()
 endforeach()
 
-# 2. Parse LIBRARIES from --libs --static: strip flags, filter out internal modules
-foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
-    string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
-    set(_skip_list ${FFMPEG_${short_name}_DEPS} ${short_name})
-    foreach(cfg RELEASE DEBUG)
-        set(libs_str "${PKG_${pkgmod}_LIBS_${cfg}}")
-        separate_arguments(libs UNIX_COMMAND "${libs_str}")
-        list(FILTER libs EXCLUDE REGEX "^-F.+")
-        list(FILTER libs EXCLUDE REGEX "^-framework$")
-        list(FILTER libs EXCLUDE REGEX "^-L.+")
-        list(FILTER libs EXCLUDE REGEX "^-libpath:.+")
-        list(TRANSFORM libs REPLACE "^-Wl,-framework," "-l")
-        list(FILTER libs EXCLUDE REGEX "^-Wl,.+")
-        list(TRANSFORM libs REPLACE "^-l" "")
-        if(VCPKG_TARGET_IS_WINDOWS)
-            list(TRANSFORM libs TOLOWER)
+set(_ff_installed_archives "")
+if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+    get_filename_component(_ff_triplet "${CURRENT_INSTALLED_DIR}" NAME)
+    file(GLOB _ff_lists "${CURRENT_INSTALLED_DIR}/../vcpkg/info/*_${_ff_triplet}.list")
+    foreach(_ff_list IN LISTS _ff_lists)
+        file(STRINGS "${_ff_list}" _ff_files
+            REGEX "^${_ff_triplet}/(debug/)?lib/.+[.][Ll][Ii][Bb]$")
+        foreach(_ff_file IN LISTS _ff_files)
+            string(REGEX REPLACE "^${_ff_triplet}/" "" _ff_file "${_ff_file}")
+            string(TOLOWER "${_ff_file}" _ff_file)
+            list(APPEND _ff_installed_archives "${_ff_file}")
+        endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES _ff_installed_archives)
+endif()
+
+
+# Compare normalized paths case-insensitively for Windows, but preserve the
+# spelling of the actual filename and all non-path linker arguments.
+function(ffmpeg_relative_to out path base)
+    cmake_path(NORMAL_PATH path)
+    cmake_path(NORMAL_PATH base)
+    if(CMAKE_HOST_WIN32)
+        string(TOLOWER "${path}" path)
+        string(TOLOWER "${base}" base)
+    endif()
+    cmake_path(IS_PREFIX base "${path}" NORMALIZE inside)
+    if(inside)
+        cmake_path(RELATIVE_PATH path BASE_DIRECTORY "${base}" OUTPUT_VARIABLE relative)
+        set("${out}" "${relative}" PARENT_SCOPE)
+    else()
+        set("${out}" "" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(ffmpeg_classify_library out name config)
+    if(NOT VCPKG_TARGET_IS_WINDOWS OR VCPKG_TARGET_IS_MINGW)
+        set("${out}" "${name}" PARENT_SCOPE)
+        return()
+    endif()
+    if(config STREQUAL "DEBUG")
+        set(prefix "debug/")
+        set(other "")
+    else()
+        set(prefix "")
+        set(other "debug/")
+    endif()
+    set(_config_root "${CURRENT_INSTALLED_DIR}/${prefix}lib")
+    set(_opposite_root "${CURRENT_INSTALLED_DIR}/${other}lib")
+    cmake_path(CONVERT "$ENV{LIB}" TO_CMAKE_PATH_LIST _toolchain_dirs NORMALIZE)
+    if(IS_ABSOLUTE "${name}")
+        ffmpeg_relative_to(_relative "${name}" "${_config_root}")
+        if(_relative AND EXISTS "${name}" AND NOT IS_DIRECTORY "${name}")
+            set("${out}" "vcpkg-lib:${_relative}" PARENT_SCOPE)
+            return()
         endif()
-        set(external "")
-        foreach(lib IN LISTS libs)
-            if(NOT lib IN_LIST _skip_list)
-                list(APPEND external "${lib}")
+        ffmpeg_relative_to(_relative "${name}" "${_opposite_root}")
+        if(_relative)
+            message(FATAL_ERROR "${config} dependency ${name} belongs to the opposite configuration")
+        endif()
+        foreach(dir IN LISTS _toolchain_dirs)
+            ffmpeg_relative_to(_relative "${name}" "${dir}")
+            if(_relative AND NOT _relative MATCHES "/" AND EXISTS "${name}")
+                set("${out}" "${_relative}" PARENT_SCOPE)
+                return()
             endif()
         endforeach()
+        message(FATAL_ERROR "${config} dependency ${name} is missing or an external absolute library, not relocatable")
+    endif()
+    set(candidates "${name}")
+    if(name MATCHES "^:")
+        string(SUBSTRING "${name}" 1 -1 candidates)
+    elseif(NOT name MATCHES "[.][Ll][Ii][Bb]$")
+        set(candidates "${name}.lib;lib${name}.lib")
+    endif()
+    # Preserve the effective pkg-config search order. Search directories
+    # apply to the whole link line; a manual-link archive is usable only
+    # when the metadata explicitly selects its directory.
+    set(_dirs ${ARGN} "${_config_root}")
+    list(REMOVE_DUPLICATES _dirs)
+    foreach(dir IN LISTS _dirs)
+        foreach(candidate IN LISTS candidates)
+            if(EXISTS "${dir}/${candidate}" AND NOT IS_DIRECTORY "${dir}/${candidate}")
+                ffmpeg_relative_to(_relative "${dir}/${candidate}" "${_config_root}")
+                if(_relative)
+                    set("${out}" "vcpkg-lib:${_relative}" PARENT_SCOPE)
+                    return()
+                endif()
+                # A module's own archive is filtered earlier; no other
+                # package-build paths may escape into the installed SDK.
+                ffmpeg_relative_to(_relative "${dir}/${candidate}" "${_opposite_root}")
+                if(_relative)
+                    message(FATAL_ERROR "${config} dependency ${name} selects the opposite configuration search directory")
+                endif()
+                foreach(_toolchain_dir IN LISTS _toolchain_dirs)
+                    ffmpeg_relative_to(_relative "${dir}/${candidate}" "${_toolchain_dir}")
+                    if(_relative AND NOT _relative MATCHES "/")
+                        set("${out}" "${name}" PARENT_SCOPE)
+                        return()
+                    endif()
+                endforeach()
+                message(FATAL_ERROR "${config} dependency ${name} selects an external library: ${dir}")
+            endif()
+            ffmpeg_relative_to(_relative "${dir}/${candidate}" "${_config_root}")
+            if(_relative)
+                string(TOLOWER "${prefix}lib/${_relative}" _record)
+                if(_record IN_LIST _ff_installed_archives)
+                    message(FATAL_ERROR "${config} dependency ${name} is recorded by vcpkg but its archive is missing")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+    foreach(candidate IN LISTS candidates)
+        string(TOLOWER "${other}lib/${candidate}" _record)
+        if(EXISTS "${_opposite_root}/${candidate}" OR _record IN_LIST _ff_installed_archives)
+            message(FATAL_ERROR "${config} dependency ${name} exists only in the opposite configuration")
+        endif()
+        foreach(dir IN LISTS _toolchain_dirs)
+            if(EXISTS "${dir}/${candidate}" AND NOT IS_DIRECTORY "${dir}/${candidate}")
+                # Retain the portable linker name, never the SDK's
+                # machine-local absolute path.
+                set("${out}" "${name}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    endforeach()
+    message(FATAL_ERROR "${config} dependency library ${name} not found in the installed configuration or MSVC LIB search path")
+endfunction()
+
+# 2. Parse normalized --libs: strip build-root flags, filter out internal modules
+foreach(pkgmod IN LISTS FFMPEG_PKGCONFIG_MODULES)
+    string(REGEX REPLACE "^lib" "" short_name "${pkgmod}")
+    set(_skip_list ${FFMPEG_CORE_SHORT_NAMES})
+    set(_closure "")
+    set(_pending ${FFMPEG_${short_name}_DEPS})
+    while(_pending)
+        list(POP_FRONT _pending _dep)
+        if(NOT _dep IN_LIST _closure)
+            list(APPEND _closure "${_dep}")
+            list(APPEND _pending ${FFMPEG_${_dep}_DEPS})
+        endif()
+    endwhile()
+    foreach(cfg RELEASE DEBUG)
+        set(libs_str "${PKG_${pkgmod}_LIBS_${cfg}}")
+        # Installed third-party .pc files may still contain the quotes
+        # introduced by vcpkg. Decode pkgconf's extra space escape before
+        # interpreting the library search order; do not mutate dependencies.
+        if(CMAKE_HOST_WIN32 AND VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+            string(REPLACE [[\\ ]] [[\ ]] libs_str "${libs_str}")
+        endif()
+        separate_arguments(libs UNIX_COMMAND "${libs_str}")
+        set(external "")
+        if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+            set(_search_dirs "")
+            set(_expect_dir FALSE)
+            foreach(_token IN LISTS libs)
+                if(_expect_dir)
+                    list(APPEND _search_dirs "${_token}")
+                    set(_expect_dir FALSE)
+                elseif(_token STREQUAL "-L")
+                    set(_expect_dir TRUE)
+                elseif(_token MATCHES "^(-L|-libpath:|/LIBPATH:)(.+)$")
+                    list(APPEND _search_dirs "${CMAKE_MATCH_2}")
+                endif()
+            endforeach()
+            set(_expect_dir FALSE)
+            foreach(lib IN LISTS libs)
+                if(_expect_dir)
+                    set(_expect_dir FALSE)
+                    continue()
+                elseif(lib STREQUAL "-L")
+                    set(_expect_dir TRUE)
+                    continue()
+                elseif(lib MATCHES "^(-L|-libpath:|/LIBPATH:).+")
+                    continue()
+                endif()
+                if(lib MATCHES "^-Wl,(.+)$")
+                    # MSVC linker options are not archive names. Preserve
+                    # case and pass '-' options via the legacy link list too.
+                    string(REPLACE "," ";" _options "${CMAKE_MATCH_1}")
+                    foreach(_option IN LISTS _options)
+                        if(_option MATCHES "^/(.+)$")
+                            set(_option "-${CMAKE_MATCH_1}")
+                        endif()
+                        list(APPEND external "${_option}")
+                    endforeach()
+                    continue()
+                elseif(lib MATCHES "^/[A-Za-z][A-Za-z0-9_-]*:" AND NOT IS_ABSOLUTE "${lib}")
+                    string(REGEX REPLACE "^/" "-" lib "${lib}")
+                    list(APPEND external "${lib}")
+                    continue()
+                endif()
+                string(REGEX REPLACE "^-l" "" lib "${lib}")
+                string(TOLOWER "${lib}" _lower)
+                if(_lower IN_LIST _skip_list)
+                    if(NOT _lower STREQUAL short_name AND NOT _lower IN_LIST _closure)
+                        message(FATAL_ERROR "${pkgmod} links FFmpeg module ${lib} absent from its dependency graph")
+                    endif()
+                else()
+                    ffmpeg_classify_library(_entry "${lib}" "${cfg}" ${_search_dirs})
+                    list(APPEND external "${_entry}")
+                endif()
+            endforeach()
+        else()
+            # Preserve the original non-MSVC metadata behavior.
+            list(FILTER libs EXCLUDE REGEX "^-F.+")
+            list(FILTER libs EXCLUDE REGEX "^-framework$")
+            list(FILTER libs EXCLUDE REGEX "^-L.+")
+            list(FILTER libs EXCLUDE REGEX "^-libpath:.+")
+            list(TRANSFORM libs REPLACE "^-Wl,-framework," "-l")
+            list(FILTER libs EXCLUDE REGEX "^-Wl,.+")
+            list(TRANSFORM libs REPLACE "^-l" "")
+            if(VCPKG_TARGET_IS_WINDOWS)
+                list(TRANSFORM libs TOLOWER)
+            endif()
+            foreach(lib IN LISTS libs)
+                if(lib IN_LIST _skip_list)
+                    if(NOT lib STREQUAL short_name AND NOT lib IN_LIST _closure)
+                        message(FATAL_ERROR "${pkgmod} links FFmpeg module ${lib} absent from its dependency graph")
+                    endif()
+                else()
+                    list(APPEND external "${lib}")
+                endif()
+            endforeach()
+        endif()
         list(REMOVE_DUPLICATES external)
         set(FFMPEG_${short_name}_LIBRARIES_${cfg} "${external}")
     endforeach()
@@ -810,36 +1211,67 @@ foreach(mod IN LISTS FFMPEG_TOPO_ORDER)
     message(STATUS "FFMPEG_${mod}_LIBRARIES_DEBUG: ${FFMPEG_${mod}_LIBRARIES_DEBUG}")
 endforeach()
 
-# 6. Generate template variables for FindFFmpeg.cmake
-# Pre-initialize all 7 core modules so @ONLY substitution never sees undefined vars
-foreach(short_name IN LISTS FFMPEG_CORE_SHORT_NAMES)
-    string(TOUPPER "${short_name}" uc)
-    set(FFMPEG_DEP_${uc}_RELEASE_LIST "")
-    set(FFMPEG_DEP_${uc}_DEBUG_LIST "")
-    set(FFMPEG_DEP_${uc}_DEPS_LIST "")
-endforeach()
-# Override with actual values from enabled modules
-foreach(mod IN LISTS _enabled_modules)
-    string(TOUPPER "${mod}" uc)
-    set(FFMPEG_DEP_${uc}_RELEASE_LIST "${FFMPEG_${mod}_LIBRARIES_RELEASE}")
-    set(FFMPEG_DEP_${uc}_DEBUG_LIST "${FFMPEG_${mod}_LIBRARIES_DEBUG}")
-    set(FFMPEG_DEP_${uc}_DEPS_LIST "${FFMPEG_${mod}_DEPS}")
-endforeach()
-
-# Backward-compatible aggregate (order-preserving deduplicated union)
-foreach(cfg RELEASE DEBUG)
-    set(FFMPEG_DEP_ALL_${cfg} "")
-    foreach(mod IN LISTS FFMPEG_TOPO_ORDER)
-        list(APPEND FFMPEG_DEP_ALL_${cfg} ${FFMPEG_${mod}_LIBRARIES_${cfg}})
+# 6. Encode actual vcpkg library files as configuration-relative references.
+# MSVC system libraries remain names for the linker.  A missing library in
+# one configuration must not be resolved from the other configuration.
+# The installed file inventory also identifies a dependency whose archive
+# was removed after installation. Do not scan manual-link directories by
+# basename: vcpkg intentionally excludes them from automatic linking.
+set(FFMPEG_MODULES "${FFMPEG_TOPO_ORDER}")
+set(FFMPEG_MODULE_METADATA "")
+foreach(mod IN LISTS FFMPEG_MODULES)
+    ffmpeg_pkgconf_run(_version RELEASE --modversion "lib${mod}")
+    ffmpeg_pkgconf_run(_debug_version DEBUG --modversion "lib${mod}")
+    if(NOT _version MATCHES "^[0-9]+[.][0-9]+[.][0-9]+$" OR NOT _version STREQUAL _debug_version)
+        message(FATAL_ERROR "Invalid or inconsistent FFmpeg module version: ${mod}")
+    endif()
+    if(mod STREQUAL "postproc")
+        set(_header "postprocess.h")
+    else()
+        set(_header "${mod}.h")
+    endif()
+    if(NOT EXISTS "${CURRENT_PACKAGES_DIR}/include/lib${mod}/${_header}")
+        message(FATAL_ERROR "Missing FFmpeg public header: lib${mod}/${_header}")
+    endif()
+    foreach(cfg RELEASE DEBUG)
+        set(_metadata_${cfg} "${FFMPEG_${mod}_LIBRARIES_${cfg}}")
     endforeach()
-    list(REVERSE FFMPEG_DEP_ALL_${cfg})
-    list(REMOVE_DUPLICATES FFMPEG_DEP_ALL_${cfg})
-    list(REVERSE FFMPEG_DEP_ALL_${cfg})
+    set(_metadata_VERSION "${_version}")
+    set(FFMPEG_${mod}_MODULE_VERSION "${_version}")
+    set(_metadata_HEADER "${_header}")
+    set(_metadata_DEPS "${FFMPEG_${mod}_DEPS}")
+    foreach(field VERSION HEADER DEPS RELEASE DEBUG)
+        # Literal bracket arguments prevent expansion of generated data.
+        if(_metadata_${field} MATCHES "\\]==\\]")
+            message(FATAL_ERROR "Unsupported FFmpeg metadata delimiter")
+        endif()
+        string(APPEND FFMPEG_MODULE_METADATA
+            "set(_ff_${mod}_${field} [==[${_metadata_${field}}]==])\n")
+    endforeach()
 endforeach()
-set(FFMPEG_DEPENDENCIES_RELEASE "${FFMPEG_DEP_ALL_RELEASE}")
-set(FFMPEG_DEPENDENCIES_DEBUG "${FFMPEG_DEP_ALL_DEBUG}")
-message(STATUS "Aggregate dependencies (release): ${FFMPEG_DEPENDENCIES_RELEASE}")
-message(STATUS "Aggregate dependencies (debug):   ${FFMPEG_DEPENDENCIES_DEBUG}")
+# END module dependency metadata
+
+# This is a native paired Port, not an extracted public Binary SDK.
+# Validate its actual MSVC install layout after DEF conversion and fixup.
+if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+    foreach(_mod IN LISTS FFMPEG_MODULES)
+        string(REGEX MATCH "^[0-9]+" _major "${FFMPEG_${_mod}_MODULE_VERSION}")
+        foreach(_cfg RELEASE DEBUG)
+            set(_prefix "${CURRENT_PACKAGES_DIR}")
+            if(_cfg STREQUAL "DEBUG")
+                string(APPEND _prefix "/debug")
+            endif()
+            if(NOT EXISTS "${_prefix}/lib/${_mod}.lib")
+                if(NOT _cfg STREQUAL "DEBUG" OR NOT EXISTS "${_prefix}/lib/${_mod}d.lib")
+                    message(FATAL_ERROR "FFmpeg ${_cfg}: missing ${_mod} library/archive")
+                endif()
+            endif()
+            if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic" AND NOT EXISTS "${_prefix}/bin/${_mod}-${_major}.dll")
+                message(FATAL_ERROR "FFmpeg ${_cfg}: missing ${_mod} DLL")
+            endif()
+        endforeach()
+    endforeach()
+endif()
 
 # ========== 24. Version extraction ==========
 
@@ -867,47 +1299,41 @@ function(extract_regex_from_file out)
     set("${out}" "${CMAKE_MATCH_1}" PARENT_SCOPE)
 endfunction()
 
-function(extract_version_from_component out)
-    cmake_parse_arguments(PARSE_ARGV 1 "arg" "" "COMPONENT" "")
-    string(TOLOWER "${arg_COMPONENT}" component_lower)
-    string(TOUPPER "${arg_COMPONENT}" component_upper)
-    extract_regex_from_file(major_version
-        FILE_WITHOUT_EXTENSION "${SOURCE_PATH}/${component_lower}/version"
-        MAJOR
-        REGEX "#define ${component_upper}_VERSION_MAJOR[ ]+([0-9]+)"
-    )
-    extract_regex_from_file(minor_version
-        FILE_WITHOUT_EXTENSION "${SOURCE_PATH}/${component_lower}/version"
-        REGEX "#define ${component_upper}_VERSION_MINOR[ ]+([0-9]+)"
-    )
-    extract_regex_from_file(micro_version
-        FILE_WITHOUT_EXTENSION "${SOURCE_PATH}/${component_lower}/version"
-        REGEX "#define ${component_upper}_VERSION_MICRO[ ]+([0-9]+)"
-    )
-    set("${out}" "${major_version}.${minor_version}.${micro_version}" PARENT_SCOPE)
-endfunction()
-
 extract_regex_from_file(FFMPEG_VERSION_FULL
     FILE_WITHOUT_EXTENSION "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/libavutil/ffversion"
     REGEX "#define FFMPEG_VERSION[ ]+\"(.+)\""
 )
 
-extract_version_from_component(LIBAVUTIL_VERSION   COMPONENT libavutil)
-extract_version_from_component(LIBAVCODEC_VERSION  COMPONENT libavcodec)
-extract_version_from_component(LIBAVDEVICE_VERSION COMPONENT libavdevice)
-extract_version_from_component(LIBAVFILTER_VERSION COMPONENT libavfilter)
-extract_version_from_component(LIBAVFORMAT_VERSION COMPONENT libavformat)
-extract_version_from_component(LIBSWRESAMPLE_VERSION COMPONENT libswresample)
-extract_version_from_component(LIBSWSCALE_VERSION  COMPONENT libswscale)
-
 # ========== 25. Copyright handling ==========
 
-file(STRINGS
-    "${CURRENT_BUILDTREES_DIR}/build-${TARGET_TRIPLET}-rel-out.log"
-    LICENSE_STRING
-    REGEX "License: .*"
-    LIMIT_COUNT 1
-)
+foreach(_cfg rel dbg)
+    file(STRINGS
+        "${CURRENT_BUILDTREES_DIR}/build-${TARGET_TRIPLET}-${_cfg}-out.log"
+        _ff_license_${_cfg}
+        REGEX "License: .*"
+        LIMIT_COUNT 1
+    )
+    string(STRIP "${_ff_license_${_cfg}}" _ff_license_${_cfg})
+    if(NOT _ff_license_${_cfg})
+        message(FATAL_ERROR "FFmpeg ${_cfg}: missing Configure license evidence")
+    endif()
+endforeach()
+if(NOT _ff_license_rel STREQUAL _ff_license_dbg)
+    message(FATAL_ERROR "FFmpeg license differs between Release (${_ff_license_rel}) and Debug (${_ff_license_dbg})")
+endif()
+set(LICENSE_STRING "${_ff_license_rel}")
+# This recipe explicitly enables version3 for both configurations.
+# A version2 result would contradict the requested licensing mode.
+if("license-nonfree" IN_LIST FEATURES)
+    set(_ff_expected_license "^License: nonfree and unredistributable$")
+elseif("license-gpl" IN_LIST FEATURES)
+    set(_ff_expected_license "^License: GPL version 3 or later$")
+else()
+    set(_ff_expected_license "^License: LGPL version 3 or later$")
+endif()
+if(NOT LICENSE_STRING MATCHES "${_ff_expected_license}")
+    message(FATAL_ERROR "FFmpeg license does not match the requested license features: ${LICENSE_STRING}")
+endif()
 
 if(LICENSE_STRING STREQUAL "License: LGPL version 2.1 or later")
     set(LICENSE_FILE "COPYING.LGPLv2.1")
@@ -924,19 +1350,10 @@ else()
     message(FATAL_ERROR "Failed to identify license (${LICENSE_STRING})")
 endif()
 
-# ========== 26. FindFFmpeg.cmake + usage generation ==========
+# ========== 26. CMake package interfaces + usage generation ==========
 
-configure_file(
-    "${FFMPEG_SHARED_DIR}/FindFFmpeg.cmake.in"
-    "${CURRENT_PACKAGES_DIR}/share/ffmpeg/FindFFmpeg.cmake"
-    @ONLY
-)
-# Backward compatibility wrapper for find_package(FFMPEG) on case-sensitive systems
-if(NOT WIN32)
-    file(WRITE "${CURRENT_PACKAGES_DIR}/share/ffmpeg/FindFFMPEG.cmake"
-        "include(\"${CMAKE_CURRENT_LIST_DIR}/FindFFmpeg.cmake\")\n"
-    )
-endif()
+include("${FFMPEG_SHARED_DIR}/package-config.cmake")
+ffmpeg_install_cmake_package("${CURRENT_PACKAGES_DIR}/share/ffmpeg")
 
 configure_file(
     "${FFMPEG_SHARED_DIR}/vcpkg-cmake-wrapper.cmake"

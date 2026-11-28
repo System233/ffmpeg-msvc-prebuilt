@@ -136,9 +136,11 @@ Extract a shared Binary archive (optionally overlay its matching Debug Add-on), 
 
 ```bash
 # Extract first, then build
-cmake -B build -DFFMPEG_ROOT=C:/path/to/extracted_prefix
+cmake -B build -DCMAKE_PREFIX_PATH=C:/path/to/extracted_prefix
 cmake --build build
 ```
+
+For older SDKs without Config Mode, use `-DFFMPEG_ROOT=...` instead.
 
 See [`examples/README.md`](./examples/README.md) for CMake, Meson, and GNU Make instructions.
 

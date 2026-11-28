@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
+import shlex
 import tempfile
 import zipfile
 from pathlib import Path
@@ -11,14 +11,15 @@ from pathlib import Path
 import yaml
 
 from .versions import ROOT
+from .process import run_bounded
 
 _CONFIGS = ("Release", "Debug")
 _ARCH = {"x64-windows": "x64", "x86-windows": "Win32"}
 
 
 def _run(args, *, cwd=None, env=None):
-    result = subprocess.run([str(arg) for arg in args], cwd=cwd, env=env,
-                            text=True, errors="replace", capture_output=True)
+    result = run_bounded(args, cwd=cwd, env=env,
+                         timeout=240 if "--build" in args else 60)
     if result.returncode:
         raise RuntimeError(f"SDK validation failed ({result.returncode}): {args[0]}\n"
                            + result.stdout + result.stderr)
@@ -45,16 +46,33 @@ def _extract(path: Path, prefix: Path):
         archive.extractall(prefix)
 
 
+_CORE_MODULES = {"avutil", "avcodec", "avformat", "avfilter", "avdevice", "swresample", "swscale"}
+
+
+def _sdk_modules(selected: Path):
+    modules = {path.stem[3:] for path in (selected / "lib/pkgconfig").glob("lib*.pc")}
+    if not _CORE_MODULES <= modules:
+        raise ValueError("Missing core SDK pkg-config modules")
+    return modules
+
+
 def _assert_selection(build: Path, config: str, selected: Path):
     rows = (build / f"selected-{config}.txt").read_text(encoding="utf-8").splitlines()
-    if len(rows) != 7:
-        raise ValueError("Incomplete imported module selection")
+    expected = _sdk_modules(selected)
+    actual = set()
     for row in rows:
-        dll, lib = map(Path, row.split("|"))
-        if (dll.parent.resolve() != (selected / "bin").resolve()
+        module, dll_name, lib_name = row.split("|")
+        dll, lib = Path(dll_name), Path(lib_name)
+        if (module in actual or module not in expected
+                or dll.parent.resolve() != (selected / "bin").resolve()
                 or lib.parent.resolve() != (selected / "lib").resolve()
+                or not dll.name.startswith(module + "-")
+                or lib.name not in (module + ".lib", module + "d.lib")
                 or not dll.is_file() or not lib.is_file()):
             raise ValueError(f"Incorrect {config} SDK configuration: {row}")
+        actual.add(module)
+    if actual != expected:
+        raise ValueError(f"Incomplete imported module selection: {sorted(expected - actual)}")
 
 
 def _verify_pkgconfig(pkgconf: Path, prefix: Path, selected: Path):
@@ -62,16 +80,37 @@ def _verify_pkgconfig(pkgconf: Path, prefix: Path, selected: Path):
     env["PKG_CONFIG_PATH"] = ""
     env["PKG_CONFIG_LIBDIR"] = str(selected / "lib/pkgconfig")
     env.pop("PKG_CONFIG_SYSROOT_DIR", None)
-    for module in ("avutil", "avcodec", "avformat", "avfilter", "avdevice", "swresample", "swscale"):
+    modules = _sdk_modules(selected)
+    for module in sorted(modules):
         name = "lib" + module
         for variable, expected in (("includedir", prefix / "include"),
                                    ("libdir", selected / "lib")):
             actual = _run([pkgconf, "--variable=" + variable, name], env=env)
-            if not actual or Path(actual).resolve() != expected.resolve():
+            # pkgconf may escape whitespace even in --variable output,
+            # whereas some implementations return the unescaped path.
+            # Accept only an exact path match after one tokenization.
+            matches = bool(actual) and Path(actual).resolve() == expected.resolve()
+            if not matches:
+                try:
+                    parts = shlex.split(actual)
+                    matches = len(parts) == 1 and Path(parts[0]).resolve() == expected.resolve()
+                except ValueError:
+                    matches = False
+            if not matches:
                 raise ValueError(f"Unexpected pkg-config {variable} for {name}: {actual}")
-    # Resolve the module graph using only metadata from the public archive.
-    _run([pkgconf, "--libs", "--static", "libavformat"], env=env)
-    print(f"pkg-config {'Debug' if selected != prefix else 'Release'}: 7 modules", flush=True)
+        # Inspect even the private module graph using only the public archive.
+        # This is a metadata check, not a promise of a static SDK.
+        for flags in ([], ["--static"]):
+            output = _run([pkgconf, *flags, "--cflags", "--libs", name], env=env)
+            tokens = shlex.split(output)
+            for flag, directory in (("-I", prefix / "include"), ("-L", selected / "lib")):
+                matches = [Path(token[len(flag):]).resolve() for token in tokens
+                           if token.startswith(flag) and len(token) > len(flag)]
+                if directory.resolve() not in matches:
+                    raise ValueError(f"Invalid pkg-config {flag} path for {name}: {output}")
+            if "-l" + module not in tokens:
+                raise ValueError(f"Missing pkg-config module library for {name}: {output}")
+    print(f"pkg-config {'Debug' if selected != prefix else 'Release'}: {len(modules)} modules", flush=True)
 
 
 def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
@@ -81,7 +120,7 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
         raise ValueError("Archive runtime validation requires a native x64/x86 target")
     with tempfile.TemporaryDirectory(prefix="ffmpeg-sdk-validation-") as tmp:
         root = Path(tmp)
-        prefix, build = root / "sdk", root / "consumer"
+        prefix, build = root / "sdk with spaces", root / "consumer"
         prefix.mkdir()
         _extract(binary, prefix)
         bin_dir = prefix / "bin" if debug else prefix
@@ -94,12 +133,13 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
                 print(f"CLI {executable}: {output.splitlines()[0]}", flush=True)
         if debug is None:
             return
-        if not (prefix / "share/ffmpeg/FindFFmpeg.cmake").is_file():
-            raise ValueError("Missing SDK FindFFmpeg.cmake")
+        for name in ("FindFFmpeg.cmake", "FFmpegConfig.cmake", "FFmpegConfigVersion.cmake"):
+            if not (prefix / "share/ffmpeg" / name).is_file():
+                raise ValueError(f"Missing SDK {name}")
 
         def configure():
             args = ["cmake", "-S", ROOT / "tests/sdk_consumer", "-B", build, "-G", generator,
-                    "-DFFMPEG_ROOT=" + prefix.as_posix()]
+                    "-DCMAKE_PREFIX_PATH=" + prefix.as_posix()]
             if generator.startswith("Visual Studio"):
                 args += ["-A", _ARCH[triplet]]
             _run(args)
@@ -116,9 +156,6 @@ def validate_archives(binary: Path, debug: Path | None, *, triplet: str,
                     for dll in (selected / "bin").glob("*.dll"):
                         deployed = out / dll.name
                         if target == "check-full" or deployed.is_file():
-                            # postproc is not part of the seven core targets.
-                            if dll.name.startswith("postproc-"):
-                                continue
                             if not deployed.is_file() or deployed.read_bytes() != dll.read_bytes():
                                 raise ValueError(f"Incorrect deployed DLL: {target}/{dll.name}")
                     env = _runtime_env(root)

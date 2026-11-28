@@ -47,9 +47,9 @@ class OriginalConsumerContract(unittest.TestCase):
         original = (ROOT / "scripts/cmake/FindFFmpeg.cmake.in").read_text(
             encoding="utf-8")
         self.assertNotIn("find_package(PkgConfig", original)
-        self.assertIn("FFMPEG_ADD_IMPORTED_TARGET(libavcodec avcodec)", original)
-        self.assertIn("FFMPEG_ADD_IMPORTED_TARGET(libavutil avutil)", original)
-        self.assertIn("FFMPEG_LINK_INTERNAL_DEPS", original)
+        self.assertIn('set(FFMPEG_MODULES "@FFMPEG_MODULES@")', original)
+        self.assertIn('add_library(FFmpeg::${_mod} SHARED IMPORTED GLOBAL)', original)
+        self.assertIn('target_link_libraries(FFmpeg::${_mod} INTERFACE FFmpeg::${_dep})', original)
 
 
 class OriginalArchiveContract(unittest.TestCase):
@@ -66,6 +66,8 @@ class OriginalArchiveContract(unittest.TestCase):
             ("debug/bin", "avcodec.pdb"),
             ("debug/lib", "avcodec.lib"),
             ("share/ffmpeg", "FindFFmpeg.cmake"),
+            ("share/ffmpeg", "FFmpegConfig.cmake"),
+            ("share/ffmpeg", "FFmpegConfigVersion.cmake"),
             ("share/ffmpeg", "vcpkg-cmake-wrapper.cmake"),
             ("share/ffmpeg", "usage"),
             ("share/ffmpeg", "copyright"),
@@ -91,6 +93,7 @@ class OriginalArchiveContract(unittest.TestCase):
                     names = {"ffmpeg.exe"} if linkage == "static" else {
                         "bin/ffmpeg.exe", "bin/avcodec-61.dll", "lib/avcodec.lib",
                         "include/libavcodec/avcodec.h", "share/ffmpeg/FindFFmpeg.cmake",
+                        "share/ffmpeg/FFmpegConfig.cmake", "share/ffmpeg/FFmpegConfigVersion.cmake",
                         "share/ffmpeg/vcpkg-cmake-wrapper.cmake", "share/ffmpeg/usage"}
                     if variant == "debug":
                         names = {"bin/avcodec.pdb", "debug/bin/avcodec-61.dll",
@@ -113,6 +116,8 @@ class OriginalArchiveContract(unittest.TestCase):
             self.assertEqual({"ffmpeg.exe"}, set(static))
             shared = _files(package, "shared", kind="binary", port=port)
             self.assertIn("share/ffmpeg/FindFFmpeg.cmake", shared)
+            self.assertIn("share/ffmpeg/FFmpegConfig.cmake", shared)
+            self.assertIn("share/ffmpeg/FFmpegConfigVersion.cmake", shared)
             self.assertIn("share/ffmpeg/vcpkg-cmake-wrapper.cmake", shared)
             self.assertNotIn("share/ffmpeg/vcpkg_abi_info.txt", shared)
             self.assertNotIn("share/ffmpeg/vcpkg.spdx.json", shared)

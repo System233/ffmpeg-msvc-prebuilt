@@ -1,7 +1,18 @@
 cmake_minimum_required(VERSION 3.21)
 project(ffmpeg-tester C)
 
+# Exercise both installed interfaces through the vcpkg toolchain.
+find_package(FFmpeg CONFIG REQUIRED)
 find_package(FFmpeg MODULE REQUIRED)
+
+# Unlike a public Binary SDK consumer, this native Tester validates a full
+# Release+Debug build. Never allow a missing Debug overlay to mask a
+# producer-side failure.
+foreach(_mod IN LISTS FFMPEG_MODULES)
+    if("${FFMPEG_lib${_mod}_LIBRARY_DEBUG}" STREQUAL "${FFMPEG_lib${_mod}_LIBRARY_RELEASE}")
+        message(FATAL_ERROR "Native FFmpeg Tester: ${_mod} Debug library falls back to Release")
+    endif()
+endforeach()
 
 set(src_dir "${CMAKE_CURRENT_BINARY_DIR}/src")
 file(MAKE_DIRECTORY "${src_dir}")
@@ -11,6 +22,16 @@ macro(add_ffmpeg_test name header func demand_target)
     set(TEST_NAME "check-${name}")
     set(INCLUDE_HEADER "${header}")
     set(API_FUNC "${func}")
+    set(API_CHECK "")
+    if("${name}" STREQUAL "avcodec")
+        set(API_CHECK "#if LIBAVCODEC_VERSION_MAJOR < 58\n    avcodec_register_all();\n#endif\n    if (!avcodec_find_decoder(AV_CODEC_ID_H264)) return 2;")
+    elseif("${name}" STREQUAL "avformat")
+        set(API_CHECK "#if LIBAVFORMAT_VERSION_MAJOR < 58\n    av_register_all();\n#endif\n    if (!av_find_input_format(\"matroska\")) return 2;")
+    elseif("${name}" STREQUAL "avfilter")
+        set(API_CHECK "#if LIBAVFILTER_VERSION_MAJOR < 7\n    avfilter_register_all();\n#endif\n    if (!avfilter_get_by_name(\"null\")) return 2;")
+    elseif("${name}" STREQUAL "avdevice")
+        set(API_CHECK "avdevice_register_all();")
+    endif()
     configure_file(check_lib.c.in "${src_dir}/check_${name}.c" @ONLY)
 
     add_executable(check-${name} "${src_dir}/check_${name}.c")
@@ -52,6 +73,9 @@ add_ffmpeg_test(swresample libswresample/swresample.h swresample_version FFmpeg:
 add_ffmpeg_test(swscale    libswscale/swscale.h   swscale_version    FFmpeg::swscale)
 if(TARGET FFmpeg::postproc)
     add_ffmpeg_test(postproc libpostproc/postprocess.h postproc_version FFmpeg::postproc)
+endif()
+if(TARGET FFmpeg::avresample)
+    add_ffmpeg_test(avresample libavresample/avresample.h avresample_version FFmpeg::avresample)
 endif()
 
 # == Transitive dependency tests (only verify avutil propagation) ==

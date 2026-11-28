@@ -99,6 +99,16 @@ class NativeValidation(unittest.TestCase):
                     result=build.verify_outputs(job,"a"*64)
                     self.assertEqual(78,result["runtime"]["tester_executions"])
                     self.assertEqual(79,run.call_count)
+                for selected, suffix in ((prefix, "rel"), (prefix / "debug", "dbg")):
+                    for lib in ("postproc", "avresample"):
+                        archive(selected / "lib" / (lib + ".lib"), machine)
+                        pe(selected / "bin" / (lib + "-1.dll"), machine)
+                        for mode in ("", "full-", "legacy-"):
+                            pe(trees / "ffmpeg-tester" / f"{triplet}-{suffix}" /
+                               f"check-{mode}{lib}.exe", machine)
+                result = build.verify_outputs(job, "a" * 64)
+                self.assertEqual({"release": 45, "debug": 45}, result["tester_targets"])
+                build.validate_evidence(dict(evidence, checks=[dict(result, jobs=[1], reason="same error")]), data)
 
     def test_invalid_binary(self):
         with tempfile.TemporaryDirectory() as tmp:
